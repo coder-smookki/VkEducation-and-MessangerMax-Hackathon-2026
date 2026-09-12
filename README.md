@@ -14,6 +14,8 @@
 
 **Начать с [docs/README.md](docs/README.md)**. Общий график: [docs/plan.md](docs/plan.md). Для нейронок: [AGENTS.md](AGENTS.md) и [docs/memory/PROJECT_STATE.md](docs/memory/PROJECT_STATE.md).
 
+Для одновременной работы троих: [владение файлами и контракты](docs/parallel-development.md), [пошаговая реализация](docs/implementation.md), [пример с версиями и запросами](docs/worked-example.md), [15 сценариев приёмки](docs/acceptance.md). Персональные планы содержат порядок шагов, зависимости, ошибки для проверки и передачу результата соседнему участнику.
+
 ## Запуск
 
 Нужен работающий Docker Desktop / Docker Engine с Compose. Порты `5173`, `8080`, `5432` должны быть свободны.
