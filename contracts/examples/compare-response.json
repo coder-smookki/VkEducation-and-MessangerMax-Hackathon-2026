@@ -1,0 +1,25 @@
+{
+  "caseId": "00000000-0000-0000-0000-000000000001",
+  "sourceRevision": 1,
+  "reportId": "00000000-0000-0000-0000-000000000003",
+  "modelVersion": "stub-v1",
+  "mode": "STUB",
+  "suggestions": [
+    {
+      "itemId": "00000000-0000-0000-0000-000000000004",
+      "contentVersion": 1,
+      "workRound": 1,
+      "relation": "INSUFFICIENT_INFORMATION",
+      "evidence": null,
+      "reason": "MODEL_NOT_CONFIGURED"
+    },
+    {
+      "itemId": "00000000-0000-0000-0000-000000000005",
+      "contentVersion": 1,
+      "workRound": 0,
+      "relation": "INSUFFICIENT_INFORMATION",
+      "evidence": null,
+      "reason": "MODEL_NOT_CONFIGURED"
+    }
+  ]
+}

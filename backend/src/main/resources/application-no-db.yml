@@ -1,0 +1,6 @@
+# Запуск синтетического примера без PostgreSQL. Не проверяет хранение данных.
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
+      - org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration

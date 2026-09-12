@@ -1,0 +1,24 @@
+{
+  "caseId": "00000000-0000-0000-0000-000000000001",
+  "sourceRevision": 1,
+  "reportId": "00000000-0000-0000-0000-000000000003",
+  "reportText": "Лампу на третьем этаже заменили, освещение работает.",
+  "items": [
+    {
+      "itemId": "00000000-0000-0000-0000-000000000004",
+      "contentVersion": 1,
+      "workRound": 1,
+      "category": "LIGHTING",
+      "location": "Подъезд 1, этаж 3",
+      "symptom": "Не горит свет"
+    },
+    {
+      "itemId": "00000000-0000-0000-0000-000000000005",
+      "contentVersion": 1,
+      "workRound": 0,
+      "category": "ENTRANCE_DOOR",
+      "location": "Подъезд 1, вход",
+      "symptom": "Дверь не закрывается"
+    }
+  ]
+}

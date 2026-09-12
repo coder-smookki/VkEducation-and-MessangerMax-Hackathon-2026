@@ -1,0 +1,49 @@
+# КОРЕНЬ 2.0 / MAX
+
+Жилищное обращение с контролем каждого пункта: ответ про заменённую лампу не скрывает нерешённый вопрос с дверью.
+
+Это **стартовый каркас до хакатона**, основанный на отчёте `KOREN_MAX_Smart_City_Report_v2_2026-09-06.pdf`. Рабочие обращения, вход MAX и NLI предстоит реализовать по плану. Пример уже соединяет React, Java и Python; он использует только вымышленные данные и явно обозначенный STUB.
+
+## Команда
+
+| Участник | Ответственность | Персональный план |
+|---|---|---|
+| Кирилл | Frontend, MAX, Java-аутентификация, сборка | [kirill.md](docs/team/kirill.md) |
+| Семён | Java-процесс, права по дому, БД, отчёты, наблюдения, outbox | [semyon.md](docs/team/semyon.md) |
+| Никита | ML/AI, разметка, baseline, NLI и измерения | [nikita.md](docs/team/nikita.md) |
+
+**Начать с [docs/README.md](docs/README.md)**. Общий график: [docs/plan.md](docs/plan.md). Для нейронок: [AGENTS.md](AGENTS.md) и [docs/memory/PROJECT_STATE.md](docs/memory/PROJECT_STATE.md).
+
+## Запуск
+
+Нужен работающий Docker Desktop / Docker Engine с Compose. Порты `5173`, `8080`, `5432` должны быть свободны.
+
+```sh
+cp .env.example .env
+docker compose up --build -d
+python3 scripts/smoke.py
+```
+
+Открыть [localhost:5173](http://localhost:5173). Начальная сборка скачивает образы и зависимости. `smoke.py` ждёт готовности до 60 секунд после сборки. Если `.env` уже существует, сохранить его значения.
+
+Без Docker можно запустить пример в профиле `local`: [инструкция](docs/development.md). В этом режиме PostgreSQL отключён и данные не сохраняются.
+
+## Структура
+
+```text
+backend/       Java 21, Spring Boot 4.1.1, Maven Wrapper, Flyway, тесты
+frontend/      React, TypeScript, Vite, экран учебного обращения
+ml/            Python 3.12, FastAPI, STUB, тесты и данные для разработки
+contracts/     OpenAPI Python-сервиса и общие JSON-примеры
+docs/          архитектура, планы троих, проверки, исследование, память
+scripts/       проверка соединения сервисов
+compose.yaml   локальные PostgreSQL + Java + Python + React
+```
+
+Точные зависимости закреплены в `pom.xml`, Maven Wrapper, `package-lock.json` и `uv.lock`. Это выбранные проверяемые версии, а не обещание всегда использовать самые новые.
+
+## Граница готовности
+
+Подготовлены стартовые приложения, схема данных и тестируемые базовые правила. Рабочий CRUD, настоящая аутентификация, обработчики уведомлений, NLI и production-конфигурация находятся в плане. Demo API доступен только с явным профилем `demo`/`local`; остальные маршруты закрыты.
+
+Подробные подтверждённые проверки и ограничения: [docs/testing.md](docs/testing.md). Выводы из похожих решений: [docs/research.md](docs/research.md).

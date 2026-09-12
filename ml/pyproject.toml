@@ -1,0 +1,21 @@
+[project]
+name = "koren-inference"
+version = "0.1.0"
+description = "Advisory text comparison service for KOREN"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "fastapi==0.141.1",
+  "pydantic==2.13.5",
+  "uvicorn==0.52.4",
+]
+
+[dependency-groups]
+dev = ["httpx==0.28.1", "pytest==9.1.1", "ruff==0.16.7"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
