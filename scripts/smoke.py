@@ -25,7 +25,7 @@ while True:
         assert json.loads(fetch(args.api_url + "/actuator/health"))["status"] == "UP"
         assert '<div id="root"></div>' in fetch(args.web_url)
         break
-    except (urllib.error.URLError, TimeoutError, AssertionError):
+    except (urllib.error.URLError, ConnectionError, TimeoutError, AssertionError):
         if time.monotonic() >= deadline:
             raise SystemExit("Stack did not become ready; inspect docker compose ps/logs.")
         time.sleep(1)
