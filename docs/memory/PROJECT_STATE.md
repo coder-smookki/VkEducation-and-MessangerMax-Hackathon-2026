@@ -22,6 +22,8 @@ GitHub-репозиторий был приватным и пустым. Соз�
 
 Дополнение 13.09.2026: [пять контрактов](../../contracts/README.md) реализованы в пределах основы. 01 extract-items STUB; 02 clarify-items RULES с вопросами по недостающим полям только автору; 03 схема Java review/confirm и общий ConfirmedCaseContext; 04 similar-cases STUB на переданных Java кандидатах; 05 совместимый compare STUB. Есть Java DTO/клиенты/валидаторы и синтетические примеры. READY_FOR_REVIEW относится к заполнению пункта; CONFIRMED создаётся только будущей авторизованной Java-командой автора. Модель/векторы/выборка кандидатов из БД не подключены.
 
+Дополнение 13.09.2026: ML больше не использует relational DB/SQLAlchemy/Alembic. Kafka доставляет из Java подтверждённые snapshots после create/update, consumer обновляет производный Chroma-индекс; SimilarCases получает только query и limit и сам ищет кандидатов в Chroma по houseId. Java publisher включается конфигурацией `KAFKA_ENABLED=true`; Chroma не меняет продуктовый статус.
+
 Фактические проверки этого изменения:
 
 - Python: `pytest -q` - 35 прошли; `ruff check .` прошёл; экспортированные OpenAPI/context schema и реальные 200/422/413 соответствуют тестовым примерам. Два прежних предупреждения TestClient остаются.

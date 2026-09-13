@@ -85,7 +85,7 @@ npm run build
 
 ## Обновление контракта
 
-1. Изменить `ml/app/contracts.py`/`intake_contracts.py` и Java `InferenceContract`/`IntakeContract` совместно с владельцами. Каталог - [пять контрактов](../contracts/README.md).
+1. Изменить схемы в `ml/app/features/inference/schemas/` или `ml/app/features/intake/contracts.py` и Java `InferenceContract`/`IntakeContract` совместно с владельцами. Каталог - [пять контрактов](../contracts/README.md).
 2. Выполнить `uv run --directory ml python -m scripts.export_openapi`.
 3. Обновить `contracts/examples`, документацию и тесты несовместимых случаев.
 4. Запустить Python, Java и smoke; изменение не завершено, пока один потребитель понимает старую схему.

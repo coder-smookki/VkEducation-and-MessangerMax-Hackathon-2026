@@ -9,11 +9,11 @@
 | GET | Java `/actuator/health` | Health | При готовности 200, без внутренних деталей |
 | GET | Java `/api/v1/demo/case` | Только demo/local | Фиксированный synthetic пример |
 | GET | Java `/api/v1/demo/compare` | Только demo/local | Реальный вызов Python, STUB либо MANUAL |
-| GET | Python `/healthz` | Внутренняя сеть | Процесс и mode=STUB |
+| GET | Python `/healthz` | Внутренняя сеть | Процесс и состояние Chroma |
 | POST | Python `/internal/v1/compare` | Внутренняя сеть | Строгий контракт подсказок |
 | POST | Python `/internal/v1/extract-items` | Внутренняя сеть | STUB предложения пунктов; фактическое извлечение не подключено |
 | POST | Python `/internal/v1/clarify-items` | Внутренняя сеть | RULES: недостающие поля, вопросы только автору |
-| POST | Python `/internal/v1/similar-cases` | Внутренняя сеть | STUB сравнения подтверждённых кандидатов; similarity не вычисляется |
+| POST | Python `/internal/v1/similar-cases` | Внутренняя сеть | Chroma-поиск кандидатов по подтверждённому query; кандидаты не передаются Java |
 
 `DemoCase` и `Comparison` из `frontend/src/api/client.ts` - типы примера, не готовые DTO авторизованного приложения. Не расширять `/demo/**` рабочими командами.
 
@@ -120,11 +120,11 @@ Java-валидация должна считать code points, UI - Array.from
 
 ## Java → Python: существующий контракт
 
-Общий каталог [01-05](../contracts/README.md) добавляет извлечение, уточнение у автора и сравнение похожих обращений. Типы новых операций находятся в `ml/app/intake_contracts.py` и Java `IntakeContract`, runtime - в `ml/app/intake.py` и `InferenceClient`. Контекст после подтверждения экспортируется в [confirmed-context.schema.json](../contracts/confirmed-context.schema.json). Формат `/compare` ниже сохранён.
+Общий каталог [01-05](../contracts/README.md) добавляет извлечение, уточнение у автора и сравнение похожих обращений. Типы новых операций находятся в `ml/app/features/intake/contracts.py` и Java `IntakeContract`, runtime - в `ml/app/features/intake/service.py` и `InferenceClient`. Контекст после подтверждения экспортируется в [confirmed-context.schema.json](../contracts/confirmed-context.schema.json). Формат `/compare` ниже сохранён.
 
 POST-тела Python ограничены 512 KiB до JSON-разбора, включая chunked. Ошибка 413 - `{detail:"REQUEST_TOO_LARGE"}`. Новые операции при неверном входе возвращают 422 `{detail:"INVALID_INTAKE_REQUEST"}`; `/compare` сохраняет `{detail:"INVALID_COMPARE_REQUEST"}`. OpenAPI описывает эти фактические ответы, тест проверяет их соответствие схеме.
 
-Истина схемы inference - `ml/app/features/inference/schemas/`, а intake-контрактов - `ml/app/intake_contracts.py`; OpenAPI генерируется из `ml/` командой `uv run python -m scripts.export_openapi`. Менять вместе Python, Java-контракты, общий JSON и потребителей. Сохранённый OpenAPI проверяется тестом против `app.openapi()`.
+Истина схемы inference - `ml/app/features/inference/schemas/`, а intake-контрактов - `ml/app/features/intake/contracts.py`; OpenAPI генерируется из `ml/` командой `uv run python -m scripts.export_openapi`. Менять вместе Python, Java-контракты, общий JSON и потребителей. Сохранённый OpenAPI проверяется тестом против `app.openapi()`.
 
 Примеры: [запрос](../contracts/examples/compare-request.json), [STUB-ответ](../contracts/examples/compare-response.json). В запросе caseId/sourceRevision/reportId/reportText/items; item содержит itemId/contentVersion/workRound/category/location/symptom. Лишние поля, bool вместо версии, неверная длина и повтор itemId отклоняются с 422 без отражения текста.
 

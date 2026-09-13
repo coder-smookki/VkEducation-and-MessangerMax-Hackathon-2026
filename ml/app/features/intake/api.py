@@ -1,8 +1,8 @@
+from dishka import FromDishka
+from dishka.integrations.fastapi import DishkaRoute, inject
 from fastapi import APIRouter
 
-from app.features.intake.service import clarify_items, extract_items, similar_cases
-from app.http_errors import BodySizeError, IntakeInputError
-from app.intake_contracts import (
+from app.features.intake.contracts import (
     ClarifyItemsRequest,
     ClarifyItemsResponse,
     ExtractItemsRequest,
@@ -10,8 +10,11 @@ from app.intake_contracts import (
     SimilarCasesRequest,
     SimilarCasesResponse,
 )
+from app.features.intake.service import clarify_items, extract_items, similar_cases
+from app.http_errors import BodySizeError, IntakeInputError
+from app.shared.vector_store import ChromaVectorStore
 
-router = APIRouter(prefix="/internal/v1", tags=["intake"])
+router = APIRouter(prefix="/internal/v1", tags=["intake"], route_class=DishkaRoute)
 INTAKE_ERRORS = {422: {"model": IntakeInputError}, 413: {"model": BodySizeError}}
 
 
@@ -26,5 +29,9 @@ def clarify(request: ClarifyItemsRequest) -> ClarifyItemsResponse:
 
 
 @router.post("/similar-cases", response_model=SimilarCasesResponse, responses=INTAKE_ERRORS)
-def similar(request: SimilarCasesRequest) -> SimilarCasesResponse:
-    return similar_cases(request)
+@inject
+def similar(
+    request: SimilarCasesRequest,
+    vector_store: FromDishka[ChromaVectorStore],
+) -> SimilarCasesResponse:
+    return similar_cases(request, vector_store)

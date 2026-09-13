@@ -19,13 +19,13 @@
 | `backend/src/main/java/ru/koren/notifications/package-info.java` | Обработка сохранённых событий, outbox и настройки уведомлений | S5 |
 | `backend/src/main/java/ru/koren/max/package-info.java` | HTTP MAX, проверка/сохранение webhook, адаптер callback | K5a |
 | `frontend/src/api/client.ts`, `frontend/src/platform/max.ts` | Рабочий REST-клиент и реальный вход; demo-клиент не становится авторизацией | K1-K3 |
-| `ml/app/analyzer.py`, `contracts.py`, `main.py` | Baseline/NLI, жизненный цикл модели, ограниченная нагрузка | N1-N5 |
+| `ml/app/features/inference/`, `ml/app/features/intake/`, `ml/app/features/indexing/` | Baseline/NLI, Chroma retrieval, Kafka consumer, жизненный цикл модели | N1-N5 |
 
 Новые классы создавать вместе с поведением. Контроллер преобразует HTTP, application service проверяет права и выполняет транзакцию, domain определяет переход, persistence исполняет SQL. Не создавать по интерфейсу на каждый единственный класс и общий `BaseService` для разных предметных операций.
 
 ## Авторизация и сессия
 
-Основа 13.09.2026: [пять контрактов](../contracts/README.md), Python `intake.py`/`intake_contracts.py`, Java `IntakeContract`/`IntakeValidator`/новые методы `InferenceClient` уже существуют. Применять их через будущие авторизованные application services, не открывать Python напрямую браузеру. Сохранение DRAFT предшествует extract; список предложений/ответы на уточнения проверяет автор. В similarity допускается только подтверждённый snapshot и разрешённые кандидаты. Текущий RULES проверяет недостающие поля; остальные анализаторы остаются STUB.
+Основа 13.09.2026: [пять контрактов](../contracts/README.md), Python `features/intake/service.py`/`features/intake/contracts.py`, Java `IntakeContract`/`IntakeValidator`/`InferenceClient` уже существуют. Применять их через будущие авторизованные application services, не открывать Python напрямую браузеру. В similarity передаётся только подтверждённый snapshot и limit; кандидатов ML выбирает сам из Chroma. Текущий RULES проверяет недостающие поля, similarity работает через Chroma, остальные анализаторы остаются STUB.
 
 MAX доказывает аккаунт, а `membership` - полномочия в конкретном доме. Серверный Principal несёт внутренний `app_user.id`; сведения о роли/доме читаются из БД при доступе к ресурсу. Долгая сессия не должна сохранять отозванное право до следующего входа.
 
@@ -99,7 +99,7 @@ V1/V2 уже содержат базовые таблицы, но не эти ф
 
 Существующая V1-таблица model_suggestion требует report_id и предназначена для разбора отчёта. Результат извлечения черновика или похожести туда не записывать с фиктивным отчётом: в S4 для него нужна согласованная отдельная структура job/result новой миграцией. Сейчас новые операции stateless, таблицы не менялись.
 
-Для similar сохранять snapshot query и всей ограниченной выборки, проверять права до отправки и до выдачи, сверять caseVersion/sourceRevision обеих сторон. Подключение SQL-выборки и persisted jobs ещё не реализовано. Нельзя записывать результат о похожести как report_item_link или переносить наблюдение между обращениями. Первая интеграция использует действующие методы `InferenceClient`; модель и векторы подключаются отдельной задачей Никиты.
+Для similar отправлять из Java подтверждённый snapshot и limit; кандидаты не входят в HTTP-тело. После создания или изменения подтверждённого обращения Java публикует versioned event в Kafka, а ML обновляет производный Chroma-индекс. Перед применением подсказки Java повторно сверяет актуальные версии; нельзя записывать результат о похожести как report_item_link или переносить наблюдение между обращениями.
 
 Job сохраняет полный snapshot: caseId, sourceRevision, reportId, точный reportText, itemId/contentVersion/workRound. Hash snapshot участвует в уникальности. Python анализирует только этот вход.
 

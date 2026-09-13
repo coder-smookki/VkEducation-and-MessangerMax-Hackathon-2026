@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from app.intake_contracts import ConfirmedCaseContext
+from app.features.intake.contracts import ConfirmedCaseContext
 from app.main import app
 
 target = Path(__file__).resolve().parents[2] / "contracts/inference.openapi.json"

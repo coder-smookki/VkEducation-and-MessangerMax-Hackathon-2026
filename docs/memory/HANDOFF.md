@@ -22,10 +22,12 @@
 
 ## Передача пяти контрактов - 13.09.2026
 
-Начать с [contracts/README.md](../../contracts/README.md). Кирилл: использовать synthetic proposals и clarify/review/confirm JSON для K2, вопросы показывать только автору, READY_FOR_REVIEW не подписывать как выполненный ремонт. Семён: реализовать авторизованные review/confirm, затем подключить готовые методы InferenceClient к согласованным snapshots/jobs и ограниченной выборке кандидатов. Никита: менять будущую интерпретацию внутри intake.py/analyzer.py; модели/embeddings пока не подключать без отдельной задачи.
+Начать с [contracts/README.md](../../contracts/README.md). Кирилл: использовать synthetic proposals и clarify/review/confirm JSON для K2, вопросы показывать только автору, READY_FOR_REVIEW не подписывать как выполненный ремонт. Семён: реализовать авторизованные review/confirm, затем подключить готовые методы InferenceClient к согласованным snapshots/jobs и ограниченной выборке кандидатов. Никита: менять будущую интерпретацию внутри `features/intake/` и `features/inference/`; модели/embeddings пока не подключать без отдельной задачи.
 
 Уточнение недостающих полей работает на RULES; extract/similar/compare - STUB. 35 Python и 31 Java тест прошли, включая настоящий локальный Python и PostgreSQL; Compose и прежний сквозной smoke прошли. Результаты сохранения/доставки/ML-качества не заявлены. Таблица model_suggestion привязана к report_id: для результатов intake/similar S4 должен согласовать отдельную структуру, не создавать фиктивный report.
 
 ## Шаблон дальнейшей передачи
+
+Текущая интеграционная граница ML: `CaseEventPublisher` отправляет `CASE_CREATED`/`CASE_UPDATED` в `koren.case-updates` с ключом caseId, ML `CaseEventsConsumer` индексирует snapshots в Chroma. В compose добавлены Kafka и volume Chroma. Проверено: ML 31 тест, Ruff и Pylint 10/10; Java полный `./mvnw -q test` после исправления Kafka publisher.
 
 Дата, автор, ID задачи, базовый/результирующий commit, что изменено, контракт C1-C4, фактическая миграция, команда и результат проверки, оставшееся препятствие, следующий файл/действие и получатель. Не копировать сюда отчёты тестов целиком. Историю задачи хранит Git, актуальный результат - PROJECT_STATE. В общей памяти обновлять только актуальную передачу после интеграции; не затирать сообщение другого участника без чтения текущей версии.

@@ -3,7 +3,7 @@
 UV ?= uv
 APP_MODULE ?= app.main:app
 
-.PHONY: help sync format format-check lint pylint test openapi evaluate migration migration-upgrade migration-downgrade migration-revision check run
+.PHONY: help sync format format-check lint pylint test openapi evaluate check run
 
 help: ## Show available commands
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "%-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -31,18 +31,6 @@ openapi: ## Export the committed inference OpenAPI contract
 
 evaluate: ## Evaluate the development examples
 	$(UV) run python -m scripts.evaluate
-
-migration: migration-upgrade ## Apply all pending database migrations
-
-migration-upgrade: ## Upgrade the database to the latest migration
-	$(UV) run alembic upgrade head
-
-migration-downgrade: ## Roll back the latest database migration
-	$(UV) run alembic downgrade -1
-
-migration-revision: ## Create a migration (use message="describe change")
-	@test -n "$(message)" || (echo 'Usage: make migration-revision message="describe change"' && exit 1)
-	$(UV) run alembic revision --autogenerate -m "$(message)"
 
 check: format-check lint pylint test ## Run all non-mutating quality checks
 

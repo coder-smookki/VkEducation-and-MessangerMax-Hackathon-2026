@@ -1001,20 +1001,18 @@
           "query": {
             "$ref": "#/components/schemas/ConfirmedCaseContext"
           },
-          "candidates": {
-            "items": {
-              "$ref": "#/components/schemas/ConfirmedCaseContext"
-            },
-            "type": "array",
-            "maxItems": 20,
-            "title": "Candidates"
+          "limit": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "default": 5
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "query",
-          "candidates"
+          "query"
         ],
         "title": "SimilarCasesRequest"
       },
@@ -1053,7 +1051,7 @@
           },
           "scope": {
             "type": "string",
-            "const": "PROVIDED_CANDIDATES",
+            "const": "CHROMA",
             "title": "Scope"
           },
           "results": {

@@ -6,21 +6,22 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
 from app.di import create_container, setup_container
+from app.features.indexing.consumer import CaseEventsConsumer
 from app.features.inference.api import router as inference_router
 from app.features.intake.api import router as intake_router
 from app.http_errors import RequestSizeLimit
-from app.shared.database import Database
-from app.shared.migrations import upgrade_database
+from app.shared.vector_store import ChromaVectorStore
 
 container = create_container()
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    await upgrade_database(settings.database_url)
-    database = await container.get(Database)
+    vector_store = await container.get(ChromaVectorStore)
+    consumer = CaseEventsConsumer(vector_store, settings)
+    await consumer.start()
     yield
-    await database.dispose()
+    await consumer.stop()
     await container.close()
 
 
@@ -43,4 +44,4 @@ async def invalid_request(request: Request, _exception: RequestValidationError):
 
 @app.get("/healthz")
 def health() -> dict[str, str]:
-    return {"status": "ok", "mode": "STUB", "database": "configured", "vectorStore": "chroma"}
+    return {"status": "ok", "mode": "STUB", "vectorStore": "chroma"}

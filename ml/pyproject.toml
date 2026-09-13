@@ -4,15 +4,12 @@ version = "0.1.0"
 description = "Advisory text comparison service for KOREN"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-  "alembic==1.17.2",
-  "aiosqlite==0.22.1",
-  "asyncpg==0.31.0",
+  "aiokafka==0.13.0",
   "chromadb==1.5.9",
   "dishka==1.10.1",
   "fastapi==0.141.1",
   "pydantic==2.13.5",
   "pydantic-settings==2.15.0",
-  "sqlalchemy==2.0.52",
   "uvicorn==0.52.4",
 ]
 

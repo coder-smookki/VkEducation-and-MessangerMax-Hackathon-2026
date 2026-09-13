@@ -11,11 +11,14 @@ class Settings(BaseSettings):
 
     app_name: str = "KOREN inference"
     app_version: str = "0.2.0"
-    database_url: str = "sqlite+aiosqlite:///./data/ml.sqlite3"
     chroma_path: str = "./data/chroma"
     chroma_collection: str = "inference_documents"
     chroma_enabled: bool = True
     chroma_embedding_function: str = Field(default="default", description="Chroma embedding provider")
+    kafka_enabled: bool = False
+    kafka_bootstrap_servers: str = "localhost:9092"
+    kafka_topic: str = "koren.case-updates"
+    kafka_group_id: str = "koren-ml-indexer"
 
 
 @lru_cache

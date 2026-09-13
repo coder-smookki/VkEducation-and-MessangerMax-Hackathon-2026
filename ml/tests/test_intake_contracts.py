@@ -7,8 +7,8 @@ from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator, FormatChecker
 from pydantic import ValidationError
 
+from app.features.intake.contracts import ConfirmedCaseContext, ExtractItemsResponse
 from app.http_errors import MAX_REQUEST_BYTES
-from app.intake_contracts import ConfirmedCaseContext, ExtractItemsResponse, SimilarCasesResponse
 from app.main import app
 
 ROOT = Path(__file__).resolve().parents[2] / "contracts"
@@ -79,40 +79,25 @@ def test_clarification_is_only_for_author_and_does_not_confirm_content():
     assert client.post("/internal/v1/clarify-items", json=payload).status_code == 422
 
 
-@pytest.mark.parametrize(
-    "change", ["draft", "foreign_house", "self", "duplicate", "shared_item", "missing_item", "bool_version"]
-)
+@pytest.mark.parametrize("change", ["draft", "missing_item", "bool_limit"])
 def test_similarity_rejects_unsafe_or_incomplete_context(change):
     payload = fixture("similar-request.json")
     if change == "draft":
         payload["query"]["submissionStatus"] = "DRAFT"
-    elif change == "foreign_house":
-        payload["candidates"][0]["houseId"] = "00000000-0000-0000-0000-000000000099"
-    elif change == "self":
-        payload["candidates"][0]["caseId"] = payload["query"]["caseId"]
-    elif change == "duplicate":
-        payload["candidates"].append(payload["candidates"][0])
-    elif change == "shared_item":
-        payload["candidates"][0]["items"][0]["itemId"] = payload["query"]["items"][0]["itemId"]
     elif change == "missing_item":
         payload["query"]["items"] = []
     else:
-        payload["query"]["caseVersion"] = True
+        payload["limit"] = True
     assert client.post("/internal/v1/similar-cases", json=payload).status_code == 422
 
 
-def test_stub_does_not_claim_that_no_duplicates_exist_even_with_no_candidates():
+def test_similarity_search_uses_chroma_and_returns_analyzed_empty_result_when_unmatched():
     payload = fixture("similar-request.json")
     result = client.post("/internal/v1/similar-cases", json=payload).json()
-    assert result["status"] == "NOT_ANALYZED"
-    assert result["results"][0]["relation"] == "NOT_EVALUATED"
-    assert result["results"][0]["score"] is None
-    result["results"][0]["score"] = 0
-    with pytest.raises(ValidationError):
-        SimilarCasesResponse.model_validate(result)
-    payload["candidates"] = []
-    empty = client.post("/internal/v1/similar-cases", json=payload).json()
-    assert empty["results"] == [] and empty["status"] == "NOT_ANALYZED"
+    assert result["status"] == "ANALYZED"
+    assert result["reason"] == "ANALYZED"
+    assert result["scope"] == "CHROMA"
+    assert result["results"] == []
 
 
 def test_synthetic_extraction_is_a_valid_fixture_but_not_the_stub_output():

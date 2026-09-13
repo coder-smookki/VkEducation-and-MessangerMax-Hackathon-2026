@@ -69,9 +69,7 @@ public class InferenceClient {
             log.warn("Similarity unavailable: {}", exception.getClass().getSimpleName());
             return new SimilarResponse(request.query().caseId(), request.query().caseVersion(),
                     request.query().sourceRevision(), "unavailable", Mode.MANUAL, AnalysisStatus.NOT_ANALYZED,
-                    Reason.ANALYSIS_UNAVAILABLE, "PROVIDED_CANDIDATES", request.candidates().stream()
-                    .map(candidate -> new SimilarCaseResult(candidate.caseId(), candidate.caseVersion(),
-                            candidate.sourceRevision(), SimilarityRelation.NOT_EVALUATED, null, List.of())).toList());
+                    Reason.ANALYSIS_UNAVAILABLE, "CHROMA", List.of());
         }
     }
 }

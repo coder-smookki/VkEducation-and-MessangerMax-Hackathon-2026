@@ -7,7 +7,7 @@
 | 01 | [Предложение пунктов](01-extract-items.md) | Java → Python → Java | HTTP, типы, валидация, STUB; извлечения текста ещё нет |
 | 02 | [Уточнение у автора](02-author-clarification.md) | Java → Python → Java → автор | Проверка недостающих полей и шаблоны вопросов RULES; отправки MAX/UI ещё нет |
 | 03 | [Правка и подтверждение](03-author-review.md) | Автор/React → Java | OpenAPI и проверяемые примеры будущего API; endpoints ещё закрыты |
-| 04 | [Похожие обращения](04-similar-cases.md) | Java → Python → Java | Передача подтверждённых обращений/кандидатов, проверка границ, STUB |
+| 04 | [Похожие обращения](04-similar-cases.md) | Java → Kafka/Chroma → Python → Java | Поиск кандидатов ML в Chroma и проверка границ |
 | 05 | [Отчёт по пунктам](05-report-comparison.md) | Java → Python → Java | Прежний совместимый `/compare`, STUB и ручной fallback |
 
 Номера 01-05 - каталог предметных контрактов. Организационные C1-C4 из [плана параллельной работы](../docs/parallel-development.md) сохраняют свои значения: 03 относится к C1; 01/02/04/05 - к C3, а доставка автору - к C4.
@@ -35,7 +35,7 @@ flowchart TD
 
 ## Источники схем и владельцы
 
-`ml/app/contracts.py` и `ml/app/intake_contracts.py` - источник типов inference. [inference.openapi.json](inference.openapi.json) и [confirmed-context.schema.json](confirmed-context.schema.json) генерируются из кода. Семён поддерживает Java `InferenceContract`, `IntakeContract`, клиенты и валидаторы; Никита - Python и экспорт. Кирилл проверяет смысл готовности, форму вопросов и отображение отказа.
+`ml/app/features/inference/schemas/` и `ml/app/features/intake/contracts.py` - источник типов inference. [inference.openapi.json](inference.openapi.json) и [confirmed-context.schema.json](confirmed-context.schema.json) генерируются из кода. Семён поддерживает Java `InferenceContract`, `IntakeContract`, клиенты и валидаторы; Никита - Python и экспорт. Кирилл проверяет смысл готовности, форму вопросов и отображение отказа.
 
 [author-review.openapi.json](author-review.openapi.json) - отдельно поддерживаемая спецификация будущих Java-команд из [docs/api.md](../docs/api.md). Владельцы - Семён и Кирилл. Она не генерируется из Python и не означает существование Java-контроллера.
 

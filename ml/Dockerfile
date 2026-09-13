@@ -4,9 +4,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 COPY app app
-COPY alembic alembic
-COPY alembic.ini .
-RUN mkdir -p /app/data && chown -R 10001:10001 /app/data
+RUN mkdir -p /app/data/chroma && chown -R 10001:10001 /app/data
 USER 10001:10001
 EXPOSE 8000
-CMD ["sh", "-c", "/app/.venv/bin/alembic upgrade head && exec /app/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-access-log"]
+CMD ["/app/.venv/bin/uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]

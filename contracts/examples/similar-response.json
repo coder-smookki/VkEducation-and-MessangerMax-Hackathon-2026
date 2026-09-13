@@ -2,19 +2,10 @@
   "caseId": "00000000-0000-0000-0000-000000000001",
   "caseVersion": 5,
   "sourceRevision": 1,
-  "modelVersion": "similarity-stub-v1",
-  "mode": "STUB",
-  "status": "NOT_ANALYZED",
-  "reason": "MODEL_NOT_CONFIGURED",
-  "scope": "PROVIDED_CANDIDATES",
-  "results": [
-    {
-      "caseId": "00000000-0000-0000-0000-000000000100",
-      "caseVersion": 2,
-      "sourceRevision": 1,
-      "relation": "NOT_EVALUATED",
-      "score": null,
-      "matchedItems": []
-    }
-  ]
+  "modelVersion": "chroma-retrieval-v1",
+  "mode": "RULES",
+  "status": "ANALYZED",
+  "reason": "ANALYZED",
+  "scope": "CHROMA",
+  "results": []
 }

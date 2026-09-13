@@ -1,6 +1,3 @@
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.features.inference.repository import AnalysisRunRepository
 from app.features.inference.schemas import (
     CompareRequest,
     CompareResponse,
@@ -9,11 +6,12 @@ from app.features.inference.schemas import (
     Relation,
     Suggestion,
 )
+from app.shared.vector_store import ChromaVectorStore
 
 
 class InferenceService:
-    def __init__(self, repository: AnalysisRunRepository) -> None:
-        self.repository = repository
+    def __init__(self, vector_store: ChromaVectorStore) -> None:
+        self.vector_store = vector_store
 
     @staticmethod
     def analyze(request: CompareRequest) -> CompareResponse:
@@ -37,8 +35,5 @@ class InferenceService:
             ],
         )
 
-    async def compare(self, request: CompareRequest, session: AsyncSession) -> CompareResponse:
-        response = self.analyze(request)
-        await self.repository.save(session, response)
-        await session.commit()
-        return response
+    def compare(self, request: CompareRequest) -> CompareResponse:
+        return self.analyze(request)

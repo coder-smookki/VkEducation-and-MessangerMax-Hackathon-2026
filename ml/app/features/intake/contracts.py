@@ -126,19 +126,7 @@ class ConfirmedCaseContext(DraftReference):
 
 class SimilarCasesRequest(Contract):
     query: ConfirmedCaseContext
-    candidates: list[ConfirmedCaseContext] = Field(max_length=20)
-
-    @model_validator(mode="after")
-    def bounded_scope(self):
-        ids = [candidate.caseId for candidate in self.candidates]
-        if self.query.caseId in ids or len(set(ids)) != len(ids):
-            raise ValueError("Duplicate or self candidate")
-        if any(candidate.houseId != self.query.houseId for candidate in self.candidates):
-            raise ValueError("Candidates must belong to the same authorized house")
-        all_item_ids = [item.itemId for case in [self.query, *self.candidates] for item in case.items]
-        if len(set(all_item_ids)) != len(all_item_ids):
-            raise ValueError("An item cannot belong to two cases")
-        return self
+    limit: int = Field(default=5, strict=True, ge=1, le=20)
 
 
 class SimilarityRelation(StrEnum):
@@ -180,7 +168,7 @@ class SimilarCasesResponse(DraftReference):
     mode: Mode
     status: AnalysisStatus
     reason: Reason
-    scope: Literal["PROVIDED_CANDIDATES"]
+    scope: Literal["CHROMA"]
     results: list[SimilarCaseResult] = Field(max_length=20)
 
     @model_validator(mode="after")

@@ -58,7 +58,7 @@ class IntakeContractTest {
         } finally { server.stop(0); }
     }
 
-    @Test void unavailableServicePreservesManualDraftAndEveryCandidate() throws Exception {
+    @Test void unavailableServiceReturnsManualSimilarityWithoutCandidates() throws Exception {
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", exchange -> { exchange.sendResponseHeaders(503, -1); exchange.close(); });
         server.start();
@@ -71,9 +71,7 @@ class IntakeContractTest {
             var request = fixture("similar-request.json", SimilarRequest.class);
             var result = client.similar(request);
             assertEquals(Mode.MANUAL, result.mode());
-            assertEquals(request.candidates().getFirst().caseId(), result.results().getFirst().caseId());
-            assertEquals(SimilarityRelation.NOT_EVALUATED, result.results().getFirst().relation());
-            assertNull(result.results().getFirst().score());
+            assertTrue(result.results().isEmpty());
             assertNotNull(IntakeValidator.validate(request, result));
         } finally { server.stop(0); }
     }
@@ -118,12 +116,8 @@ class IntakeContractTest {
         var query = request.query();
         assertThrows(IllegalArgumentException.class, () -> new ConfirmedCaseContext(query.caseId(), query.caseVersion(),
                 query.sourceRevision(), query.houseId(), "DRAFT", query.sourceText(), query.items()));
-        assertThrows(IllegalArgumentException.class, () -> new SimilarRequest(query, List.of(query)));
-        var candidate = request.candidates().getFirst();
-        var foreign = new ConfirmedCaseContext(candidate.caseId(), candidate.caseVersion(), candidate.sourceRevision(),
-                candidate.caseId(), "CONFIRMED", candidate.sourceText(), candidate.items());
-        assertThrows(IllegalArgumentException.class, () -> new SimilarRequest(query, List.of(foreign)));
-        assertThrows(IllegalArgumentException.class, () -> new SimilarRequest(query, List.of(candidate, candidate)));
+        assertThrows(IllegalArgumentException.class, () -> new SimilarRequest(query, 0));
+        assertThrows(IllegalArgumentException.class, () -> new SimilarRequest(query, 21));
         var comparison = query.comparison(java.util.UUID.randomUUID(), "Лампу заменили");
         assertEquals(query.items(), comparison.items());
         assertEquals(query.sourceRevision(), comparison.sourceRevision());
@@ -133,20 +127,9 @@ class IntakeContractTest {
         var request = fixture("similar-request.json", SimilarRequest.class);
         var response = fixture("similar-response.json", SimilarResponse.class);
         assertNotNull(IntakeValidator.validate(request, response));
-        var candidate = response.results().getFirst();
-        var zero = new SimilarCaseResult(candidate.caseId(), candidate.caseVersion(), candidate.sourceRevision(),
-                SimilarityRelation.NOT_EVALUATED, 0.0, List.of());
-        var forged = new SimilarResponse(response.caseId(), response.caseVersion(), response.sourceRevision(),
-                response.modelVersion(), response.mode(), response.status(), response.reason(), response.scope(), List.of(zero));
-        assertThrows(IllegalArgumentException.class, () -> IntakeValidator.validate(request, forged));
-        var missing = new SimilarResponse(response.caseId(), response.caseVersion(), response.sourceRevision(),
-                response.modelVersion(), response.mode(), response.status(), response.reason(), response.scope(), List.of());
-        assertThrows(IllegalArgumentException.class, () -> IntakeValidator.validate(request, missing));
-        var pair = new ItemMatch(request.query().items().getFirst().itemId(), request.query().items().getFirst().itemId());
-        var match = new SimilarCaseResult(candidate.caseId(), candidate.caseVersion(), candidate.sourceRevision(),
-                SimilarityRelation.POSSIBLE_DUPLICATE, 0.9, List.of(pair));
-        var foreign = new SimilarResponse(response.caseId(), response.caseVersion(), response.sourceRevision(), "synthetic",
-                Mode.RULES, AnalysisStatus.ANALYZED, Reason.ANALYZED, response.scope(), List.of(match));
-        assertThrows(IllegalArgumentException.class, () -> IntakeValidator.validate(request, foreign));
+        assertTrue(response.results().isEmpty());
+        var wrongScope = new SimilarResponse(response.caseId(), response.caseVersion(), response.sourceRevision(),
+                response.modelVersion(), response.mode(), response.status(), response.reason(), "PROVIDED_CANDIDATES", List.of());
+        assertThrows(IllegalArgumentException.class, () -> IntakeValidator.validate(request, wrongScope));
     }
 }
