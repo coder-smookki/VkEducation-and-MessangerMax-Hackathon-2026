@@ -1,0 +1,19 @@
+{
+  "caseId": "00000000-0000-0000-0000-000000000001",
+  "caseVersion": 3,
+  "sourceRevision": 1,
+  "items": [
+    {
+      "proposalId": 1,
+      "category": "LIGHTING",
+      "location": null,
+      "symptom": "Не горит свет"
+    },
+    {
+      "proposalId": 2,
+      "category": "ENTRANCE_DOOR",
+      "location": "Вход",
+      "symptom": "Дверь не закрывается"
+    }
+  ]
+}

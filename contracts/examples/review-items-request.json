@@ -1,0 +1,17 @@
+{
+  "expectedCaseVersion": 3,
+  "items": [
+    {
+      "itemId": "00000000-0000-0000-0000-000000000004",
+      "category": "LIGHTING",
+      "location": "Этаж 3",
+      "symptom": "Не горит свет"
+    },
+    {
+      "itemId": "00000000-0000-0000-0000-000000000005",
+      "category": "ENTRANCE_DOOR",
+      "location": "Вход",
+      "symptom": "Дверь не закрывается"
+    }
+  ]
+}

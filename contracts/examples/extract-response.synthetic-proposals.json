@@ -1,0 +1,33 @@
+{
+  "caseId": "00000000-0000-0000-0000-000000000001",
+  "caseVersion": 3,
+  "sourceRevision": 1,
+  "modelVersion": "synthetic-example-v1",
+  "mode": "RULES",
+  "status": "ANALYZED",
+  "reason": "ANALYZED",
+  "proposals": [
+    {
+      "proposalId": 1,
+      "category": "LIGHTING",
+      "location": "Этаж 3",
+      "symptom": "Не горит свет",
+      "evidence": {
+        "start": 0,
+        "end": 22,
+        "quote": "На третьем этаже темно"
+      }
+    },
+    {
+      "proposalId": 2,
+      "category": "ENTRANCE_DOOR",
+      "location": "Вход",
+      "symptom": "Дверь не закрывается",
+      "evidence": {
+        "start": 26,
+        "end": 54,
+        "quote": "входная дверь не закрывается"
+      }
+    }
+  ]
+}

@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "Category": {
+      "enum": [
+        "LIGHTING",
+        "ENTRANCE_DOOR",
+        "CLEANING",
+        "OTHER"
+      ],
+      "title": "Category",
+      "type": "string"
+    },
+    "Item": {
+      "additionalProperties": false,
+      "properties": {
+        "itemId": {
+          "format": "uuid",
+          "title": "Itemid",
+          "type": "string"
+        },
+        "contentVersion": {
+          "minimum": 1,
+          "title": "Contentversion",
+          "type": "integer"
+        },
+        "workRound": {
+          "minimum": 0,
+          "title": "Workround",
+          "type": "integer"
+        },
+        "category": {
+          "$ref": "#/$defs/Category"
+        },
+        "location": {
+          "maxLength": 300,
+          "minLength": 1,
+          "pattern": "\\S",
+          "title": "Location",
+          "type": "string"
+        },
+        "symptom": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "pattern": "\\S",
+          "title": "Symptom",
+          "type": "string"
+        }
+      },
+      "required": [
+        "itemId",
+        "contentVersion",
+        "workRound",
+        "category",
+        "location",
+        "symptom"
+      ],
+      "title": "Item",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "caseId": {
+      "format": "uuid",
+      "title": "Caseid",
+      "type": "string"
+    },
+    "caseVersion": {
+      "minimum": 1,
+      "title": "Caseversion",
+      "type": "integer"
+    },
+    "sourceRevision": {
+      "minimum": 1,
+      "title": "Sourcerevision",
+      "type": "integer"
+    },
+    "houseId": {
+      "format": "uuid",
+      "title": "Houseid",
+      "type": "string"
+    },
+    "submissionStatus": {
+      "const": "CONFIRMED",
+      "title": "Submissionstatus",
+      "type": "string"
+    },
+    "sourceText": {
+      "maxLength": 5000,
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "Sourcetext",
+      "type": "string"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/Item"
+      },
+      "maxItems": 20,
+      "minItems": 1,
+      "title": "Items",
+      "type": "array"
+    }
+  },
+  "required": [
+    "caseId",
+    "caseVersion",
+    "sourceRevision",
+    "houseId",
+    "submissionStatus",
+    "sourceText",
+    "items"
+  ],
+  "title": "ConfirmedCaseContext",
+  "type": "object"
+}
