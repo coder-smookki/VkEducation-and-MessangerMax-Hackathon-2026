@@ -115,7 +115,7 @@ Java-валидация должна считать code points, UI - Array.from
 
 ## Java → Python: существующий контракт
 
-Истина схемы - `ml/app/contracts.py`; OpenAPI генерируется из `ml/` командой `uv run python -m scripts.export_openapi`. Менять вместе Python, Java `InferenceContract`, общий JSON и потребителей. Сохранённый OpenAPI проверяется тестом против `app.openapi()`.
+Истина схемы - `ml/app/features/inference/schemas/`; OpenAPI генерируется из `ml/` командой `uv run python -m scripts.export_openapi`. Менять вместе Python, Java `InferenceContract`, общий JSON и потребителей. Сохранённый OpenAPI проверяется тестом против `app.openapi()`.
 
 Примеры: [запрос](../contracts/examples/compare-request.json), [STUB-ответ](../contracts/examples/compare-response.json). В запросе caseId/sourceRevision/reportId/reportText/items; item содержит itemId/contentVersion/workRound/category/location/symptom. Лишние поля, bool вместо версии, неверная длина и повтор itemId отклоняются с 422 без отражения текста.
 

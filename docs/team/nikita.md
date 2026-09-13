@@ -4,9 +4,9 @@
 
 ## Зона ответственности
 
-`ml/app/analyzer.py`, `ml/app/contracts.py`, `ml/app/main.py`, `ml/scripts/evaluate.py`, `ml/data/`, `ml/tests/`, `ml/pyproject.toml`, `ml/uv.lock` и экспорт `contracts/inference.openapi.json`. Java records/общие примеры меняются с Семёном, подписи UI - с Кириллом.
+`ml/app/features/inference/`, `ml/app/main.py`, `ml/scripts/evaluate.py`, `ml/data/`, `ml/tests/`, `ml/pyproject.toml`, `ml/uv.lock` и экспорт `contracts/inference.openapi.json`. Java records/общие примеры меняются с Семёном, подписи UI - с Кириллом.
 
-Python не имеет БД и не выполняет команды. Выход модели - интерпретация текста, а не подтверждение ремонта. Базовый путь обходится без генеративного LLM, fine-tuning, RAG и внешнего закрытого датасета.
+Python не меняет продуктовую БД и не выполняет команды. Техническая ML-БД/векторное хранилище могут хранить аудит и embeddings, но не состояние обращения. Выход модели - интерпретация текста, а не подтверждение ремонта. Базовый путь обходится без генеративного LLM, fine-tuning, RAG и внешнего закрытого датасета.
 
 ## Первый запуск
 

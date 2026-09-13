@@ -1,11 +1,31 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app.analyzer import compare
-from app.contracts import CompareRequest, CompareResponse
+from app.core.config import get_settings
+from app.di import create_container, setup_container
+from app.features.inference.api import router as inference_router
+from app.shared.database import Database
+from app.shared.migrations import upgrade_database
 
-app = FastAPI(title="KOREN inference", version="0.1.0")
+container = create_container()
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    await upgrade_database(settings.database_url)
+    database = await container.get(Database)
+    yield
+    await database.dispose()
+    await container.close()
+
+
+settings = get_settings()
+app = FastAPI(title=settings.app_name, version=settings.app_version, lifespan=lifespan)
+setup_container(app, container)
+app.include_router(inference_router)
 
 
 @app.exception_handler(RequestValidationError)
@@ -16,9 +36,4 @@ async def invalid_request(_request: Request, _exception: RequestValidationError)
 
 @app.get("/healthz")
 def health() -> dict[str, str]:
-    return {"status": "ok", "mode": "STUB"}
-
-
-@app.post("/internal/v1/compare", response_model=CompareResponse)
-def compare_report(request: CompareRequest) -> CompareResponse:
-    return compare(request)
+    return {"status": "ok", "mode": "STUB", "database": "configured", "vectorStore": "chroma"}

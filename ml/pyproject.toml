@@ -4,13 +4,20 @@ version = "0.1.0"
 description = "Advisory text comparison service for KOREN"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+  "alembic==1.17.2",
+  "aiosqlite==0.22.1",
+  "asyncpg==0.31.0",
+  "chromadb==1.5.9",
+  "dishka==1.10.1",
   "fastapi==0.141.1",
   "pydantic==2.13.5",
+  "pydantic-settings==2.15.0",
+  "sqlalchemy==2.0.52",
   "uvicorn==0.52.4",
 ]
 
 [dependency-groups]
-dev = ["httpx==0.28.1", "pytest==9.1.1", "ruff==0.16.7"]
+dev = ["httpx==0.28.1", "pylint==3.3.8", "pytest==9.1.1", "ruff==0.16.7"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
@@ -19,3 +26,19 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 110
 target-version = "py312"
+
+[tool.pylint.main]
+py-version = "3.12"
+ignore-paths = [".venv/", "__pycache__/"]
+
+[tool.pylint.messages_control]
+disable = [
+  "invalid-name",
+  "missing-class-docstring",
+  "missing-function-docstring",
+  "missing-module-docstring",
+  "too-few-public-methods",
+]
+
+[tool.pylint.format]
+max-line-length = 110

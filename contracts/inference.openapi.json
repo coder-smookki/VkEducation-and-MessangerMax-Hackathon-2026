@@ -2,33 +2,14 @@
   "openapi": "3.1.0",
   "info": {
     "title": "KOREN inference",
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "paths": {
-    "/healthz": {
-      "get": {
-        "summary": "Health",
-        "operationId": "health_healthz_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "type": "object",
-                  "title": "Response Health Healthz Get"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/internal/v1/compare": {
       "post": {
+        "tags": [
+          "inference"
+        ],
         "summary": "Compare Report",
         "operationId": "compare_report_internal_v1_compare_post",
         "requestBody": {
@@ -58,6 +39,28 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/healthz": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_healthz_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Health Healthz Get"
                 }
               }
             }

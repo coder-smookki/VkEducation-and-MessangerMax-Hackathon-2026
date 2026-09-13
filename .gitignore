@@ -17,5 +17,7 @@ tmp/
 .tools/
 .artifacts/
 ml/models/
+ml/data/*.sqlite3
+ml/data/chroma/
 ml/data/private/
 !ml/data/private/.gitkeep
