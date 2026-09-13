@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "KOREN inference",
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "paths": {
     "/healthz": {
@@ -53,11 +53,165 @@
             }
           },
           "422": {
-            "description": "Validation Error",
+            "description": "Unprocessable Entity",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/CompareInputError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request Entity Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BodySizeError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/v1/extract-items": {
+      "post": {
+        "summary": "Extract",
+        "operationId": "extract_internal_v1_extract_items_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtractItemsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtractItemsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeInputError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request Entity Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BodySizeError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/v1/clarify-items": {
+      "post": {
+        "summary": "Clarify",
+        "operationId": "clarify_internal_v1_clarify_items_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClarifyItemsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarifyItemsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeInputError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request Entity Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BodySizeError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/v1/similar-cases": {
+      "post": {
+        "summary": "Similar",
+        "operationId": "similar_internal_v1_similar_cases_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimilarCasesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimilarCasesResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeInputError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request Entity Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BodySizeError"
                 }
               }
             }
@@ -68,6 +222,50 @@
   },
   "components": {
     "schemas": {
+      "AnalysisStatus": {
+        "type": "string",
+        "enum": [
+          "NOT_ANALYZED",
+          "ANALYZED"
+        ],
+        "title": "AnalysisStatus"
+      },
+      "AuthorQuestion": {
+        "properties": {
+          "field": {
+            "$ref": "#/components/schemas/MissingField"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Text"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "field",
+          "text"
+        ],
+        "title": "AuthorQuestion"
+      },
+      "BodySizeError": {
+        "properties": {
+          "detail": {
+            "type": "string",
+            "const": "REQUEST_TOO_LARGE",
+            "title": "Detail"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "BodySizeError"
+      },
       "Category": {
         "type": "string",
         "enum": [
@@ -77,6 +275,113 @@
           "OTHER"
         ],
         "title": "Category"
+      },
+      "ClarifyItemsRequest": {
+        "properties": {
+          "caseId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Caseid"
+          },
+          "caseVersion": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Caseversion"
+          },
+          "sourceRevision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sourcerevision"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DraftItem"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "caseId",
+          "caseVersion",
+          "sourceRevision",
+          "items"
+        ],
+        "title": "ClarifyItemsRequest"
+      },
+      "ClarifyItemsResponse": {
+        "properties": {
+          "caseId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Caseid"
+          },
+          "caseVersion": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Caseversion"
+          },
+          "sourceRevision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sourcerevision"
+          },
+          "modelVersion": {
+            "type": "string",
+            "const": "required-fields-v1",
+            "title": "Modelversion"
+          },
+          "mode": {
+            "type": "string",
+            "const": "RULES",
+            "title": "Mode"
+          },
+          "recipient": {
+            "type": "string",
+            "const": "AUTHOR",
+            "title": "Recipient"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ItemClarification"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "caseId",
+          "caseVersion",
+          "sourceRevision",
+          "modelVersion",
+          "mode",
+          "recipient",
+          "items"
+        ],
+        "title": "ClarifyItemsResponse"
+      },
+      "CompareInputError": {
+        "properties": {
+          "detail": {
+            "type": "string",
+            "const": "INVALID_COMPARE_REQUEST",
+            "title": "Detail"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "CompareInputError"
       },
       "CompareRequest": {
         "properties": {
@@ -171,6 +476,120 @@
         ],
         "title": "CompareResponse"
       },
+      "ConfirmedCaseContext": {
+        "properties": {
+          "caseId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Caseid"
+          },
+          "caseVersion": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Caseversion"
+          },
+          "sourceRevision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sourcerevision"
+          },
+          "houseId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Houseid"
+          },
+          "submissionStatus": {
+            "type": "string",
+            "const": "CONFIRMED",
+            "title": "Submissionstatus"
+          },
+          "sourceText": {
+            "type": "string",
+            "maxLength": 5000,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Sourcetext"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Item"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "caseId",
+          "caseVersion",
+          "sourceRevision",
+          "houseId",
+          "submissionStatus",
+          "sourceText",
+          "items"
+        ],
+        "title": "ConfirmedCaseContext"
+      },
+      "DraftItem": {
+        "properties": {
+          "proposalId": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Proposalid"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Category"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300,
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "symptom": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000,
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symptom"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "proposalId",
+          "category",
+          "location",
+          "symptom"
+        ],
+        "title": "DraftItem"
+      },
       "Evidence": {
         "properties": {
           "start": {
@@ -199,18 +618,111 @@
         ],
         "title": "Evidence"
       },
-      "HTTPValidationError": {
+      "ExtractItemsRequest": {
         "properties": {
-          "detail": {
+          "caseId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Caseid"
+          },
+          "caseVersion": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Caseversion"
+          },
+          "sourceRevision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sourcerevision"
+          },
+          "sourceText": {
+            "type": "string",
+            "maxLength": 5000,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Sourcetext"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "caseId",
+          "caseVersion",
+          "sourceRevision",
+          "sourceText"
+        ],
+        "title": "ExtractItemsRequest"
+      },
+      "ExtractItemsResponse": {
+        "properties": {
+          "caseId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Caseid"
+          },
+          "caseVersion": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Caseversion"
+          },
+          "sourceRevision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sourcerevision"
+          },
+          "modelVersion": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Modelversion"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/Mode"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AnalysisStatus"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/Reason"
+          },
+          "proposals": {
             "items": {
-              "$ref": "#/components/schemas/ValidationError"
+              "$ref": "#/components/schemas/ProposedItem"
             },
             "type": "array",
+            "maxItems": 20,
+            "title": "Proposals"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "caseId",
+          "caseVersion",
+          "sourceRevision",
+          "modelVersion",
+          "mode",
+          "status",
+          "reason",
+          "proposals"
+        ],
+        "title": "ExtractItemsResponse"
+      },
+      "IntakeInputError": {
+        "properties": {
+          "detail": {
+            "type": "string",
+            "const": "INVALID_INTAKE_REQUEST",
             "title": "Detail"
           }
         },
+        "additionalProperties": false,
         "type": "object",
-        "title": "HTTPValidationError"
+        "required": [
+          "detail"
+        ],
+        "title": "IntakeInputError"
       },
       "Item": {
         "properties": {
@@ -259,6 +771,65 @@
         ],
         "title": "Item"
       },
+      "ItemClarification": {
+        "properties": {
+          "proposalId": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Proposalid"
+          },
+          "readiness": {
+            "$ref": "#/components/schemas/Readiness"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/AuthorQuestion"
+            },
+            "type": "array",
+            "maxItems": 3,
+            "title": "Questions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "proposalId",
+          "readiness",
+          "questions"
+        ],
+        "title": "ItemClarification"
+      },
+      "ItemMatch": {
+        "properties": {
+          "queryItemId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Queryitemid"
+          },
+          "candidateItemId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Candidateitemid"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "queryItemId",
+          "candidateItemId"
+        ],
+        "title": "ItemMatch"
+      },
+      "MissingField": {
+        "type": "string",
+        "enum": [
+          "category",
+          "location",
+          "symptom"
+        ],
+        "title": "MissingField"
+      },
       "Mode": {
         "type": "string",
         "enum": [
@@ -268,6 +839,75 @@
           "MANUAL"
         ],
         "title": "Mode"
+      },
+      "ProposedItem": {
+        "properties": {
+          "proposalId": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Proposalid"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Category"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300,
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "symptom": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000,
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symptom"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/Evidence"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "proposalId",
+          "category",
+          "location",
+          "symptom",
+          "evidence"
+        ],
+        "title": "ProposedItem"
+      },
+      "Readiness": {
+        "type": "string",
+        "enum": [
+          "NEEDS_DETAILS",
+          "READY_FOR_REVIEW"
+        ],
+        "title": "Readiness"
       },
       "Reason": {
         "type": "string",
@@ -289,6 +929,154 @@
           "CONFLICT"
         ],
         "title": "Relation"
+      },
+      "SimilarCaseResult": {
+        "properties": {
+          "caseId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Caseid"
+          },
+          "caseVersion": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Caseversion"
+          },
+          "sourceRevision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sourcerevision"
+          },
+          "relation": {
+            "$ref": "#/components/schemas/SimilarityRelation"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "matchedItems": {
+            "items": {
+              "$ref": "#/components/schemas/ItemMatch"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Matcheditems"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "caseId",
+          "caseVersion",
+          "sourceRevision",
+          "relation",
+          "score",
+          "matchedItems"
+        ],
+        "title": "SimilarCaseResult"
+      },
+      "SimilarCasesRequest": {
+        "properties": {
+          "query": {
+            "$ref": "#/components/schemas/ConfirmedCaseContext"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/ConfirmedCaseContext"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Candidates"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "query",
+          "candidates"
+        ],
+        "title": "SimilarCasesRequest"
+      },
+      "SimilarCasesResponse": {
+        "properties": {
+          "caseId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Caseid"
+          },
+          "caseVersion": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Caseversion"
+          },
+          "sourceRevision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sourcerevision"
+          },
+          "modelVersion": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Modelversion"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/Mode"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AnalysisStatus"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/Reason"
+          },
+          "scope": {
+            "type": "string",
+            "const": "PROVIDED_CANDIDATES",
+            "title": "Scope"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/SimilarCaseResult"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Results"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "caseId",
+          "caseVersion",
+          "sourceRevision",
+          "modelVersion",
+          "mode",
+          "status",
+          "reason",
+          "scope",
+          "results"
+        ],
+        "title": "SimilarCasesResponse"
+      },
+      "SimilarityRelation": {
+        "type": "string",
+        "enum": [
+          "POSSIBLE_DUPLICATE",
+          "RELATED",
+          "DIFFERENT",
+          "NOT_EVALUATED"
+        ],
+        "title": "SimilarityRelation"
       },
       "Suggestion": {
         "properties": {
@@ -335,46 +1123,6 @@
           "reason"
         ],
         "title": "Suggestion"
-      },
-      "ValidationError": {
-        "properties": {
-          "loc": {
-            "items": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "integer"
-                }
-              ]
-            },
-            "type": "array",
-            "title": "Location"
-          },
-          "msg": {
-            "type": "string",
-            "title": "Message"
-          },
-          "type": {
-            "type": "string",
-            "title": "Error Type"
-          },
-          "input": {
-            "title": "Input"
-          },
-          "ctx": {
-            "type": "object",
-            "title": "Context"
-          }
-        },
-        "type": "object",
-        "required": [
-          "loc",
-          "msg",
-          "type"
-        ],
-        "title": "ValidationError"
       }
     }
   }

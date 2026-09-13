@@ -1,0 +1,25 @@
+{
+  "caseId": "00000000-0000-0000-0000-000000000001",
+  "caseVersion": 3,
+  "sourceRevision": 1,
+  "modelVersion": "required-fields-v1",
+  "mode": "RULES",
+  "recipient": "AUTHOR",
+  "items": [
+    {
+      "proposalId": 1,
+      "readiness": "NEEDS_DETAILS",
+      "questions": [
+        {
+          "field": "location",
+          "text": "Где находится проблема? Уточните подъезд, этаж или вход."
+        }
+      ]
+    },
+    {
+      "proposalId": 2,
+      "readiness": "READY_FOR_REVIEW",
+      "questions": []
+    }
+  ]
+}

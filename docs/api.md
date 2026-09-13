@@ -1,6 +1,6 @@
 # Контракты и статус API
 
-Обновлено: 12.09.2026. Раздел «Сейчас» описывает код; остальные разделы - **согласуемый контракт будущего MVP** для параллельной реализации. Новые рабочие endpoints ещё закрыты. Примеры не являются результатами HTTP-вызовов.
+Обновлено: 13.09.2026. Раздел «Сейчас» и внутренний inference API описывают код; рабочий Java REST - **согласуемый контракт будущего MVP** для параллельной реализации. Новые рабочие endpoints ещё закрыты. REST-примеры Java не являются результатами HTTP-вызовов. Подробности: [пять контрактов](../contracts/README.md).
 
 ## Сейчас
 
@@ -11,6 +11,9 @@
 | GET | Java `/api/v1/demo/compare` | Только demo/local | Реальный вызов Python, STUB либо MANUAL |
 | GET | Python `/healthz` | Внутренняя сеть | Процесс и mode=STUB |
 | POST | Python `/internal/v1/compare` | Внутренняя сеть | Строгий контракт подсказок |
+| POST | Python `/internal/v1/extract-items` | Внутренняя сеть | STUB предложения пунктов; фактическое извлечение не подключено |
+| POST | Python `/internal/v1/clarify-items` | Внутренняя сеть | RULES: недостающие поля, вопросы только автору |
+| POST | Python `/internal/v1/similar-cases` | Внутренняя сеть | STUB сравнения подтверждённых кандидатов; similarity не вычисляется |
 
 `DemoCase` и `Comparison` из `frontend/src/api/client.ts` - типы примера, не готовые DTO авторизованного приложения. Не расширять `/demo/**` рабочими командами.
 
@@ -25,6 +28,8 @@ Prefix `/api/v1`. UUID - строки, времена - UTC ISO 8601. Верси
 Все команды обращения, кроме create, принимают `expectedCaseVersion`. Прямая команда пункта также принимает `expectedItemVersion`. ContentVersion и workRound проверяются отдельно для links/observations. Термин `expectedVersion` без указания сущности в новых DTO не использовать.
 
 ## C1. Вход и черновик
+
+Правка/подтверждение списка дополнительно описаны машинно в [author-review.openapi.json](../contracts/author-review.openapi.json), статус SCHEMA_ONLY. [Контракт 03](../contracts/03-author-review.md) объясняет уровни NEEDS_DETAILS → READY_FOR_REVIEW → авторское CONFIRMED. Неполные proposals с null остаются в форме; PATCH принимает полные пункты. READY_FOR_REVIEW не означает готовые работы.
 
 | Метод и путь | Вход | Успешный результат | Владелец |
 |---|---|---|---|
@@ -114,6 +119,10 @@ Java-валидация должна считать code points, UI - Array.from
 Ошибка optional ML не превращает успешное сохранение в 503. Для cookie POST без сессии и CSRF фильтры могут отклонить CSRF раньше проверки входа; K1 фиксирует фактический приоритет и тестирует его. Для нового login клиент сначала получает `/csrf`, для текущего состояния входа использует GET `/me`.
 
 ## Java → Python: существующий контракт
+
+Общий каталог [01-05](../contracts/README.md) добавляет извлечение, уточнение у автора и сравнение похожих обращений. Типы новых операций находятся в `ml/app/intake_contracts.py` и Java `IntakeContract`, runtime - в `ml/app/intake.py` и `InferenceClient`. Контекст после подтверждения экспортируется в [confirmed-context.schema.json](../contracts/confirmed-context.schema.json). Формат `/compare` ниже сохранён.
+
+POST-тела Python ограничены 512 KiB до JSON-разбора, включая chunked. Ошибка 413 - `{detail:"REQUEST_TOO_LARGE"}`. Новые операции при неверном входе возвращают 422 `{detail:"INVALID_INTAKE_REQUEST"}`; `/compare` сохраняет `{detail:"INVALID_COMPARE_REQUEST"}`. OpenAPI описывает эти фактические ответы, тест проверяет их соответствие схеме.
 
 Истина схемы - `ml/app/contracts.py`; OpenAPI генерируется из `ml/` командой `uv run python -m scripts.export_openapi`. Менять вместе Python, Java `InferenceContract`, общий JSON и потребителей. Сохранённый OpenAPI проверяется тестом против `app.openapi()`.
 

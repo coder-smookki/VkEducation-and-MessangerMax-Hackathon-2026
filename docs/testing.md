@@ -2,6 +2,18 @@
 
 Дата локальной проверки: 12.09.2026, Europe/Moscow. Команды запуска - [development.md](development.md).
 
+## Пять контрактов - 13.09.2026
+
+`uv run pytest -q`: 35 тестов прошли, два прежних предупреждения TestClient. `uv run ruff check .` прошёл. Тесты сравнивают реальные HTTP-ответы всех четырёх Python-операций с общими JSON и OpenAPI, проверяют фактическую форму 422/413, confirmed context, AUTHOR, missing fields и NOT_EVALUATED/null. Отдельно проверяется SCHEMA_ONLY Java review API по примерам; это не проверка рабочего Java-контроллера.
+
+`INFERENCE_TEST_URL=http://127.0.0.1:18081 DB_TEST_URL=jdbc:postgresql://127.0.0.1:5432/koren ... ./mvnw -o -B verify`: 31 тест, 0 ошибок, 0 пропусков. Внешний тест использовал отдельно запущенный локальный Python из текущих исходников. Java действительно выполнила extract, clarify, similar и compare по HTTP. Остальные contract tests проверили HTTP-имитатор/503, полноту и принадлежность IDs, отказ на старых версиях/чужом доме, Unicode evidence и AUTHOR. Четыре PostgreSQL-теста прошли; V1/V2 не изменены.
+
+`docker compose --env-file .env.example up -d --build backend ml` прошёл; `python3 scripts/smoke.py` прошёл на пересобранном стеке через Java и frontend proxy. Проверены ссылки в документации, JSON-примеры и `git diff --check`. Данные БД сохранены, миграций нет. Это локальные результаты; удалённый CI конкретного commit проверяется отдельно после push.
+
+Без INFERENCE_TEST_URL настоящий Python-тест явно пропускается; без DB_TEST_URL пропускаются PostgreSQL-тесты. Контрактные проверки на фикстурах выполняются независимо. Реальные модели, embeddings, полный поиск по БД, UI подтверждения, выдача ролей и отправка MAX этой проверкой не подтверждены.
+
+Основания для реализации проверены по первичным источникам: [FastAPI additional responses](https://fastapi.tiangolo.com/advanced/additional-responses/), [Pydantic strict mode](https://docs.pydantic.dev/latest/concepts/strict_mode/), [jsonschema validation](https://python-jsonschema.readthedocs.io/en/stable/validate/). Добавлена только dev-зависимость jsonschema; runtime моделей не устанавливался.
+
 ## Подтверждённый результат каркаса
 
 | Проверка | Результат | Что она доказывает |

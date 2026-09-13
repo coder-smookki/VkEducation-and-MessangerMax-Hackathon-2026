@@ -1,0 +1,48 @@
+{
+  "caseId": "00000000-0000-0000-0000-000000000001",
+  "houseId": "00000000-0000-0000-0000-000000000010",
+  "authorId": "00000000-0000-0000-0000-000000000002",
+  "submissionStatus": "DRAFT",
+  "caseVersion": 4,
+  "sourceRevision": 1,
+  "sourceText": "На третьем этаже темно, и входная дверь не закрывается.",
+  "visibility": "FULL",
+  "items": [
+    {
+      "itemId": "00000000-0000-0000-0000-000000000004",
+      "contentVersion": 1,
+      "workRound": 0,
+      "category": "LIGHTING",
+      "location": "Этаж 3",
+      "symptom": "Не горит свет",
+      "itemVersion": 1,
+      "workStatus": "NOT_ASSIGNED",
+      "observation": "NOT_RECEIVED",
+      "administrativeStatus": "ACTIVE",
+      "administrativeReason": null,
+      "assignedExecutorId": null
+    },
+    {
+      "itemId": "00000000-0000-0000-0000-000000000005",
+      "contentVersion": 1,
+      "workRound": 0,
+      "category": "ENTRANCE_DOOR",
+      "location": "Вход",
+      "symptom": "Дверь не закрывается",
+      "itemVersion": 1,
+      "workStatus": "NOT_ASSIGNED",
+      "observation": "NOT_RECEIVED",
+      "administrativeStatus": "ACTIVE",
+      "administrativeReason": null,
+      "assignedExecutorId": null
+    }
+  ],
+  "progress": {
+    "total": 2,
+    "confirmed": 0,
+    "withdrawn": 0,
+    "remaining": 2,
+    "allConfirmed": false
+  },
+  "createdAt": "2026-09-13T09:00:00Z"
+}

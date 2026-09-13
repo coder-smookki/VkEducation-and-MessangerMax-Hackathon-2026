@@ -85,10 +85,20 @@ npm run build
 
 ## Обновление контракта
 
-1. Изменить `ml/app/contracts.py` и Java `InferenceContract` совместно с владельцами.
+1. Изменить `ml/app/contracts.py`/`intake_contracts.py` и Java `InferenceContract`/`IntakeContract` совместно с владельцами. Каталог - [пять контрактов](../contracts/README.md).
 2. Выполнить `uv run --directory ml python -m scripts.export_openapi`.
 3. Обновить `contracts/examples`, документацию и тесты несовместимых случаев.
 4. Запустить Python, Java и smoke; изменение не завершено, пока один потребитель понимает старую схему.
+
+Экспорт обновляет inference OpenAPI и confirmed-context JSON Schema. `author-review.openapi.json` поддерживается отдельно с Java REST-спецификацией, потому что Python не реализует команды автора. Python dev-зависимость jsonschema проверяет общие примеры и фактические HTTP-ответы, включая ошибки 422/413.
+
+Для проверки новых Java → Python вызовов на настоящем локальном сервисе запустить Python как выше и из `backend/` выполнить:
+
+```sh
+INFERENCE_TEST_URL=http://127.0.0.1:8000 ./mvnw -B -Dtest=IntakeContractTest test
+```
+
+Без INFERENCE_TEST_URL этот внешний тест явно пропускается; остальные проверки используют локальный HTTP-имитатор и общие JSON. Запуск с сервисом подтверждает передачу контрактов и RULES/STUB, а не качество ML. Python не публикуется наружу ради проверки.
 
 ## Работа с БД и выпуск
 

@@ -1,0 +1,7 @@
+{
+  "type": "about:blank",
+  "title": "Обращение уже изменилось",
+  "status": 409,
+  "code": "CASE_VERSION_CONFLICT",
+  "requestId": "00000000-0000-0000-0000-000000000200"
+}

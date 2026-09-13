@@ -1,0 +1,634 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "KOREN author review - planned Java API",
+    "version": "0.1.0",
+    "description": "Contract 03. Specification and synthetic fixtures only; these Java routes are not implemented or opened."
+  },
+  "paths": {
+    "/api/v1/cases/{caseId}/items": {
+      "patch": {
+        "operationId": "updateDraftItems",
+        "summary": "Автор исправляет весь список пунктов черновика",
+        "x-implementation-status": "SCHEMA_ONLY",
+        "x-csrf": "Use the headerName/token returned by GET /api/v1/csrf. Required for session commands.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "pattern": "^[\\x21-\\x7E]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDraftItems"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Current full case view, visible only to its author for these operations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorCaseView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or idempotency key",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Author action forbidden or CSRF invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Case not found or inaccessible",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale version, reused key or case already confirmed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body too large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid fields or transition",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Saving was not confirmed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cases/{caseId}/confirm": {
+      "post": {
+        "operationId": "confirmItems",
+        "summary": "Автор подтверждает текущую версию содержания",
+        "x-implementation-status": "SCHEMA_ONLY",
+        "x-csrf": "Use the headerName/token returned by GET /api/v1/csrf. Required for session commands.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "pattern": "^[\\x21-\\x7E]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmItems"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Current full case view, visible only to its author for these operations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorCaseView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or idempotency key",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Author action forbidden or CSRF invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Case not found or inaccessible",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale version, reused key or case already confirmed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body too large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid fields or transition",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Saving was not confirmed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "JSESSIONID"
+      }
+    },
+    "schemas": {
+      "DraftItemInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "LIGHTING",
+              "ENTRANCE_DOOR",
+              "CLEANING",
+              "OTHER"
+            ]
+          },
+          "location": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "pattern": "\\S"
+          },
+          "symptom": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000,
+            "pattern": "\\S"
+          }
+        },
+        "required": [
+          "category",
+          "location",
+          "symptom"
+        ]
+      },
+      "UpdateDraftItems": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "expectedCaseVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "items": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "$ref": "#/components/schemas/DraftItemInput"
+            }
+          }
+        },
+        "required": [
+          "expectedCaseVersion",
+          "items"
+        ]
+      },
+      "ConfirmItems": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "expectedCaseVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "sourceRevision": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "expectedCaseVersion",
+          "sourceRevision"
+        ]
+      },
+      "CaseProgress": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "confirmed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "withdrawn": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "remaining": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "allConfirmed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "total",
+          "confirmed",
+          "withdrawn",
+          "remaining",
+          "allConfirmed"
+        ]
+      },
+      "CaseItemView": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "itemVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "contentVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "LIGHTING",
+              "ENTRANCE_DOOR",
+              "CLEANING",
+              "OTHER"
+            ]
+          },
+          "location": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "pattern": "\\S"
+          },
+          "symptom": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000,
+            "pattern": "\\S"
+          },
+          "workRound": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "workStatus": {
+            "type": "string",
+            "enum": [
+              "NOT_ASSIGNED",
+              "PLANNED",
+              "REPORTED_DONE"
+            ]
+          },
+          "observation": {
+            "type": "string",
+            "enum": [
+              "NOT_RECEIVED",
+              "RESTORED",
+              "PERSISTS",
+              "CANNOT_CHECK"
+            ]
+          },
+          "administrativeStatus": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "ARCHIVED",
+              "WITHDRAWN"
+            ]
+          },
+          "administrativeReason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000,
+                "pattern": "\\S"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "assignedExecutorId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "itemId",
+          "itemVersion",
+          "contentVersion",
+          "category",
+          "location",
+          "symptom",
+          "workRound",
+          "workStatus",
+          "observation",
+          "administrativeStatus",
+          "administrativeReason",
+          "assignedExecutorId"
+        ]
+      },
+      "AuthorCaseView": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "caseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "houseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "authorId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "submissionStatus": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "CONFIRMED"
+            ]
+          },
+          "caseVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "sourceRevision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "sourceText": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 5000,
+            "pattern": "\\S"
+          },
+          "visibility": {
+            "const": "FULL",
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "$ref": "#/components/schemas/CaseItemView"
+            }
+          },
+          "progress": {
+            "$ref": "#/components/schemas/CaseProgress"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "caseId",
+          "houseId",
+          "authorId",
+          "submissionStatus",
+          "caseVersion",
+          "sourceRevision",
+          "sourceText",
+          "visibility",
+          "items",
+          "progress",
+          "createdAt"
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "submissionStatus": {
+                  "const": "CONFIRMED"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "items": {
+                  "minItems": 1
+                }
+              }
+            }
+          }
+        ]
+      },
+      "Problem": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer",
+            "minimum": 400,
+            "maximum": 599
+          },
+          "code": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "currentCaseVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "currentItemVersion": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "code",
+          "requestId"
+        ]
+      }
+    }
+  }
+}
