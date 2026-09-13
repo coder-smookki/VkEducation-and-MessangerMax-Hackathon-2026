@@ -70,9 +70,20 @@ public final class IntakeContract {
         }
     }
 
-    public record SimilarRequest(ConfirmedCaseContext query, int limit) {
+    public record SimilarRequest(ConfirmedCaseContext query, List<ConfirmedCaseContext> candidates, int limit) {
         public SimilarRequest {
             Objects.requireNonNull(query);
+            candidates = List.copyOf(candidates);
+            require(candidates.size() <= 20, "Too many candidates");
+            var cases = new HashSet<UUID>();
+            cases.add(query.caseId());
+            var items = new HashSet<UUID>();
+            query.items().forEach(item -> items.add(item.itemId()));
+            for (var candidate : candidates) {
+                require(cases.add(candidate.caseId()), "Duplicate or self candidate");
+                require(query.houseId().equals(candidate.houseId()), "Foreign house candidate");
+                candidate.items().forEach(item -> require(items.add(item.itemId()), "Item shared by two cases"));
+            }
             require(limit >= 1 && limit <= 20, "Invalid similarity limit");
         }
     }

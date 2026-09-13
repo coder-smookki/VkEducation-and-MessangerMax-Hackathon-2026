@@ -22,7 +22,7 @@
 | C3: inference | Никита / Семён; Кирилл для UI | Полнота IDs, mode/relation/reason, evidence, актуальность | `ml/app/contracts.py`, `contracts/inference.openapi.json`, `contracts/examples/` |
 | C4: MAX и доставка | Кирилл / Семён | Поддержанные Update, dedup, sender, durable ACK, результат отправки | [implementation.md](implementation.md), уточнение в K5a |
 
-Для правки/подтверждения списка уже есть `contracts/author-review.openapi.json` и JSON-примеры в `contracts/examples/`, подробнее [пять контрактов](../contracts/README.md). Это SCHEMA_ONLY и не работающий mock server. В S0/S1 использовать эти файлы для UI/HTTP-тестов, а остальные REST-примеры добавить вместе с потребителем без дублирования существующих. C3 теперь включает extract/clarify/similar/compare; новые Java-вызовы и Python endpoints работают на STUB/RULES.
+Для правки/подтверждения списка уже есть `contracts/author-review.openapi.json` и JSON-примеры в `contracts/examples/`, подробнее [пять контрактов](../contracts/README.md). Это SCHEMA_ONLY и не работающий mock server. В S0/S1 использовать эти файлы для UI/HTTP-тестов, а остальные REST-примеры добавить вместе с потребителем без дублирования существующих. C3 включает extract/clarify/similar/compare. В dev similarity использует Kafka/Chroma только на разрешённой Java выборке; clarify работает на RULES, extract/compare остаются STUB. Контракт 04 и его оба потребителя изменяются вместе.
 
 ## Независимая работа
 

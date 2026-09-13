@@ -13,7 +13,7 @@
 | POST | Python `/internal/v1/compare` | Внутренняя сеть | Строгий контракт подсказок |
 | POST | Python `/internal/v1/extract-items` | Внутренняя сеть | STUB предложения пунктов; фактическое извлечение не подключено |
 | POST | Python `/internal/v1/clarify-items` | Внутренняя сеть | RULES: недостающие поля, вопросы только автору |
-| POST | Python `/internal/v1/similar-cases` | Внутренняя сеть | Chroma-поиск кандидатов по подтверждённому query; кандидаты не передаются Java |
+| POST | Python `/internal/v1/similar-cases` | Внутренняя сеть | Сходство отдельных пунктов: query/candidates/limit из проверенной Java-выборки |
 
 `DemoCase` и `Comparison` из `frontend/src/api/client.ts` - типы примера, не готовые DTO авторизованного приложения. Не расширять `/demo/**` рабочими командами.
 

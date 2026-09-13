@@ -79,23 +79,33 @@ def test_clarification_is_only_for_author_and_does_not_confirm_content():
     assert client.post("/internal/v1/clarify-items", json=payload).status_code == 422
 
 
-@pytest.mark.parametrize("change", ["draft", "missing_item", "bool_limit"])
+@pytest.mark.parametrize(
+    "change", ["draft", "missing_item", "bool_limit", "self", "foreign_house", "shared_item", "duplicate"]
+)
 def test_similarity_rejects_unsafe_or_incomplete_context(change):
     payload = fixture("similar-request.json")
     if change == "draft":
         payload["query"]["submissionStatus"] = "DRAFT"
     elif change == "missing_item":
         payload["query"]["items"] = []
+    elif change == "self":
+        payload["candidates"] = [payload["query"]]
+    elif change == "foreign_house":
+        payload["candidates"][0]["houseId"] = "00000000-0000-0000-0000-000000000099"
+    elif change == "shared_item":
+        payload["candidates"][0]["items"][0]["itemId"] = payload["query"]["items"][0]["itemId"]
+    elif change == "duplicate":
+        payload["candidates"].append(payload["candidates"][0])
     else:
         payload["limit"] = True
     assert client.post("/internal/v1/similar-cases", json=payload).status_code == 422
 
 
-def test_similarity_search_uses_chroma_and_returns_analyzed_empty_result_when_unmatched():
+def test_unindexed_candidates_return_an_explicit_analysis_failure():
     payload = fixture("similar-request.json")
     result = client.post("/internal/v1/similar-cases", json=payload).json()
-    assert result["status"] == "ANALYZED"
-    assert result["reason"] == "ANALYZED"
+    assert result["status"] == "NOT_ANALYZED"
+    assert result["reason"] == "ANALYSIS_UNAVAILABLE"
     assert result["scope"] == "CHROMA"
     assert result["results"] == []
 

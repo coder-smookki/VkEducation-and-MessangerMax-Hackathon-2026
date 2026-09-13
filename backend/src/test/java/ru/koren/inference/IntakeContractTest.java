@@ -116,8 +116,14 @@ class IntakeContractTest {
         var query = request.query();
         assertThrows(IllegalArgumentException.class, () -> new ConfirmedCaseContext(query.caseId(), query.caseVersion(),
                 query.sourceRevision(), query.houseId(), "DRAFT", query.sourceText(), query.items()));
-        assertThrows(IllegalArgumentException.class, () -> new SimilarRequest(query, 0));
-        assertThrows(IllegalArgumentException.class, () -> new SimilarRequest(query, 21));
+        assertThrows(IllegalArgumentException.class, () -> new SimilarRequest(query, request.candidates(), 0));
+        assertThrows(IllegalArgumentException.class, () -> new SimilarRequest(query, request.candidates(), 21));
+        assertThrows(IllegalArgumentException.class, () -> new SimilarRequest(query, List.of(query), 5));
+        var candidate = request.candidates().getFirst();
+        assertThrows(IllegalArgumentException.class, () -> new SimilarRequest(query, List.of(candidate, candidate), 5));
+        var foreign = new ConfirmedCaseContext(candidate.caseId(), candidate.caseVersion(), candidate.sourceRevision(),
+                java.util.UUID.randomUUID(), "CONFIRMED", candidate.sourceText(), candidate.items());
+        assertThrows(IllegalArgumentException.class, () -> new SimilarRequest(query, List.of(foreign), 5));
         var comparison = query.comparison(java.util.UUID.randomUUID(), "Лампу заменили");
         assertEquals(query.items(), comparison.items());
         assertEquals(query.sourceRevision(), comparison.sourceRevision());
@@ -131,5 +137,34 @@ class IntakeContractTest {
         var wrongScope = new SimilarResponse(response.caseId(), response.caseVersion(), response.sourceRevision(),
                 response.modelVersion(), response.mode(), response.status(), response.reason(), "PROVIDED_CANDIDATES", List.of());
         assertThrows(IllegalArgumentException.class, () -> IntakeValidator.validate(request, wrongScope));
+    }
+
+    @Test void similarityRejectsMalformedUnknownStaleAndMisattributedCandidates() throws Exception {
+        var request = fixture("similar-request.json", SimilarRequest.class);
+        var candidate = request.candidates().getFirst();
+        var pair = new ItemMatch(request.query().items().get(1).itemId(), candidate.items().getFirst().itemId());
+        var good = new SimilarCaseResult(candidate.caseId(), candidate.caseVersion(), candidate.sourceRevision(),
+                SimilarityRelation.RELATED, 0.9, List.of(pair));
+        var response = new SimilarResponse(request.query().caseId(), request.query().caseVersion(), request.query().sourceRevision(),
+                "synthetic", Mode.RULES, AnalysisStatus.ANALYZED, Reason.ANALYZED, "CHROMA", List.of(good));
+        assertNotNull(IntakeValidator.validate(request, response));
+        var invalid = List.of(
+                new SimilarCaseResult(null, 0, 0, SimilarityRelation.RELATED, 0.9, List.of(pair)),
+                new SimilarCaseResult(java.util.UUID.randomUUID(), 1, 1, SimilarityRelation.RELATED, 0.9, List.of(pair)),
+                new SimilarCaseResult(candidate.caseId(), candidate.caseVersion()-1, candidate.sourceRevision(), SimilarityRelation.RELATED, 0.9, List.of(pair)),
+                new SimilarCaseResult(candidate.caseId(), candidate.caseVersion(), candidate.sourceRevision()+1, SimilarityRelation.RELATED, 0.9, List.of(pair)),
+                new SimilarCaseResult(candidate.caseId(), candidate.caseVersion(), candidate.sourceRevision(), SimilarityRelation.RELATED, 0.9, List.of(new ItemMatch(pair.queryItemId(), null))),
+                new SimilarCaseResult(candidate.caseId(), candidate.caseVersion(), candidate.sourceRevision(), SimilarityRelation.RELATED, 0.9, List.of(new ItemMatch(pair.queryItemId(), java.util.UUID.randomUUID()))),
+                new SimilarCaseResult(candidate.caseId(), candidate.caseVersion(), candidate.sourceRevision(), SimilarityRelation.RELATED, Double.NaN, List.of(pair)),
+                new SimilarCaseResult(candidate.caseId(), candidate.caseVersion(), candidate.sourceRevision(), SimilarityRelation.POSSIBLE_DUPLICATE, 1.0, List.of(pair)),
+                new SimilarCaseResult(candidate.caseId(), candidate.caseVersion(), candidate.sourceRevision(), SimilarityRelation.RELATED, 0.9,
+                        List.of(pair, new ItemMatch(request.query().items().getFirst().itemId(), pair.candidateItemId()))),
+                new SimilarCaseResult(candidate.caseId(), candidate.caseVersion(), candidate.sourceRevision(), SimilarityRelation.NOT_EVALUATED, 0.0, List.of())
+        );
+        for (var result : invalid) {
+            var forged = new SimilarResponse(response.caseId(), response.caseVersion(), response.sourceRevision(),
+                    response.modelVersion(), response.mode(), response.status(), response.reason(), response.scope(), List.of(result));
+            assertThrows(IllegalArgumentException.class, () -> IntakeValidator.validate(request, forged));
+        }
     }
 }

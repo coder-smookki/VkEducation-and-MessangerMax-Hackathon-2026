@@ -1,8 +1,31 @@
 # Проверки и критерии готовности
 
-Дата локальной проверки: 12.09.2026, Europe/Moscow. Команды запуска - [development.md](development.md).
+Актуальная локальная проверка dev: 13.09.2026, Europe/Moscow. Команды запуска - [development.md](development.md).
 
-## Пять контрактов - 13.09.2026
+## Исправления Kafka/Chroma в dev - 13.09.2026
+
+Проверяется изменение поверх 9dbed68. Это актуальные результаты; следующие разделы сохраняют явно историческую проверку первоначального каркаса.
+
+| Проверка | Результат | Доказательство |
+|---|---|---|
+| Maven verify с DB_TEST_URL, INFERENCE_TEST_URL и KAFKA_TEST_BOOTSTRAP | 42 теста, 0 ошибок/пропусков | Boot с Kafka, сериализация Java/Python, PostgreSQL, четыре HTTP-контракта и фактическая индексация |
+| SimilarCasesServiceTest на PostgreSQL | 7 сценариев в составе Java suite | Автор/диспетчер/исполнитель, другой дом/черновик, отзыв доступа, смена версии/раунда во время ML и лимит UTF-8 |
+| KafkaIndexIntegrationTest | Настоящие Java producer → Kafka → Python consumer → Chroma → HTTP | Использована реальная ONNX-модель Chroma; совпала дверь второго пункта, версия 6 не заменила 7 |
+| Python pytest с KAFKA_TEST_BOOTSTRAP | 49 passed, 2 прежних warnings | Валидация контрактов, парные itemId, слабые совпадения, недоступность/неполнота индекса, атомарность/конкуренция и повтор Kafka |
+| test_kafka_replay | Реальный broker и два настоящих Chroma-индекса; синтетические векторы | Накопленные до запуска события прочитаны, прежняя consumer group восстановила новый пустой индекс из уже подтверждённой истории |
+| Ruff check / format check | PASS | 34 Python-файла форматированы, lint прошёл |
+| Pylint app | 10/10 | Статическая проверка Python |
+| Пересборка Compose и smoke STUB/MANUAL | PASS в обоих режимах | Java с включённой Kafka запускается; остановка Python не скрывает пункты, после проверки сервис восстановлен |
+| Конфигурация настоящего топика | cleanup.policy=delete; retention.ms/bytes=-1 | История для replay не обрезается и не компактизируется по позднему устаревшему событию |
+| Документация/контракты | 191 локальная ссылка, JSON и git diff --check прошли | Команды и границы контракта согласованы с текущим кодом |
+
+IntakeValidator дополнительно отвергает пустые/неизвестные caseId, неположительные/устаревшие версии, чужие пары, повторное использование пункта, NaN и неполное POSSIBLE_DUPLICATE. Ошибка Kafka send остаётся видима через future. При ошибке embeddings предыдущая запись индекса сохраняется. Ни одно совпадение не меняет факт ремонта.
+
+Команды полного запуска и опциональные переменные - [development.md](development.md#полная-проверка-исправлений-kafkachroma-в-dev). Без DB_TEST_URL пропускается БД; без INFERENCE_TEST_URL пропускается живой HTTP; Kafka-тесты требуют KAFKA_TEST_BOOTSTRAP (Java также требует HTTP). Пропуск не выдавать за доказательство интеграции.
+
+Пороговые значения similarity 0.85/0.95 не откалиброваны. Настоящая модель проверена на синтетическом примере подключения; это не замер точности, полноты или русского NLP. NLI и реальные MAX-сценарии не выполнялись. CI integration теперь повторяет внешние проверки, replay и smoke отказа; результат Actions надо сверять по конкретному commit после push.
+
+## История: пять контрактов до Kafka - 13.09.2026
 
 `uv run pytest -q`: 35 тестов прошли, два прежних предупреждения TestClient. `uv run ruff check .` прошёл. Тесты сравнивают реальные HTTP-ответы всех четырёх Python-операций с общими JSON и OpenAPI, проверяют фактическую форму 422/413, confirmed context, AUTHOR, missing fields и NOT_EVALUATED/null. Отдельно проверяется SCHEMA_ONLY Java review API по примерам; это не проверка рабочего Java-контроллера.
 
@@ -14,7 +37,7 @@
 
 Основания для реализации проверены по первичным источникам: [FastAPI additional responses](https://fastapi.tiangolo.com/advanced/additional-responses/), [Pydantic strict mode](https://docs.pydantic.dev/latest/concepts/strict_mode/), [jsonschema validation](https://python-jsonschema.readthedocs.io/en/stable/validate/). Добавлена только dev-зависимость jsonschema; runtime моделей не устанавливался.
 
-## Подтверждённый результат каркаса
+## История: первоначальный каркас - 12.09.2026
 
 | Проверка | Результат | Что она доказывает |
 |---|---|---|

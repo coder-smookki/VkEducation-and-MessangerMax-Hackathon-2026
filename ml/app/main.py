@@ -20,9 +20,11 @@ async def lifespan(_app: FastAPI):
     vector_store = await container.get(ChromaVectorStore)
     consumer = CaseEventsConsumer(vector_store, settings)
     await consumer.start()
-    yield
-    await consumer.stop()
-    await container.close()
+    try:
+        yield
+    finally:
+        await consumer.stop()
+        await container.close()
 
 
 settings = get_settings()
@@ -44,4 +46,8 @@ async def invalid_request(request: Request, _exception: RequestValidationError):
 
 @app.get("/healthz")
 def health() -> dict[str, str]:
-    return {"status": "ok", "mode": "STUB", "vectorStore": "chroma"}
+    return {
+        "status": "ok",
+        "mode": "STUB",
+        "vectorStore": "chroma" if settings.chroma_enabled else "disabled",
+    }

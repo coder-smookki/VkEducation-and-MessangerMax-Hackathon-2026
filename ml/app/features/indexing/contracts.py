@@ -11,4 +11,4 @@ class CaseUpdatedEvent(Contract):
     eventId: UUID
     eventType: Literal["CASE_CREATED", "CASE_UPDATED"]
     case: ConfirmedCaseContext
-    schemaVersion: int = Field(strict=True, ge=1)
+    schemaVersion: int = Field(strict=True, ge=1, le=1)

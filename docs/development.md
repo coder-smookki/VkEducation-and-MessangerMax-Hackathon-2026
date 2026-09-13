@@ -2,7 +2,7 @@
 
 ## Полный локальный Compose
 
-Понадобится Docker с Compose; зависимости приложения собираются в контейнерах. Это среда разработки на loopback, с синтетическим UI и реальной пустой PostgreSQL. Состояние настоящих обращений пока не записывается.
+Понадобится Docker с Compose; зависимости приложения собираются в контейнерах. Это среда разработки на loopback, с синтетическим UI, PostgreSQL, Kafka и производным Chroma-индексом. Состояние настоящих обращений пока не записывается.
 
 Из корня репозитория, только если `.env` ещё не создан:
 
@@ -19,7 +19,8 @@ python3 scripts/smoke.py
 | `http://127.0.0.1:5173` | Учебный интерфейс и прокси `/api` |
 | `http://127.0.0.1:8080/actuator/health` | Health Java и БД |
 | `127.0.0.1:5432` | PostgreSQL; значения из `.env` |
-| `http://ml:8000` | Python только внутри Docker-сети |
+| `http://ml:8000` | Python только внутри Docker-сети в обычном Compose |
+| `127.0.0.1:9092` | Kafka для локальных инструментов; внутри сети `kafka:29092` |
 
 Для диагностики: `docker compose ps`, `docker compose logs --tail=60 <service>`. Не сохранять логи с реальными обращениями в Git. Остановка `docker compose down` сохраняет volume БД; `down -v` удаляет данные и не является обычной командой остановки.
 
@@ -33,7 +34,7 @@ python3 scripts/smoke.py
 # Терминал 1 - Python, без загрузки весов
 cd ml
 uv sync --frozen
-uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log
+KOREN_CHROMA_ENABLED=false uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log
 ```
 
 ```sh
@@ -65,13 +66,15 @@ DB_TEST_URL=jdbc:postgresql://127.0.0.1:5432/koren \
 DB_TEST_USER=koren DB_TEST_PASSWORD=koren_local_only ./mvnw -B verify
 ```
 
-Значения выше соответствуют `.env.example`, не production. Если они изменены, использовать свои локальные тестовые настройки. `PostgresSchemaTest` запускает Flyway и выполняет rollback фикстур; указывать только тестовую БД, которую разрешено мигрировать.
+Значения выше соответствуют `.env.example`, не production. Если они изменены, использовать свои локальные тестовые настройки. `PostgresSchemaTest` запускает Flyway и выполняет rollback фикстур; SimilarCasesServiceTest создаёт отдельные синтетические записи и удаляет их после проверки. Указывать только тестовую БД, которую разрешено мигрировать.
 
 ```sh
 cd ml
 uv sync --frozen
 uv run pytest -q
 uv run ruff check .
+uv run ruff format --check app scripts tests
+uv run pylint app
 uv run python -m scripts.evaluate
 ```
 
@@ -99,6 +102,48 @@ INFERENCE_TEST_URL=http://127.0.0.1:8000 ./mvnw -B -Dtest=IntakeContractTest tes
 ```
 
 Без INFERENCE_TEST_URL этот внешний тест явно пропускается; остальные проверки используют локальный HTTP-имитатор и общие JSON. Запуск с сервисом подтверждает передачу контрактов и RULES/STUB, а не качество ML. Python не публикуется наружу ради проверки.
+
+## Полная проверка исправлений Kafka/Chroma в dev
+
+Из корня, с локальной тестовой конфигурацией:
+
+```sh
+docker compose --env-file .env.example -f compose.yaml -f compose.test.yaml up --build -d
+python3 scripts/smoke.py
+```
+
+Override открывает Python только на `127.0.0.1:18081` для тестового Java-клиента; обычный Compose не публикует этот порт. После запуска выполнить:
+
+```sh
+cd backend
+DB_TEST_URL=jdbc:postgresql://127.0.0.1:5432/koren \
+DB_TEST_USER=koren DB_TEST_PASSWORD=koren_local_only \
+INFERENCE_TEST_URL=http://127.0.0.1:18081 KAFKA_TEST_BOOTSTRAP=localhost:9092 \
+./mvnw -B verify
+```
+
+```sh
+cd ml
+uv sync --frozen
+KAFKA_TEST_BOOTSTRAP=localhost:9092 uv run pytest -q
+```
+
+KafkaIndexIntegrationTest отправляет из Java синтетические snapshots в настоящий Kafka, ждёт подтверждения consumer и проверяет Chroma через HTTP: дверь сопоставлена со вторым пунктом, версия 6 не заменяет 7. Используется настоящая стандартная ONNX-модель Chroma, а не тестовая подмена векторов. Её первый вызов загружает веса в домашний cache пользователя `koren` внутри ML-контейнера; нужен исходящий доступ для загрузки. На холодном старте HTTP может временно вернуть MANUAL. Образ имеет непривилегированного пользователя с доступным домашним каталогом. Версии/пары на синтетическом примере не измеряют качество русского поиска.
+
+Python test_kafka_replay использует настоящий broker, отдельный уникальный тестовый topic/group и настоящую Chroma с детерминированными тестовыми векторами. События создаются до старта consumer; затем проверяется новый пустой индекс с той же уже подтверждавшей offsets группой. Удаляется только созданный этим тестом topic. Остальные Python-тесты не требуют загрузки весов.
+
+Без KAFKA_TEST_BOOTSTRAP оба внешних Kafka-теста явно пропускаются; Java-тест также требует INFERENCE_TEST_URL. Первый Java-тест сохраняет синтетические события с уникальными ID в локальном dev-топике, продуктовые таблицы он не меняет.
+
+Из корня проверить отказ и вернуть обычную сетевую конфигурацию:
+
+```sh
+docker compose --env-file .env.example stop ml
+python3 scripts/smoke.py --expect-mode MANUAL
+docker compose --env-file .env.example up -d ml
+python3 scripts/smoke.py
+```
+
+Не удалять volumes ради обычной проверки. В dev топик сохраняет всю историю для восстановления монотонного индекса; до эксплуатации нужно спроектировать backfill из Java/PostgreSQL и границы хранения. Рестарт consumer перечитывает историю; детали и ограничения масштабирования - [контракт 04](../contracts/04-similar-cases.md). CI выполняет те же внешние проверки в одноразовой среде.
 
 ## Работа с БД и выпуск
 

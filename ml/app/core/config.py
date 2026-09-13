@@ -1,6 +1,5 @@
 from functools import lru_cache
 
-from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,7 +13,6 @@ class Settings(BaseSettings):
     chroma_path: str = "./data/chroma"
     chroma_collection: str = "inference_documents"
     chroma_enabled: bool = True
-    chroma_embedding_function: str = Field(default="default", description="Chroma embedding provider")
     kafka_enabled: bool = False
     kafka_bootstrap_servers: str = "localhost:9092"
     kafka_topic: str = "koren.case-updates"

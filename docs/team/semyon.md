@@ -16,7 +16,7 @@
 4. С Кириллом описать C4: граница MAX adapter → inbox → domain command → outbox. Он делает транспорт, ты - надёжную обработку и эффект.
 5. Использовать готовые `contracts/author-review.openapi.json` и review/confirm-примеры из `contracts/examples/`; это ещё не реализованные endpoints. Дополнять остальные HTTP-фикстуры вместе с тестом/потребителем без второй копии уже согласованных ответов.
 
-Основа 13.09.2026: [пять контрактов](../../contracts/README.md), Java `IntakeContract`/`IntakeValidator` и новые методы `InferenceClient` уже реализованы. Для extract/clarify сверять DRAFT/автора и версии; для similar готовить ConfirmedCaseContext и только доступных кандидатов того же дома. Наличие слова CONFIRMED в присланном JSON не заменяет чтение БД. Вопрос получает только автор, а не все участники Membership.
+Основа 13.09.2026: [пять контрактов](../../contracts/README.md), Java `IntakeContract`/`IntakeValidator` и новые методы `InferenceClient` уже реализованы. Для extract/clarify сверять DRAFT/автора и версии; для similar использовать готовый SimilarCasesService.find с серверным verifiedUserId: он читает ConfirmedCaseContext и разрешённых кандидатов из PostgreSQL, вызывает ML вне транзакции и повторно сверяет права/снимки. Не обходить его прямым HTTP или InferenceClient. Наличие слова CONFIRMED в присланном JSON не заменяет чтение БД. Вопрос получает только автор, а не все участники Membership.
 
 Приёмка: Кирилл способен строить экран на согласованных данных; Никита понимает snapshot и evidence; ни один участник не ждёт реализации всех твоих задач для старта.
 
@@ -67,7 +67,7 @@
 
 ## S4. Надёжный анализ вне транзакции - 5-6 часов
 
-Можно начать на STUB после S2/C3. N2/N3 нужны только для подключения настоящего анализа.
+Можно начать на STUB после S2/C3. N2/N3 нужны для подключения NLI. В dev уже есть Kafka publisher/consumer и защищённый similarity service; это не готовый analysis worker. Подключить подтверждённые snapshots к транзакционному outbox, обработать future успеха/ошибки CaseEventPublisher, не публиковать неподтверждённый черновик. Данные intake/similar не помещать в model_suggestion через выдуманный report_id.
 
 1. Добавить persisted job со snapshot входа и hash, состоянием, попытками и lease. Создание отчёта и job атомарно; UI сразу получает сохранённый reportId.
 2. Worker забирает задачу короткой транзакцией, фиксирует token/lease, вызывает существующий `InferenceClient` вне неё и завершает только своё владение.

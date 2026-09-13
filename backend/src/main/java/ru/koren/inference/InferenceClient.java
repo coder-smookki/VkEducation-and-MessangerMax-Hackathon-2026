@@ -19,7 +19,9 @@ public class InferenceClient {
     private final RestClient client;
 
     public InferenceClient(@Value("${koren.inference-url}") String baseUrl) {
-        var http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(1)).build();
+        // Uvicorn serves HTTP/1.1; avoid h2c upgrade negotiation changing request parsing with httptools.
+        var http = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofSeconds(1)).build();
         var factory = new JdkClientHttpRequestFactory(http);
         factory.setReadTimeout(Duration.ofSeconds(3));
         client = RestClient.builder().baseUrl(baseUrl).requestFactory(factory).build();
@@ -61,15 +63,20 @@ public class InferenceClient {
         }
     }
 
-    public SimilarResponse similar(SimilarRequest request) {
+    // Product callers use SimilarCasesService, which owns DB authorization and the second version check.
+    SimilarResponse similar(SimilarRequest request) {
         try {
             return IntakeValidator.validate(request, client.post().uri("/internal/v1/similar-cases").body(request)
                     .retrieve().body(SimilarResponse.class));
         } catch (org.springframework.web.client.RestClientException | IllegalArgumentException exception) {
             log.warn("Similarity unavailable: {}", exception.getClass().getSimpleName());
-            return new SimilarResponse(request.query().caseId(), request.query().caseVersion(),
-                    request.query().sourceRevision(), "unavailable", Mode.MANUAL, AnalysisStatus.NOT_ANALYZED,
-                    Reason.ANALYSIS_UNAVAILABLE, "CHROMA", List.of());
+            return unavailable(request);
         }
+    }
+
+    static SimilarResponse unavailable(SimilarRequest request) {
+        return new SimilarResponse(request.query().caseId(), request.query().caseVersion(),
+                request.query().sourceRevision(), "unavailable", Mode.MANUAL, AnalysisStatus.NOT_ANALYZED,
+                Reason.ANALYSIS_UNAVAILABLE, "CHROMA", List.of());
     }
 }

@@ -10,7 +10,7 @@ Python не меняет продуктовую БД и не выполняет 
 
 Дополнение 13.09.2026: [пять контрактов](../../contracts/README.md). В `features/intake/contracts.py` и `features/intake/service.py` есть extract-items STUB, clarify-items RULES и Chroma-backed similar-cases; `/compare` сохранён. `features/indexing/` читает versioned snapshots из Kafka. ML не имеет relational DB: Chroma - только производный индекс, Java остаётся владельцем состояния.
 
-Для подготовки входа использовать [01](../../contracts/01-extract-items.md) и [02](../../contracts/02-author-clarification.md): временный proposalId, null для неизвестного, evidence по исходнику, вопросы только автору. Заполненные поля означают READY_FOR_REVIEW; подтверждает список Java после действия автора. Для [04](../../contracts/04-similar-cases.md) Java передаёт query и limit, а ML ищет кандидатов в Chroma только внутри дома. Пустой результат не доказывает отсутствие дубликатов.
+Для подготовки входа использовать [01](../../contracts/01-extract-items.md) и [02](../../contracts/02-author-clarification.md): временный proposalId, null для неизвестного, evidence по исходнику, вопросы только автору. Заполненные поля означают READY_FOR_REVIEW; подтверждает список Java после действия автора. Для [04](../../contracts/04-similar-cases.md) Java передаёт query/candidates/limit из разрешённой выборки PostgreSQL. ML читает только эти снимки из Chroma и сравнивает пункты отдельно. Порог сходства пока требует независимой калибровки. Пустой результат не доказывает отсутствие дубликатов.
 
 ## Первый запуск
 

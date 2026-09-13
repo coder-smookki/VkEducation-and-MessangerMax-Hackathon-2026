@@ -32,7 +32,7 @@ KOREN_KAFKA_TOPIC=koren.case-updates
 KOREN_KAFKA_GROUP_ID=koren-ml-indexer
 ```
 
-ML has no relational database and no Alembic migrations. Chroma is a derived, rebuildable read index. Java publishes a confirmed case snapshot to Kafka after a case create/status update; the consumer upserts its items into Chroma. Similarity requests contain only the confirmed query and a limit: ML selects candidates itself, scoped to the query house.
+ML has no relational database and no Alembic migrations. Chroma is a derived, rebuildable read index. Java publishes a confirmed case snapshot to Kafka after a case create/status update; the consumer atomically upserts one case snapshot with its separate item vectors. Wiring publication into transactional CRUD/outbox is still pending. Similarity requests carry query, authorized candidates, and limit. Java checks access before HTTP and rechecks snapshots afterwards; ML never expands this scope. See contracts/04-similar-cases.md for replay, version guards, thresholds, and failure semantics.
 
 ## Run
 

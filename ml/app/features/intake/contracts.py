@@ -126,7 +126,22 @@ class ConfirmedCaseContext(DraftReference):
 
 class SimilarCasesRequest(Contract):
     query: ConfirmedCaseContext
+    candidates: list[ConfirmedCaseContext] = Field(max_length=20)
     limit: int = Field(default=5, strict=True, ge=1, le=20)
+
+    @model_validator(mode="after")
+    def authorized_scope(self):
+        cases = {self.query.caseId}
+        items = {item.itemId for item in self.query.items}
+        for candidate in self.candidates:
+            if candidate.caseId in cases or candidate.houseId != self.query.houseId:
+                raise ValueError("Duplicate, self or foreign house candidate")
+            cases.add(candidate.caseId)
+            for item in candidate.items:
+                if item.itemId in items:
+                    raise ValueError("Item shared by two cases")
+                items.add(item.itemId)
+        return self
 
 
 class SimilarityRelation(StrEnum):

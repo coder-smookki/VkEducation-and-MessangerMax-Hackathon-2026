@@ -1,99 +1,175 @@
-from dataclasses import dataclass
-from typing import Any
+"""A derived index: one atomic Chroma record per confirmed case, with separate item vectors."""
+
+import fcntl
+import json
+import math
+import threading
+import unicodedata
+from contextlib import contextmanager
+from pathlib import Path
 
 import chromadb
+from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
+
+from app.features.indexing.contracts import CaseUpdatedEvent
+from app.features.intake.contracts import ConfirmedCaseContext, SimilarCasesRequest
+
+MODEL_VERSION = "chroma-minilm-items-v2"
+# Conservative development defaults, not measured accuracy or probability of a shared incident.
+RELATED_THRESHOLD = 0.85
+DUPLICATE_THRESHOLD = 0.95
 
 
-@dataclass(frozen=True)
-class SimilarityQuery:
-    text: str
-    house_id: str | None = None
-    exclude_case_id: str | None = None
-    query_item_id: str | None = None
+class IndexUnavailable(RuntimeError):
+    """The requested authorized snapshot set cannot currently be analyzed."""
+
+
+def canonical_case(case: ConfirmedCaseContext) -> dict:
+    value = case.model_dump(mode="json")
+    value["items"].sort(key=lambda item: item["itemId"])
+    return value
+
+
+def normalized(value: str) -> str:
+    return " ".join(unicodedata.normalize("NFKC", value).casefold().replace("ё", "е").split())
+
+
+def cosine(left: list[float], right: list[float]) -> float:
+    if len(left) != len(right) or not left:
+        raise IndexUnavailable("Incompatible embeddings")
+    length = math.sqrt(math.fsum(x * x for x in left) * math.fsum(x * x for x in right))
+    if not length or not all(math.isfinite(x) for x in (*left, *right)):
+        raise IndexUnavailable("Invalid embeddings")
+    return min(1.0, max(0.0, math.fsum(x * y for x, y in zip(left, right)) / length))
+
+
+def matching_items(query, candidate, query_vectors, vectors):
+    """Keep the item that produced each score; never attach an aggregate score to item zero."""
+    matches = []
+    for query_item, query_vector in zip(query.items, query_vectors):
+        for item, vector in zip(candidate.items, vectors):
+            if query_item.category != item.category or normalized(query_item.location) != normalized(
+                item.location
+            ):
+                continue
+            score = cosine(query_vector, vector)
+            if score >= RELATED_THRESHOLD:
+                matches.append((score, str(query_item.itemId), str(item.itemId)))
+    pairs, used_query, used_candidate = [], set(), set()
+    for score, query_id, item_id in sorted(matches, key=lambda match: (-match[0], match[1], match[2])):
+        if query_id not in used_query and item_id not in used_candidate:
+            used_query.add(query_id)
+            used_candidate.add(item_id)
+            pairs.append((score, {"queryItemId": query_id, "candidateItemId": item_id}))
+    return pairs
 
 
 class ChromaVectorStore:
-    """Small adapter around Chroma, kept behind an infrastructure boundary."""
-
-    def __init__(self, path: str, collection: str, enabled: bool = True) -> None:
-        self._client: Any | None = None
-        self._collection: Any | None = None
+    def __init__(self, path: str, collection: str, enabled: bool = True, embedding_function=None) -> None:
+        self._collection = None
+        self._mutex = threading.RLock()
+        self._lock_path = Path(path) / "snapshot-writer.lock"
+        self._embed = embedding_function if embedding_function is not None else DefaultEmbeddingFunction()
         if enabled:
-            self._client = chromadb.PersistentClient(path=path)
-            self._collection = self._client.get_or_create_collection(name=collection)
+            client = chromadb.PersistentClient(path=path)
+            # The old per-item format is deliberately separate; Kafka replay rebuilds this collection.
+            self._collection = client.get_or_create_collection(
+                name=f"{collection}_snapshots_v2",
+                embedding_function=None,
+                configuration={"hnsw": {"space": "cosine"}},
+            )
 
     @property
     def enabled(self) -> bool:
         return self._collection is not None
 
-    def add(self, *, document_id: str, text: str, metadata: dict[str, str] | None = None) -> None:
-        if self._collection is None:
-            return
-        self._collection.upsert(ids=[document_id], documents=[text], metadatas=[metadata or {}])
+    @contextmanager
+    def _locked(self):
+        if not self.enabled:
+            raise IndexUnavailable("Index is disabled")
+        # Linux containers/macOS: also serialize writers from different processes using the same volume.
+        with self._mutex, self._lock_path.open("a") as lock_file:
+            fcntl.flock(lock_file, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock_file, fcntl.LOCK_UN)
 
-    def search(
-        self,
-        query: SimilarityQuery,
-        limit: int = 5,
-    ) -> list[dict[str, Any]]:
-        if self._collection is None:
-            return []
-        if self._collection.count() == 0:
-            return []
-        where = {"house_id": query.house_id} if query.house_id else None
-        result = self._collection.query(
-            query_texts=[query.text],
-            n_results=min(limit * 5, self._collection.count()),
-            where=where,
-        )
-        candidates = []
-        seen_cases = set()
-        for metadata, distance in zip(result.get("metadatas", [[]])[0], result.get("distances", [[]])[0]):
-            if metadata.get("case_id") == query.exclude_case_id:
+    def _vectors(self, case: ConfirmedCaseContext) -> list[list[float]]:
+        texts = [f"{item.category.value} {item.location} {item.symptom}" for item in case.items]
+        vectors = [[float(value) for value in vector] for vector in self._embed(texts)]
+        if len(vectors) != len(case.items):
+            raise IndexUnavailable("Missing embeddings")
+        for vector in vectors:
+            cosine(vector, vector)
+        return vectors
+
+    def upsert_case(self, payload: dict) -> None:
+        event = CaseUpdatedEvent.model_validate(payload)
+        case = event.case
+        with self._locked():
+            existing = self._collection.get(ids=[str(case.caseId)], include=["documents"])
+            if existing["ids"]:
+                previous = ConfirmedCaseContext.model_validate(json.loads(existing["documents"][0])["case"])
+                if case.caseVersion < previous.caseVersion:
+                    return
+                if case.caseVersion == previous.caseVersion:
+                    if canonical_case(case) != canonical_case(previous):
+                        raise ValueError("Conflicting snapshot at the same version")
+                    return
+                if case.houseId != previous.houseId or case.sourceRevision < previous.sourceRevision:
+                    raise ValueError("Snapshot regresses or changes house")
+            vectors = self._vectors(case)
+            # Compute everything before writing. A failed embedding leaves the previous snapshot intact.
+            document = json.dumps(
+                {"case": case.model_dump(mode="json"), "vectors": vectors}, ensure_ascii=False
+            )
+            self._collection.upsert(
+                ids=[str(case.caseId)],
+                documents=[document],
+                embeddings=[vectors[0]],
+                metadatas=[{"house_id": str(case.houseId), "case_version": case.caseVersion}],
+            )
+
+    def search(self, request: SimilarCasesRequest) -> list[dict]:
+        with self._locked():
+            if not request.candidates:
+                return []
+            indexed = self._collection.get(
+                ids=[str(case.caseId) for case in request.candidates],
+                include=["documents"],
+            )
+            snapshots = dict(zip(indexed["ids"], indexed["documents"]))
+            candidates = []
+            for expected in request.candidates:
+                if str(expected.caseId) not in snapshots:
+                    raise IndexUnavailable("Requested case has not been indexed")
+                record = json.loads(snapshots[str(expected.caseId)])
+                actual = ConfirmedCaseContext.model_validate(record["case"])
+                if canonical_case(actual) != canonical_case(expected):
+                    raise IndexUnavailable("Index snapshot is stale")
+                if len(record["vectors"]) != len(actual.items):
+                    raise IndexUnavailable("Incomplete indexed snapshot")
+                candidates.append((actual, record["vectors"]))
+        # All index records were read consistently. Java rechecks current DB versions and access after HTTP.
+        query_vectors = self._vectors(request.query)
+        results = []
+        for candidate, vectors in candidates:
+            pairs = matching_items(request.query, candidate, query_vectors, vectors)
+            if not pairs:
                 continue
-            if metadata.get("case_id") in seen_cases or len(candidates) >= limit:
-                continue
-            seen_cases.add(metadata["case_id"])
-            score = 1 / (1 + distance)
-            candidates.append(
+            score = min(pair[0] for pair in pairs)
+            full_match = len(pairs) == len(request.query.items) == len(candidate.items)
+            results.append(
                 {
-                    "caseId": metadata["case_id"],
-                    "caseVersion": int(metadata["case_version"]),
-                    "sourceRevision": int(metadata["source_revision"]),
-                    "relation": "POSSIBLE_DUPLICATE" if score >= 0.5 else "RELATED",
+                    "caseId": str(candidate.caseId),
+                    "caseVersion": candidate.caseVersion,
+                    "sourceRevision": candidate.sourceRevision,
+                    "relation": "POSSIBLE_DUPLICATE"
+                    if full_match and score >= DUPLICATE_THRESHOLD
+                    else "RELATED",
                     "score": score,
-                    "matchedItems": (
-                        [{"queryItemId": query.query_item_id, "candidateItemId": metadata["item_id"]}]
-                        if query.query_item_id
-                        else []
-                    ),
+                    "matchedItems": [pair[1] for pair in pairs],
                 }
             )
-        return candidates
-
-    def upsert_case(self, event: dict[str, Any]) -> None:
-        if self._collection is None:
-            return
-        case = event["case"]
-        existing = self._collection.get(where={"case_id": str(case["caseId"])}, include=[])
-        if existing.get("ids"):
-            self._collection.delete(ids=existing["ids"])
-        ids = []
-        documents = []
-        metadatas = []
-        for item in case["items"]:
-            ids.append(f"{case['caseId']}:{item['itemId']}")
-            documents.append(f"{item['category']} {item['location']} {item['symptom']} {case['sourceText']}")
-            metadatas.append(
-                {
-                    "case_id": str(case["caseId"]),
-                    "house_id": str(case["houseId"]),
-                    "case_version": str(case["caseVersion"]),
-                    "source_revision": str(case["sourceRevision"]),
-                    "item_id": str(item["itemId"]),
-                    "content_version": str(item["contentVersion"]),
-                    "work_round": str(item["workRound"]),
-                }
-            )
-        if ids:
-            self._collection.upsert(ids=ids, documents=documents, metadatas=metadatas)
+        return sorted(results, key=lambda result: (-result["score"], result["caseId"]))[: request.limit]

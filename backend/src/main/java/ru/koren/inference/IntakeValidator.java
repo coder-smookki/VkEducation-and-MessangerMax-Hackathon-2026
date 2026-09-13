@@ -71,12 +71,18 @@ public final class IntakeValidator {
         outcome(response.modelVersion(), response.mode(), response.status(), response.reason());
         require("CHROMA".equals(response.scope()), "Search scope changed");
         require(response.results() != null && response.results().size() <= request.limit(), "Too many results");
+        Map<UUID, ConfirmedCaseContext> candidates = new HashMap<>();
+        request.candidates().forEach(candidate -> candidates.put(candidate.caseId(), candidate));
         var queryItems = new HashSet<UUID>();
         request.query().items().forEach(item -> queryItems.add(item.itemId()));
         var seen = new HashSet<UUID>();
         for (var result : response.results()) {
             require(result != null && seen.add(result.caseId()), "Duplicate or null candidate");
-            require(!request.query().caseId().equals(result.caseId()), "Query cannot be its own candidate");
+            reference(result.caseId(), result.caseVersion(), result.sourceRevision());
+            var candidate = candidates.get(result.caseId());
+            require(candidate != null, "Foreign candidate");
+            sameReference(candidate.caseId(), candidate.caseVersion(), candidate.sourceRevision(),
+                    result.caseId(), result.caseVersion(), result.sourceRevision());
             require(result.relation() != null && result.matchedItems() != null && result.matchedItems().size() <= 20,
                     "Invalid similarity result");
             if (response.status() == AnalysisStatus.NOT_ANALYZED)
@@ -89,10 +95,18 @@ public final class IntakeValidator {
                 boolean related = result.relation() != SimilarityRelation.DIFFERENT;
                 require(related == !result.matchedItems().isEmpty(), "Missing or contradictory item matches");
             }
-            var pairs = new HashSet<ItemMatch>();
+            var matchedQuery = new HashSet<UUID>();
+            var matchedCandidate = new HashSet<UUID>();
+            var candidateItems = new HashSet<UUID>();
+            candidate.items().forEach(item -> candidateItems.add(item.itemId()));
             for (var pair : result.matchedItems()) {
-                require(pair != null && queryItems.contains(pair.queryItemId()) && pairs.add(pair), "Foreign or duplicate match");
+                require(pair != null && queryItems.contains(pair.queryItemId())
+                        && candidateItems.contains(pair.candidateItemId()) && matchedQuery.add(pair.queryItemId())
+                        && matchedCandidate.add(pair.candidateItemId()), "Foreign or reused item match");
             }
+            if (result.relation() == SimilarityRelation.POSSIBLE_DUPLICATE)
+                require(matchedQuery.equals(queryItems) && matchedCandidate.equals(candidateItems),
+                        "A partial item match is not a duplicate case");
         }
         return response;
     }

@@ -9,8 +9,8 @@ import static ru.koren.inference.IntakeContract.ConfirmedCaseContext;
 public record CaseUpdatedEvent(UUID eventId, String eventType, int schemaVersion,
                                @JsonProperty("case") ConfirmedCaseContext caseSnapshot) {
     public CaseUpdatedEvent {
-        if (eventId == null || !Set.of("CASE_CREATED", "CASE_UPDATED").contains(eventType)
-                || schemaVersion < 1 || caseSnapshot == null)
+        if (eventId == null || eventType == null || !Set.of("CASE_CREATED", "CASE_UPDATED").contains(eventType)
+                || schemaVersion != 1 || caseSnapshot == null)
             throw new IllegalArgumentException("Invalid case update event");
     }
 }

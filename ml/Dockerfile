@@ -4,7 +4,8 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 COPY app app
-RUN mkdir -p /app/data/chroma && chown -R 10001:10001 /app/data
+RUN useradd --uid 10001 --create-home koren \
+    && mkdir -p /app/data/chroma && chown -R 10001:10001 /app/data
 USER 10001:10001
 EXPOSE 8000
 CMD ["/app/.venv/bin/uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]

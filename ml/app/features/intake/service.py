@@ -1,5 +1,7 @@
 """Business services for intake analysis and Chroma-backed retrieval."""
 
+import logging
+
 from app.features.inference.schemas import Mode, Reason
 from app.features.intake.contracts import (
     AnalysisStatus,
@@ -14,7 +16,7 @@ from app.features.intake.contracts import (
     SimilarCasesRequest,
     SimilarCasesResponse,
 )
-from app.shared.vector_store import ChromaVectorStore, SimilarityQuery
+from app.shared.vector_store import MODEL_VERSION, ChromaVectorStore
 
 QUESTIONS = {
     MissingField.CATEGORY: "Выберите тип проблемы: освещение, входная дверь, уборка или другое.",
@@ -63,20 +65,27 @@ def clarify_items(request: ClarifyItemsRequest) -> ClarifyItemsResponse:
 
 
 def similar_cases(request: SimilarCasesRequest, vector_store: ChromaVectorStore) -> SimilarCasesResponse:
-    results = vector_store.search(
-        query=SimilarityQuery(
-            text=" ".join(f"{item.category} {item.location} {item.symptom}" for item in request.query.items),
-            house_id=str(request.query.houseId),
-            exclude_case_id=str(request.query.caseId),
-            query_item_id=str(request.query.items[0].itemId),
-        ),
-        limit=request.limit,
-    )
+    try:
+        results = vector_store.search(request)
+    # Libraries use unrelated exception types; this advisory boundary logs no resident text.
+    except Exception as error:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+        logging.getLogger(__name__).warning("Similarity unavailable: %s", type(error).__name__)
+        return SimilarCasesResponse(
+            caseId=request.query.caseId,
+            caseVersion=request.query.caseVersion,
+            sourceRevision=request.query.sourceRevision,
+            modelVersion="unavailable",
+            mode=Mode.MANUAL,
+            status=AnalysisStatus.NOT_ANALYZED,
+            reason=Reason.ANALYSIS_UNAVAILABLE,
+            scope="CHROMA",
+            results=[],
+        )
     return SimilarCasesResponse(
         caseId=request.query.caseId,
         caseVersion=request.query.caseVersion,
         sourceRevision=request.query.sourceRevision,
-        modelVersion="chroma-retrieval-v1",
+        modelVersion=MODEL_VERSION,
         mode=Mode.RULES,
         status=AnalysisStatus.ANALYZED,
         reason=Reason.ANALYZED,

@@ -25,5 +25,25 @@
       }
     ]
   },
+  "candidates": [
+    {
+      "caseId": "00000000-0000-0000-0000-000000000100",
+      "caseVersion": 2,
+      "sourceRevision": 1,
+      "houseId": "00000000-0000-0000-0000-000000000010",
+      "submissionStatus": "CONFIRMED",
+      "sourceText": "Входная дверь не закрывается.",
+      "items": [
+        {
+          "itemId": "00000000-0000-0000-0000-000000000101",
+          "contentVersion": 1,
+          "workRound": 0,
+          "category": "ENTRANCE_DOOR",
+          "location": "Вход",
+          "symptom": "Дверь не закрывается"
+        }
+      ]
+    }
+  ],
   "limit": 5
 }

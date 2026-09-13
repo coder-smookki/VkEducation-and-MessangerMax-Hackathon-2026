@@ -49,7 +49,12 @@ jobs:
         with:
           version: '0.11.29'
           python-version: '3.12'
-      - run: uv sync --frozen && uv run pytest -q && uv run ruff check .
+      - run: |
+          uv sync --frozen
+          uv run pytest -q
+          uv run ruff check .
+          uv run ruff format --check app scripts tests
+          uv run pylint app
         working-directory: ml
   integration:
     needs: [backend, frontend, ml]
@@ -57,9 +62,32 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: docker compose --env-file .env.example up --build -d
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+        with:
+          version: '0.11.29'
+          python-version: '3.12'
+      - run: docker compose --env-file .env.example -f compose.yaml -f compose.test.yaml up --build -d
       - run: python3 scripts/smoke.py
+      - run: ./mvnw -B verify
+        working-directory: backend
+        env:
+          DB_TEST_URL: jdbc:postgresql://localhost:5432/koren
+          DB_TEST_USER: koren
+          DB_TEST_PASSWORD: koren_local_only
+          INFERENCE_TEST_URL: http://127.0.0.1:18081
+          KAFKA_TEST_BOOTSTRAP: localhost:9092
+      - run: uv sync --frozen && uv run pytest -q tests/test_kafka_replay.py
+        working-directory: ml
+        env:
+          KAFKA_TEST_BOOTSTRAP: localhost:9092
       - run: docker compose --env-file .env.example stop ml
       - run: python3 scripts/smoke.py --expect-mode MANUAL
+      - if: failure()
+        run: docker compose --env-file .env.example ps && docker compose --env-file .env.example logs --tail=60 backend ml kafka
       - if: always()
         run: docker compose --env-file .env.example down -v

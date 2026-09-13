@@ -2,10 +2,10 @@
   "caseId": "00000000-0000-0000-0000-000000000001",
   "caseVersion": 5,
   "sourceRevision": 1,
-  "modelVersion": "chroma-retrieval-v1",
-  "mode": "RULES",
-  "status": "ANALYZED",
-  "reason": "ANALYZED",
+  "modelVersion": "unavailable",
+  "mode": "MANUAL",
+  "status": "NOT_ANALYZED",
+  "reason": "ANALYSIS_UNAVAILABLE",
   "scope": "CHROMA",
   "results": []
 }
