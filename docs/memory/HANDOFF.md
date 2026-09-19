@@ -1,5 +1,17 @@
 # Передача следующему разработчику
 
+Дата: 19.09.2026. Ветка: dev, интеграция `codex/s1-drafts` + `codex/k1-max-auth` + `codex/n1-baseline` поверх `3904b4f`. Полный статус и проверки - [PROJECT_STATE.md](PROJECT_STATE.md).
+
+## Передача интеграции 19.09.2026
+
+Кирилл (K1 продолжение): в `identity/` готовы MaxInitDataValidator (векторы сгенерированы независимым python3) и MaxUserProvisioner. Следующий шаг - endpoints `/csrf`, `/auth/max`, `/auth/logout`, `/me` со штатной session strategy и CSRF по [implementation.md](../implementation.md); MaxUserProvisioner вызывать вне прерванной транзакции (retry после DuplicateKeyException - auto-commit/новая транзакция). SecurityConfig по-прежнему denyAll; рабочие маршруты не открывать без входа.
+
+Семён (S1 продолжение): CaseService покрывает create/get/list/patchSource/patchItems/confirm с идемпотентностью и CAS; DTO и коды ошибок готовы к problem+json маппингу. Следующий шаг - HTTP-контроллеры C1 вместе с K1, затем S2 (назначение executor + targetItemIds новой миграцией, номер согласовать: свободен V3). CaseEventPublisher из CRUD пока не вызывать - сначала транзакционный outbox в S4.
+
+Никита (N2): RULES baseline включается только env `KOREN_COMPARE_ANALYZER=rules`, по умолчанию STUB; development-набор 16/29/16, метрики в `ml/results/` - не held-out. Следующий шаг - N2 (mDeBERTa NLI: карточка, лицензия, revision, железо), затем калибровка порогов и N4 с независимой разметкой Кирилла/Семёна (цель 60 новых диалогов).
+
+## Прежняя передача 13.09.2026
+
 Дата: 13.09.2026. Ветка: dev, исправления поверх Kafka/Chroma 9dbed68. Рабочая стадия: каркас до хакатона. Полный статус и проверки - [PROJECT_STATE.md](PROJECT_STATE.md), задача и приёмка - [общий план](../plan.md).
 
 | Кто начинает | Первый шаг | Вход | Что передать дальше |

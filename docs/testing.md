@@ -1,6 +1,22 @@
 # Проверки и критерии готовности
 
-Актуальная локальная проверка dev: 13.09.2026, Europe/Moscow. Команды запуска - [development.md](development.md).
+Актуальная локальная проверка dev: 19.09.2026, Europe/Moscow. Команды запуска - [development.md](development.md).
+
+## Интеграция S1 + K1-ядро + N0/N1 - 19.09.2026
+
+Проверяется объединение веток `codex/s1-drafts`, `codex/k1-max-auth`, `codex/n1-baseline` в dev (merge-коммиты dac24bb, cfae57d, 3fb4841).
+
+| Проверка | Результат | Доказательство |
+|---|---|---|
+| `./mvnw -B verify` с DB_TEST_URL (PostgreSQL 16 Homebrew, порт 55432) | 76 тестов, 0 ошибок, 2 пропуска внешних env | CaseServicePostgresTest 12: create/get/list/patch/confirm, права DRAFT/CONFIRMED, гонка версий, идемпотентность, rollback, граница 5000 code points с emoji. MaxInitDataValidatorTest 19: подпись, дубли ключей, '+', '%', emoji, время. MaxUserProvisionerTest 3: find-or-create, гонка уникальности |
+| Тестовые векторы HMAC | Независимая генерация | python3 hashlib/hmac скрипт, не Java-код проверяемого; 10 векторов зашиты константами |
+| `uv run pytest -q` | 63 passed, 1 прежний skip | Правила RULES по шести меткам, emoji code-point offsets, отказ без точного span, STUB по умолчанию неизменен |
+| `ruff check` / `ruff format --check` / `pylint app` | PASS / 37 файлов / 10.00/10 | Статическая проверка Python |
+| `uv run python -m scripts.evaluate` | Пишет `ml/results/` | rules: coverage 16/29, label precision 16/16, actionable 10/10, evidence 16/16; stub: coverage 0, precision null. Development-набор, НЕ held-out |
+| `npm run build` | PASS | Frontend не затронут |
+| `git diff --check` | PASS | Пробельных ошибок нет |
+
+Не проверялось: реальный MAX-клиент и подпись настоящего initData, HTTP endpoints (их нет), PostgreSQL 17 локально (CI postgres:17), Kafka/Chroma на этих изменениях (не затронуты), качество RULES на held-out, NLI, нагрузка. Удалённый CI сверять по commit после push.
 
 ## Исправления Kafka/Chroma в dev - 13.09.2026
 

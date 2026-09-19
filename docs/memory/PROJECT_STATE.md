@@ -1,8 +1,8 @@
 # Текущее состояние КОРНЯ
 
-Обновлено: 13.09.2026, Europe/Moscow.
+Обновлено: 19.09.2026, Europe/Moscow.
 Репозиторий: `coder-smookki/VkEducation-and-MessangerMax-Hackathon-2026`.
-Рабочая ветка этого изменения: **dev**, база review `9dbed68` (Kafka/Chroma коллеги). Исправления не означают интеграцию в main.
+Рабочая ветка этого изменения: **dev**, интеграция трёх веток `codex/s1-drafts`, `codex/k1-max-auth`, `codex/n1-baseline` поверх `3904b4f`. Исправления не означают интеграцию в main.
 Стадия: **работающий стартовый каркас до хакатона**, не готовый пользовательский продукт.
 
 ## Подтверждённые факты
@@ -45,9 +45,25 @@ READY_FOR_REVIEW означает заполненный список пробл
 
 Команды, smoke и границы доказательства - [testing.md](../testing.md). Локальные проверки не заменяют GitHub Actions для конкретного commit. Новая CI integration повторяет PostgreSQL/HTTP/Kafka/Chroma/replay и отказ Python в одноразовой среде. История проверок первоначального каркаса остаётся в Git и testing.md, не описывает текущую готовность.
 
+## Интеграция 19.09.2026 - S1 + K1-ядро + N0/N1
+
+1. **S1 (черновики)**: `cases/application/CaseService` + `cases/persistence/CaseRepository` на Spring JDBC. Create/get/list/patchSource/patchItems/confirm в одной транзакции с audit и processed_command; идемпотентность по actor+operation+key с SHA-256 канонического тела; CAS по expectedCaseVersion; DEFERRABLE FK проходят commit; DRAFT виден только автору; список со стабильным cursor и повторной проверкой Membership на странице. HTTP-контроллеров нет: рабочие routes остаются закрыты до K1 (инвариант). Миграций нет, V1/V2 неизменны.
+2. **K1-ядро (MAX-вход)**: `identity/MaxInitDataValidator` - проверка подписи по официальному алгоритму MAX (HMAC-SHA256, ключ `WebAppData`; в data-check-string идут URL-декодированные значения - перечитана страница dev.max.ru, шаг 4), собственный строгий percent-decoder, constant-time сравнение, политика свежести auth_date (5 минут/+60 секунд, внешний Clock). `MaxUserProvisioner` - find-or-create app_user по max_user_id, устойчив к гонке уникальности. Endpoints/сессия/CSRF не реализованы.
+3. **N0/N1 (ML baseline)**: `ml/data/README.md` со схемой разметки; development-набор расширен до 16 диалогов/29 пунктов/16 templateGroup с gold evidence. Детерминированный `rules_analyzer.py` (mode=RULES, `rules-baseline-v1`) включается только env `KOREN_COMPARE_ANALYZER=rules`; поведение по умолчанию остаётся STUB, общие контрактные примеры не изменены. Evaluator прогоняет все анализаторы по одному протоколу и пишет машинные результаты в `ml/results/` с числителями/знаменателями.
+
+## Проверки 19.09.2026
+
+Локально на объединённом dev, Europe/Moscow:
+
+- Java: `DB_TEST_URL=jdbc:postgresql://127.0.0.1:55432/koren ... ./mvnw -B verify` - 76 тестов, 0 ошибок, 2 честных пропуска внешних Kafka/inference env. Новые: CaseServicePostgresTest 12, MaxInitDataValidatorTest 19, MaxUserProvisionerTest 3 - на реальной PostgreSQL 16 (локально; CI использует 17). Тестовые векторы HMAC сгенерированы независимым python3-скриптом, не Java-кодом проверяемого.
+- Python: `uv run pytest -q` - 63 passed, 1 прежний skip; `ruff check`, `ruff format --check`, `pylint app` 10/10; `uv run python -m scripts.evaluate` пишет `ml/results/`. RULES на development-наборе: coverage 16/29, label precision 16/16 - это не held-out и не доказательство полезности (правила и разметка проектировались вместе).
+- Frontend: `npm run build` прошёл. `git diff --check` чист.
+
+Локальные проверки не заменяют GitHub Actions для конкретного commit. Реальный MAX-клиент, сессии, HTTP CRUD, NLI, нагрузка и held-out оценка по-прежнему не проверены.
+
 ## Что ещё отсутствует
 
-Рабочий CRUD/история через API, настоящая аутентификация/сессии и проверка Membership на endpoints, назначения исполнителей, idempotent handlers, workers inbox/outbox, надёжные analysis jobs, opt-out, NLI, UI создания/редактирования/диспетчеризации и публичный deployment. Таблицы, внутренний сервис и publisher не означают готовность этих функций.
+Рабочий CRUD/история через API, настоящая аутентификация/сессии и проверка Membership на endpoints, назначения исполнителей, idempotent handlers, workers inbox/outbox, надёжные analysis jobs, opt-out, NLI, UI создания/редактирования/диспетчеризации и публичный deployment. Таблицы, внутренние сервисы (включая новые CaseService/MaxInitDataValidator) и publisher не означают готовность этих функций.
 
 CaseEventPublisher ещё не вызывается из рабочих команд сохранения: сначала реализовать CRUD и транзакционную постановку событий. Успешная ручная отправка в Kafka не доказывает durable доставку изменений БД. Хранение intake/similar результатов требует согласованной структуры: model_suggestion привязана к report_id, выдумывать отчёт нельзя.
 
