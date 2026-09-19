@@ -16,7 +16,9 @@
 | `npm run build` | PASS | Frontend не затронут |
 | `git diff --check` | PASS | Пробельных ошибок нет |
 
-Не проверялось: реальный MAX-клиент и подпись настоящего initData, HTTP endpoints (их нет), PostgreSQL 17 локально (CI postgres:17), Kafka/Chroma на этих изменениях (не затронуты), качество RULES на held-out, NLI, нагрузка. Удалённый CI сверять по commit после push.
+Не проверялось: реальный MAX-клиент и подпись настоящего initData, HTTP endpoints (их нет), Kafka/Chroma на этих изменениях (не затронуты), качество RULES на held-out, NLI, нагрузка.
+
+Удалённый CI: [run 35442963197](https://github.com/coder-smookki/VkEducation-and-MessangerMax-Hackathon-2026/actions/runs/35442963197) на commit `3341743` - backend (PostgreSQL 17), frontend, ml и integration (Compose, smoke STUB/MANUAL, внешние Kafka/HTTP-проверки) завершились успехом 19.09.2026.
 
 ## Исправления Kafka/Chroma в dev - 13.09.2026
 

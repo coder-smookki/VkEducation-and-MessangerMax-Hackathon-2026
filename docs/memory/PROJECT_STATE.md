@@ -59,7 +59,7 @@ READY_FOR_REVIEW означает заполненный список пробл
 - Python: `uv run pytest -q` - 63 passed, 1 прежний skip; `ruff check`, `ruff format --check`, `pylint app` 10/10; `uv run python -m scripts.evaluate` пишет `ml/results/`. RULES на development-наборе: coverage 16/29, label precision 16/16 - это не held-out и не доказательство полезности (правила и разметка проектировались вместе).
 - Frontend: `npm run build` прошёл. `git diff --check` чист.
 
-Локальные проверки не заменяют GitHub Actions для конкретного commit. Реальный MAX-клиент, сессии, HTTP CRUD, NLI, нагрузка и held-out оценка по-прежнему не проверены.
+Локальные проверки дополнительно подтверждены удалённым CI: run 35442963197 на commit `3341743` - все четыре job (backend на PostgreSQL 17, frontend, ml, integration) успешны 19.09.2026. Реальный MAX-клиент, сессии, HTTP CRUD, NLI, нагрузка и held-out оценка по-прежнему не проверены.
 
 ## Что ещё отсутствует
 
