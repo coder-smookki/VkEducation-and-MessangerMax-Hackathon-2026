@@ -1,0 +1,414 @@
+{
+  "analyzer": "rules",
+  "modes": [
+    "RULES"
+  ],
+  "modelVersion": [
+    "rules-baseline-v1"
+  ],
+  "metrics": {
+    "items": 29,
+    "substantive": 16,
+    "coverage": 0.5517241379310345,
+    "labelPrecision": {
+      "numerator": 16,
+      "denominator": 16,
+      "value": 1.0
+    },
+    "actionablePrecision": {
+      "numerator": 10,
+      "denominator": 10,
+      "value": 1.0
+    },
+    "evidenceValidity": {
+      "numerator": 16,
+      "denominator": 16,
+      "value": 1.0
+    }
+  },
+  "records": [
+    {
+      "dialogId": "completed-light",
+      "templateGroup": "completed-light",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000004",
+      "gold": "REPORTED_DONE",
+      "prediction": "REPORTED_DONE",
+      "correct": true,
+      "evidence": {
+        "start": 0,
+        "end": 52,
+        "quote": "Лампу на третьем этаже заменили, освещение работает."
+      },
+      "evidenceValid": true
+    },
+    {
+      "dialogId": "completed-light",
+      "templateGroup": "completed-light",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000005",
+      "gold": "INSUFFICIENT_INFORMATION",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "future-light",
+      "templateGroup": "future-light",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000004",
+      "gold": "PLANNED",
+      "prediction": "PLANNED",
+      "correct": true,
+      "evidence": {
+        "start": 0,
+        "end": 38,
+        "quote": "Лампу на третьем этаже заменим завтра."
+      },
+      "evidenceValid": true
+    },
+    {
+      "dialogId": "future-light",
+      "templateGroup": "future-light",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000005",
+      "gold": "INSUFFICIENT_INFORMATION",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "different-floor",
+      "templateGroup": "different-floor",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000004",
+      "gold": "UNRELATED",
+      "prediction": "UNRELATED",
+      "correct": true,
+      "evidence": {
+        "start": 0,
+        "end": 39,
+        "quote": "На втором этаже освещение восстановили."
+      },
+      "evidenceValid": true
+    },
+    {
+      "dialogId": "different-floor",
+      "templateGroup": "different-floor",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000005",
+      "gold": "INSUFFICIENT_INFORMATION",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "symptom-persists",
+      "templateGroup": "symptom-persists",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000004",
+      "gold": "SYMPTOM_PERSISTS",
+      "prediction": "SYMPTOM_PERSISTS",
+      "correct": true,
+      "evidence": {
+        "start": 0,
+        "end": 51,
+        "quote": "Лампу на третьем этаже заменили, но света пока нет."
+      },
+      "evidenceValid": true
+    },
+    {
+      "dialogId": "symptom-persists",
+      "templateGroup": "symptom-persists",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000005",
+      "gold": "INSUFFICIENT_INFORMATION",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "vague",
+      "templateGroup": "vague",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000004",
+      "gold": "INSUFFICIENT_INFORMATION",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "vague",
+      "templateGroup": "vague",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000005",
+      "gold": "INSUFFICIENT_INFORMATION",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "partial-door",
+      "templateGroup": "partial-door",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000004",
+      "gold": "PLANNED",
+      "prediction": "PLANNED",
+      "correct": true,
+      "evidence": {
+        "start": 43,
+        "end": 91,
+        "quote": "По свету на третьем этаже нужен повторный выезд."
+      },
+      "evidenceValid": true
+    },
+    {
+      "dialogId": "partial-door",
+      "templateGroup": "partial-door",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000005",
+      "gold": "REPORTED_DONE",
+      "prediction": "REPORTED_DONE",
+      "correct": true,
+      "evidence": {
+        "start": 0,
+        "end": 42,
+        "quote": "Доводчик отрегулирован, дверь закрывается."
+      },
+      "evidenceValid": true
+    },
+    {
+      "dialogId": "injection",
+      "templateGroup": "injection",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000004",
+      "gold": "INSUFFICIENT_INFORMATION",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "injection",
+      "templateGroup": "injection",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000005",
+      "gold": "INSUFFICIENT_INFORMATION",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "planned-cleaning",
+      "templateGroup": "planned-cleaning",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000110",
+      "gold": "PLANNED",
+      "prediction": "PLANNED",
+      "correct": true,
+      "evidence": {
+        "start": 0,
+        "end": 54,
+        "quote": "Уборку подъезда проведём в пятницу, график согласован."
+      },
+      "evidenceValid": true
+    },
+    {
+      "dialogId": "planned-cleaning",
+      "templateGroup": "planned-cleaning",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000111",
+      "gold": "INSUFFICIENT_INFORMATION",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "unrelated-entrance",
+      "templateGroup": "unrelated-entrance",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000120",
+      "gold": "UNRELATED",
+      "prediction": "UNRELATED",
+      "correct": true,
+      "evidence": {
+        "start": 0,
+        "end": 62,
+        "quote": "В подъезде 4 входную дверь отремонтировали, доводчик работает."
+      },
+      "evidenceValid": true
+    },
+    {
+      "dialogId": "unrelated-entrance",
+      "templateGroup": "unrelated-entrance",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000121",
+      "gold": "INSUFFICIENT_INFORMATION",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "persists-door",
+      "templateGroup": "persists-door",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000130",
+      "gold": "SYMPTOM_PERSISTS",
+      "prediction": "SYMPTOM_PERSISTS",
+      "correct": true,
+      "evidence": {
+        "start": 0,
+        "end": 68,
+        "quote": "Доводчик на входной двери заменили, но дверь всё ещё не закрывается."
+      },
+      "evidenceValid": true
+    },
+    {
+      "dialogId": "conflict-light",
+      "templateGroup": "conflict-light",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000140",
+      "gold": "CONFLICT",
+      "prediction": "CONFLICT",
+      "correct": true,
+      "evidence": {
+        "start": 0,
+        "end": 105,
+        "quote": "Освещение на третьем этаже восстановлено, свет работает. По акту проверки свет на третьем этаже не горит."
+      },
+      "evidenceValid": true
+    },
+    {
+      "dialogId": "insufficient-cleaning",
+      "templateGroup": "insufficient-cleaning",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000150",
+      "gold": "INSUFFICIENT_INFORMATION",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "insufficient-cleaning",
+      "templateGroup": "insufficient-cleaning",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000151",
+      "gold": "REPORTED_DONE",
+      "prediction": "REPORTED_DONE",
+      "correct": true,
+      "evidence": {
+        "start": 0,
+        "end": 47,
+        "quote": "Лампочку у лифта поменяли, освещение в порядке."
+      },
+      "evidenceValid": true
+    },
+    {
+      "dialogId": "emoji-typo",
+      "templateGroup": "emoji-typo",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000160",
+      "gold": "REPORTED_DONE",
+      "prediction": "REPORTED_DONE",
+      "correct": true,
+      "evidence": {
+        "start": 24,
+        "end": 62,
+        "quote": "Лампу у подьезда заменили, свет горит."
+      },
+      "evidenceValid": true
+    },
+    {
+      "dialogId": "emoji-typo",
+      "templateGroup": "emoji-typo",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000161",
+      "gold": "INSUFFICIENT_INFORMATION",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "long-cleaning",
+      "templateGroup": "long-cleaning",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000170",
+      "gold": "REPORTED_DONE",
+      "prediction": "REPORTED_DONE",
+      "correct": true,
+      "evidence": {
+        "start": 256,
+        "end": 314,
+        "quote": "Влажная уборка лестничных клеток проведена, мусор вывезен."
+      },
+      "evidenceValid": true
+    },
+    {
+      "dialogId": "long-cleaning",
+      "templateGroup": "long-cleaning",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000171",
+      "gold": "INSUFFICIENT_INFORMATION",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "other-planned",
+      "templateGroup": "other-planned",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000180",
+      "gold": "PLANNED",
+      "prediction": "PLANNED",
+      "correct": true,
+      "evidence": {
+        "start": 0,
+        "end": 72,
+        "quote": "Домофон пока не подключили, установку запланировали на следующую неделю."
+      },
+      "evidenceValid": true
+    },
+    {
+      "dialogId": "floor-guard",
+      "templateGroup": "floor-guard",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000190",
+      "gold": "UNRELATED",
+      "prediction": "UNRELATED",
+      "correct": true,
+      "evidence": {
+        "start": 0,
+        "end": 45,
+        "quote": "Заменили 3 лампы в подъезде 2 на пятом этаже."
+      },
+      "evidenceValid": true
+    },
+    {
+      "dialogId": "floor-guard",
+      "templateGroup": "floor-guard",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000191",
+      "gold": "REPORTED_DONE",
+      "prediction": "REPORTED_DONE",
+      "correct": true,
+      "evidence": {
+        "start": 0,
+        "end": 45,
+        "quote": "Заменили 3 лампы в подъезде 2 на пятом этаже."
+      },
+      "evidenceValid": true
+    }
+  ]
+}

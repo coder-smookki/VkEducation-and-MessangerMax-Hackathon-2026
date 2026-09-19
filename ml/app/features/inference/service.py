@@ -1,3 +1,5 @@
+from app.core.config import Settings
+from app.features.inference.rules_analyzer import analyze_rules
 from app.features.inference.schemas import (
     CompareRequest,
     CompareResponse,
@@ -10,8 +12,9 @@ from app.shared.vector_store import ChromaVectorStore
 
 
 class InferenceService:
-    def __init__(self, vector_store: ChromaVectorStore) -> None:
+    def __init__(self, vector_store: ChromaVectorStore, settings: Settings | None = None) -> None:
         self.vector_store = vector_store
+        self.compare_analyzer = settings.compare_analyzer if settings else "stub"
 
     @staticmethod
     def analyze(request: CompareRequest) -> CompareResponse:
@@ -36,4 +39,6 @@ class InferenceService:
         )
 
     def compare(self, request: CompareRequest) -> CompareResponse:
+        if self.compare_analyzer == "rules":
+            return analyze_rules(request)
         return self.analyze(request)
