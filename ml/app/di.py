@@ -19,8 +19,8 @@ class AppProvider(Provider):
         return ChromaVectorStore(settings.chroma_path, settings.chroma_collection, settings.chroma_enabled)
 
     @provide
-    def inference_service(self, vector_store: ChromaVectorStore) -> InferenceService:
-        return InferenceService(vector_store)
+    def inference_service(self, vector_store: ChromaVectorStore, settings: Settings) -> InferenceService:
+        return InferenceService(vector_store, settings)
 
 
 def create_container() -> AsyncContainer:
