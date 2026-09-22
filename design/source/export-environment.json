@@ -1,0 +1,8 @@
+{
+  "python": "3.13.14",
+  "playwright": "1.63.0",
+  "pillow": "12.3.0",
+  "chromium": "Google Chrome 153.0.8010.53",
+  "font": "Local Inter; font binaries excluded",
+  "render": "Inline HTML through page.set_content; no remote resources"
+}

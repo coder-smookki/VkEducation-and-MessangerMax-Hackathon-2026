@@ -1,6 +1,6 @@
 # Контракты и статус API
 
-Обновлено: 13.09.2026. Раздел «Сейчас» и внутренний inference API описывают код; рабочий Java REST - **согласуемый контракт будущего MVP** для параллельной реализации. Новые рабочие endpoints ещё закрыты. REST-примеры Java не являются результатами HTTP-вызовов. Подробности: [пять контрактов](../contracts/README.md).
+Обновлено: 22.09.2026. Раздел «Сейчас» и внутренний inference API описывают код; рабочий Java REST - **согласуемый контракт будущего MVP** для параллельной реализации. Новые рабочие endpoints ещё закрыты. REST-примеры Java не являются результатами HTTP-вызовов. Подробности: [пять контрактов](../contracts/README.md).
 
 ## Сейчас
 
@@ -29,20 +29,22 @@ Prefix `/api/v1`. UUID - строки, времена - UTC ISO 8601. Верси
 
 ## C1. Вход и черновик
 
+Реальный `CaseView` на исходном dev содержит caseId/houseId/authorId/submissionStatus/caseVersion/sourceRevision/sourceText/items/progress/createdAt. Поля visibility, assignedExecutorId и новые поля ниже - целевые расширения, которых в текущем record нет. `author-review.openapi.json` также SCHEMA_ONLY. На S-01 синхронизировать новые fixtures/схемы, на S-02 реализовать и проверить HTTP; не приводить UI к виду успешного ответа через подставленные константы.
+
 Правка/подтверждение списка дополнительно описаны машинно в [author-review.openapi.json](../contracts/author-review.openapi.json), статус SCHEMA_ONLY. [Контракт 03](../contracts/03-author-review.md) объясняет уровни NEEDS_DETAILS → READY_FOR_REVIEW → авторское CONFIRMED. Неполные proposals с null остаются в форме; PATCH принимает полные пункты. READY_FOR_REVIEW не означает готовые работы.
 
 | Метод и путь | Вход | Успешный результат | Владелец |
 |---|---|---|---|
-| GET `/csrf` | До/после входа, та же сессия | 200 `{headerName,token}`; Cache-Control: no-store | K1 |
-| POST `/auth/max` | `{initData}`, CSRF | 200 MeView + серверная cookie; после входа обновить CSRF | K1 |
-| POST `/auth/logout` | CSRF | 204, сессия недействительна | K1 |
-| GET `/me` | Сессия | 200 MeView | K1/S1 |
-| POST `/cases` | `{houseId,sourceText}` | 201 CaseView, Location карточки | S1 |
-| GET `/cases?houseId=&cursor=&limit=` | Сессия, необязательный фильтр дома | 200 `{items,nextCursor}` | S1 |
-| GET `/cases/{caseId}` | Сессия | 200 CaseView в доступной проекции | S1 |
-| PATCH `/cases/{caseId}/source` | `{expectedCaseVersion,sourceText}` | 200 CaseView с новой sourceRevision, только DRAFT | S1 |
-| PATCH `/cases/{caseId}/items` | `{expectedCaseVersion,items:[{itemId?,category,location,symptom}]}` | 200 CaseView, полная замена draft-списка | S1 |
-| POST `/cases/{caseId}/confirm` | `{expectedCaseVersion,sourceRevision}` | 200 CaseView, CONFIRMED | S1 |
+| GET `/csrf` | До/после входа, та же сессия | 200 `{headerName,token}`; Cache-Control: no-store | S-02 |
+| POST `/auth/max` | `{initData}`, CSRF | 200 MeView + серверная cookie; после входа обновить CSRF | S-02 |
+| POST `/auth/logout` | CSRF | 204, сессия недействительна | S-02 |
+| GET `/me` | Сессия | 200 MeView | S-02 |
+| POST `/cases` | `{houseId,sourceText}` | 201 CaseView, Location карточки | S-02 |
+| GET `/cases?houseId=&cursor=&limit=` | Сессия, необязательный фильтр дома | 200 `{items,nextCursor}` | S-02 |
+| GET `/cases/{caseId}` | Сессия | 200 CaseView в доступной проекции | S-02 |
+| PATCH `/cases/{caseId}/source` | `{expectedCaseVersion,sourceText}` | 200 CaseView с новой sourceRevision, только DRAFT | S-02 |
+| PATCH `/cases/{caseId}/items` | `{expectedCaseVersion,items:[{itemId?,category,location,symptom}]}` | 200 CaseView, полная замена draft-списка | S-02 |
+| POST `/cases/{caseId}/confirm` | `{expectedCaseVersion,sourceRevision}` | 200 CaseView, CONFIRMED | S-02 |
 
 MeView: `{userId,displayName,memberships:[{houseId,address,role}]}`. displayName может быть null. Роль относится к конкретному Membership и не является разрешением действовать во всех домах. Пустой memberships - проверенный аккаунт без доступа, а не автоматическая роль RESIDENT.
 
@@ -58,16 +60,18 @@ PATCH items содержит полный draft-список: неизвестн
 
 ## C2. Работы и наблюдения
 
+Назначения EXECUTOR (`executors`/`assignment`) - Should, не условие основного выпуска. В Must отчёт ведёт диспетчер. Урезанную проекцию исполнителя реализовать и проверить до включения его кабинета; enum в БД недостаточно.
+
 | Метод и путь | Вход | Результат | Владелец |
 |---|---|---|---|
-| GET `/houses/{houseId}/executors` | Диспетчер дома | 200 `{items:[{userId,displayName}]}` | S2 |
-| POST `/items/{itemId}/assignment` | `{expectedCaseVersion,expectedItemVersion,executorId}`; null снимает назначение | 200 CaseView | S2 |
-| POST `/cases/{caseId}/reports` | `{expectedCaseVersion,reportText,targetItemIds}` | 201 `{report,case,analysis:{status}}`, Location отчёта | S2/S4 |
-| GET `/reports/{reportId}` | Автор/диспетчер либо допустимый собственный отчёт исполнителя | 200 WorkReportView | S2 |
-| POST `/reports/{reportId}/links` | `{expectedCaseVersion,links:[{itemId,contentVersion,expectedWorkRound,workStatus}]}` | 200 CaseView | S2 |
-| POST `/items/{itemId}/observations` | `{expectedCaseVersion,expectedItemVersion,contentVersion,workRound,value,source}` | 200 CaseView | S3 |
-| POST `/items/{itemId}/administrative-decisions` | `{expectedCaseVersion,expectedItemVersion,action,reason}` | 200 CaseView | S3 |
-| GET `/cases/{caseId}/history?cursor=&limit=` | Автор/диспетчер | 200 `{items,nextCursor}` | S3 |
+| GET `/houses/{houseId}/executors` | Диспетчер дома | 200 `{items:[{userId,displayName}]}` | S-04 |
+| POST `/items/{itemId}/assignment` | `{expectedCaseVersion,expectedItemVersion,executorId}`; null снимает назначение | 200 CaseView | S-04 |
+| POST `/cases/{caseId}/reports` | `{expectedCaseVersion,reportText,targetItemIds}` | 201 `{report,case,analysis:{status}}`, Location отчёта | S-04 |
+| GET `/reports/{reportId}` | Автор/диспетчер либо допустимый собственный отчёт исполнителя | 200 WorkReportView | S-04 |
+| POST `/reports/{reportId}/links` | `{expectedCaseVersion,links:[{itemId,expectedItemVersion,contentVersion,expectedWorkRound,workStatus}]}` | 200 CaseView | S-04 |
+| POST `/items/{itemId}/observations` | `{expectedCaseVersion,expectedItemVersion,contentVersion,workRound,value,source}` | 200 CaseView | S-05 |
+| POST `/items/{itemId}/administrative-decisions` | `{expectedCaseVersion,expectedItemVersion,action,reason}` | 200 CaseView | S-05 |
+| GET `/cases/{caseId}/history?cursor=&limit=` | Автор/диспетчер | 200 `{items,nextCursor}` | S-05 |
 
 WorkReportView: `{reportId,caseId,actorId,reportText,targetItemIds,createdAt,links}`. Link: `{itemId,contentVersion,workRound,workStatus,confirmedBy,createdAt}`. Время и подтверждающий всегда серверные.
 
@@ -85,15 +89,15 @@ History item: `{eventId,actorId,eventType,createdAt,details}`. Details - раз�
 
 GET `/reports/{reportId}/suggestions` доступен автору/диспетчеру этого обращения, возвращает `{status,analysisId,result}`. Status: QUEUED, RUNNING, READY, STALE, MANUAL_REQUIRED. analysisId может быть null, если анализ не подключён; result присутствует только для актуального READY, иначе null. READY означает валидное предложение, а не выполненные работы.
 
-Result соответствует Python CompareResponse ниже. В MVP GET не ставит новые задачи. Анализ создаётся после сохранения отчёта атомарно с ним в S4; до S4 состояние явно MANUAL_REQUIRED. STUB не выдаётся за содержательный анализ даже при корректной форме ответа. Фактический mode всегда виден UI.
+Result соответствует Python CompareResponse ниже. В MVP GET не ставит новые задачи. Анализ создаётся после сохранения отчёта атомарно с ним в S-06; до S-06 состояние явно MANUAL_REQUIRED. STUB не выдаётся за содержательный анализ даже при корректной форме ответа. Фактический mode всегда виден UI.
 
 Python получает полный проверенный snapshot пунктов обращения, включённых Java в сравнение; пропуск внутри этого набора недопустим. UI всегда сохраняет общий разрешённый список и проверяет допустимость links через targetItemIds. Даже подходящая подсказка по пункту вне области отчёта не разрешает связать его.
 
 ## Настройки уведомлений и C4
 
-GET `/me/notification-settings` возвращает `{version,enabled}`. PUT того же пути принимает `{expectedSettingsVersion,enabled}` и Idempotency-Key, возвращает новое состояние. Это собственная версия настроек, не caseVersion. Отсутствующая настройка означает enabled=true, version=1 по согласованной политике тестового MVP; opt-out должен быть доступен до рассылки. Реализация - S5/K4.
+GET `/me/notification-settings` возвращает `{version,enabled}`. PUT того же пути принимает `{expectedSettingsVersion,enabled}` и Idempotency-Key, возвращает новое состояние. Это собственная версия настроек, не caseVersion. Отсутствующая настройка означает enabled=true, version=1 по согласованной политике тестового MVP; opt-out должен быть доступен до рассылки. Реализация - S-05/S-07/K-04.
 
-POST `/max/webhook` принимает ограниченный официальный Update и `X-Max-Bot-Api-Secret`, возвращает 200 только после durable inbox commit. Контекст callback, dedup и обработка несовпадения hash - [implementation.md](implementation.md). Не предполагать универсальный update_id: точный ключ выводится в K5a из реально поддержанного типа события.
+POST `/max/webhook` принимает ограниченный официальный Update и `X-Max-Bot-Api-Secret`, возвращает 200 только после durable inbox commit. Контекст callback, dedup и обработка несовпадения hash - [implementation.md](implementation.md). Не предполагать универсальный update_id: точный ключ выводится в K-07a из реально поддержанного типа события.
 
 ## Лимиты и ошибки
 
@@ -116,7 +120,7 @@ Java-валидация должна считать code points, UI - Array.from
 | 429 | RATE_LIMITED | Ограниченный retry чтения с учётом Retry-After |
 | 503 | Обязательная БД/сервис недоступен | Сохранение не подтверждено; повтор той же команды с тем же key |
 
-Ошибка optional ML не превращает успешное сохранение в 503. Для cookie POST без сессии и CSRF фильтры могут отклонить CSRF раньше проверки входа; K1 фиксирует фактический приоритет и тестирует его. Для нового login клиент сначала получает `/csrf`, для текущего состояния входа использует GET `/me`.
+Ошибка optional ML не превращает успешное сохранение в 503. Для cookie POST без сессии и CSRF фильтры могут отклонить CSRF раньше проверки входа; S-02 фиксирует фактический приоритет и тестирует его. Для нового login клиент сначала получает `/csrf`, для текущего состояния входа использует GET `/me`.
 
 ## Java → Python: существующий контракт
 
@@ -132,8 +136,44 @@ POST-тела Python ограничены 512 KiB до JSON-разбора, вк
 
 Evidence `{start,end,quote}` - диапазон `[start,end)` исходного reportText в Unicode code points. Java применяет offsetByCodePoints, JavaScript - Array.from(text). Нельзя нормализовать текст после расчёта offsets. Содержательная relation требует точной цитаты; INSUFFICIENT_INFORMATION может иметь null. STUB/MANUAL возвращают только отказ без evidence.
 
-Java проверяет принадлежность, полноту, дубли, версии и цитату. Проверка актуальности БД выполняется отдельно в S4. Сегодня connect timeout 1 с, read timeout 3 с; fallback MANUAL для всех пунктов, без retry внутри demo-запроса. Надёжные задачи/ограничения ответа - будущий S4, готовность модели - N2/N5.
+Java проверяет принадлежность, полноту, дубли, версии и цитату. Проверка актуальности БД выполняется отдельно в S-06. Сегодня connect timeout 1 с, read timeout 3 с; fallback MANUAL для всех пунктов, без retry внутри demo-запроса. Надёжные задачи/ограничения ответа - будущий S-06, безопасность анализатора и независимая оценка - S-06/Q-06.
 
 ## Проверенные источники MAX
 
 На 12.09.2026 [валидация MAX](https://dev.max.ru/docs/webapps/validation) описывает исходный initData и HMAC; [подписки](https://dev.max.ru/docs-api/methods/POST/subscriptions) указывают platform-api2.max.ru, HTTPS 443 и secret header. Перед реальной интеграцией сверить актуальность и TLS. Не отключать проверку сертификата и не использовать старые параметры PDF как действующую конфигурацию.
+
+## Дополнение для макетов 22.09: обязательные недостающие команды
+
+Все пути ниже **TARGET / TODO**, не существующие endpoints. Вместе реализуются DTO, SQL, авторизация, тесты и UI. Команды используют общие CSRF/Idempotency-Key/expectedCaseVersion и возвращают актуальную CaseView.
+
+| Метод и путь относительно /api/v1 | Вход / права | Ответ / экран | Задача |
+|---|---|---|---|
+| POST `/memberships/claim` | `{invitationCode}`; проверенная сессия; лимит попыток | 200 MeView; M03 → M04/список | S-02/K-02 |
+| POST `/cases/{caseId}/acceptance` | `{expectedCaseVersion}`; диспетчер дома, CONFIRMED | 200 CaseView, receipt.acceptedAt/acceptedBy; D03/A10 | S-03 |
+| PUT `/items/{itemId}/next-action` | `{expectedCaseVersion,expectedItemVersion,text,ownerId,updateDueAt}`; диспетчер дома | 200 CaseView; D04/A14 | S-03 |
+
+`invitationCode` не содержит назначаемые клиентом роль/дом. В БД хранится hash одноразового высокоэнтропийного кода, срок и разрешённое назначение RESIDENT, потребление атомарно. Повтор с тем же Idempotency-Key допускает безопасное восстановление результата после проверки прав. Тот же код с другим actor не переиспользуется. Повышенные роли задаёт технический оператор согласованной серверной операцией, не этот endpoint. Не раскрывать чужое членство в тексте ошибки. Лимит длины кода и публичные error codes закрепить в машинной схеме до UI-интеграции.
+
+### Поля для единой экранной модели
+
+- `displayNumber` - серверный человекочитаемый номер, не UUID и не полномочие; до реализации UI показывает короткую безопасную подпись существующего ID, не постоянное №124.
+- `receipt: {confirmedAt, acceptedAt, acceptedBy}`: confirmedAt после авторского подтверждения; acceptedAt/acceptedBy nullable до приёма. Приём не меняет workStatus/observation. Имя сотрудника в проекции доступно только разрешённому читателю.
+- `items[].nextAction: {text,ownerId,ownerDisplayName,updateDueAt,updatedAt} | null`. text 1..1000 Unicode code points. ownerId - активный диспетчер этого дома. updateDueAt - UTC timestamp; UI показывает местную дату и зону. При записи дата не в прошлом; просроченный существующий план отображается честно до обновления. Нет искусственного переноса срока вперёд.
+- `allowedActions` - серверный список допустимых действий для текущего actor/состояния, удобство интерфейса; сервер повторно проверяет команду. Не источник полномочий из клиента.
+- Очередь строит Java: непринятые CONFIRMED; активные пункты без положительного наблюдения; ожидание ответа; архивные пункты отдельным фильтром. Фильтры/курсор проверяются сервером. Обращение может содержать активные и архивные пункты одновременно.
+
+После архива nextAction сохраняется как исторический план и так подписывается. Текущий архив относится к **одному itemId**. Нет команды массового архива всего обращения в Must. D09/D10 адаптированы под этот контракт. Архив не меняет observed result, не удаляет исходный пункт и не уменьшает progress.total.
+
+### Переход бот → Mini App
+
+Публичный origin https://hackathon.lumnex.ru/. Формат MAX открытия - ссылка бота с `startapp`; конкретное имя бота берётся из конфигурации. Payload задаёт адресуемый caseId или непрозрачный серверный ключ, но не даёт прав. После входа GET карточки повторно проверяет доступ. `?appeal=124` из первоначального макета не переносить в рабочий протокол. [MAX Bridge](https://dev.max.ru/docs/webapps/bridge).
+
+Webhook имеет отдельный корневой путь `/max/webhook`, собственную проверку секрета/размера тела/dedup. Все ответы бота об изменении состояния строятся из результата тех же Java application-команд, что обслуживают Mini App.
+
+### Согласование перед включением
+
+Семён обновляет машинную REST-схему/Java DTO и валидируемые примеры, Кирилл - типы/формы, София - HTTP и доступ. До этого новые строки имеют статус TARGET. Таблица [screens.md](screens.md) связывает каждый экран с контрактом, задачей и проверкой. Python-схема не описывает REST-команды Java.
+
+### Фильтр диспетчерской очереди (TARGET)
+
+На GET `/cases` необязательный `queueState`: NEEDS_ACCEPTANCE, NEEDS_ACTION, AWAITING_AUTHOR, ARCHIVED. Только DISPATCHER в разрешённом houseId; неизвестное значение 422. NEEDS_ACCEPTANCE: CONFIRMED и нет acceptedAt. NEEDS_ACTION: принят и есть ACTIVE пункт без RESTORED, для которого нет актуального nextAction либо наблюдение PERSISTS/истёк срок обновления. AWAITING_AUTHOR: есть ACTIVE REPORTED_DONE с NOT_RECEIVED/CANNOT_CHECK. ARCHIVED: есть ARCHIVED пункт. Категории могут пересекаться, это фильтры по фактам, а не новый взаимоисключающий статус. Cursor привязан к houseId/queueState. Без фильтра серверный список не раскрывает DRAFT другого автора. Схему параметра и fixtures закрепить на S-01/S-03.

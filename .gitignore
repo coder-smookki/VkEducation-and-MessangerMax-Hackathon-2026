@@ -21,3 +21,6 @@ ml/data/*.sqlite3
 ml/data/chroma/
 ml/data/private/
 !ml/data/private/.gitkeep
+
+# Local research PDFs and private working deliverables
+output/

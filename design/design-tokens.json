@@ -1,0 +1,132 @@
+{
+  "name": "КОРЕНЬ / MAX",
+  "version": "2.0.0",
+  "basis": "Blueprint 21.09.2026 + проектный UI 22.09 + MAX UI 1df07bd7c740374cd40612c07654c3fade7c2e9f; синтетические состояния",
+  "themes": {
+    "light": {
+      "background": "#F5F7FA",
+      "surface": "#FFFFFF",
+      "surfaceSubtle": "#EDEEF2",
+      "text": "#060708",
+      "muted": "#505359",
+      "accent": "#0066CC",
+      "onAccent": "#FFFFFF",
+      "border": "#D7D9E0",
+      "controlBorder": "#7B7E85",
+      "success": "#20633F",
+      "successSurface": "#EAF4EC",
+      "warning": "#80520C",
+      "warningSurface": "#FBF2DF",
+      "danger": "#A12F2B",
+      "dangerSurface": "#FFF0EE",
+      "focus": "#0066CC",
+      "disabled": "#E9EBF1",
+      "disabledText": "#505359"
+    },
+    "dark": {
+      "background": "#0F0F12",
+      "surface": "#17181C",
+      "surfaceSubtle": "#25262D",
+      "text": "#FFFFFF",
+      "muted": "#C6C7CA",
+      "accent": "#479FFF",
+      "onAccent": "#060708",
+      "border": "#44464E",
+      "controlBorder": "#8A8D96",
+      "success": "#A0DEB5",
+      "successSurface": "#20382A",
+      "warning": "#F5CF8C",
+      "warningSurface": "#3A3020",
+      "danger": "#FFBBB3",
+      "dangerSurface": "#3B2523",
+      "focus": "#479FFF",
+      "disabled": "#434455",
+      "disabledText": "#FFFFFF"
+    }
+  },
+  "typography": {
+    "fontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Roboto\", \"Segoe UI\", Arial, sans-serif",
+    "root": 16,
+    "body": 18,
+    "secondary": 15,
+    "heading": 27,
+    "section": 20,
+    "lineHeight": 1.48,
+    "largeScale": 1.25,
+    "resizeTextCheckScale": 2.0,
+    "fontFilesIncluded": false
+  },
+  "spacing": [
+    4,
+    8,
+    12,
+    16,
+    20,
+    24,
+    32,
+    40,
+    48
+  ],
+  "radius": {
+    "card": 16,
+    "control": 12,
+    "small": 8,
+    "status": 999
+  },
+  "borderWidth": 1,
+  "target": {
+    "buttonMinHeight": 52,
+    "targetMin": 44,
+    "fieldMinHeight": 56
+  },
+  "motion": {
+    "pressMs": 90,
+    "stateMs": 160,
+    "sheetMs": 200,
+    "easing": "cubic-bezier(.2,.7,.2,1)",
+    "reducedMotion": "none; show final state immediately",
+    "noAutoDismissOfCriticalState": true
+  },
+  "breakpoints": {
+    "narrow": 320,
+    "mobile": 390,
+    "tablet": 768,
+    "wide": 1440
+  },
+  "viewport": {
+    "mobile": [
+      390,
+      844
+    ],
+    "tablet": [
+      768,
+      1024
+    ],
+    "wide": [
+      1440,
+      1000
+    ]
+  },
+  "export": {
+    "mobileScale": 2,
+    "stateScale": 2,
+    "botScale": 2,
+    "responsiveScale": 2,
+    "componentScale": 1
+  },
+  "layers": {
+    "base": 0,
+    "actionBar": 10,
+    "sheetScrim": 20,
+    "sheet": 30,
+    "focus": 40
+  },
+  "brand": {
+    "primary": "#007AFF",
+    "promoLight": "#6813FF",
+    "promoDark": "#A473FF",
+    "sourceCommit": "1df07bd7c740374cd40612c07654c3fade7c2e9f",
+    "source": "https://github.com/max-messenger/max-ui/blob/1df07bd7c740374cd40612c07654c3fade7c2e9f/src/styles/variables/appearance.scss",
+    "accessibilityNote": "Основной синий MAX #007AFF; интерактивный светлый #0066CC - адаптация для контраста обычного текста. Тёмный #479FFF взят из MAX states-button-primary-hover. Семантические статусы КОРНЯ сохранены."
+  }
+}

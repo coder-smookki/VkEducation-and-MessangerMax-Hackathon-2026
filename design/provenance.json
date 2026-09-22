@@ -1,0 +1,15 @@
+{
+  "imported": "2026-09-22",
+  "originalPackage": "koren-design",
+  "originalChecksumEntriesVerified": 221,
+  "sourceBlueprintSha256": "213e03129bf6e7d28f7c477a563cf0f41832c101a01bbd8debfa37e8d3cbb907",
+  "omitted": [
+    "docs/source-brief.txt"
+  ],
+  "changes": [
+    "MAX UI derived palette and system typography",
+    "item-level archive D09/D10 aligned with API",
+    "deeplink display number is not identity"
+  ],
+  "runtimeImplemented": false
+}

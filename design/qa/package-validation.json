@@ -1,0 +1,14 @@
+{
+  "date": "2026-09-22",
+  "scope": "Documentation and local synthetic design only",
+  "markdownFiles": 41,
+  "localMarkdownLinks": 483,
+  "taskIDs": 30,
+  "screenIDs": 62,
+  "primaryPNGs": 118,
+  "allPNGs": 190,
+  "layoutProblems": 0,
+  "interactionsPassed": 22,
+  "contrastPairsPassed": 32,
+  "brokenReferences": []
+}
