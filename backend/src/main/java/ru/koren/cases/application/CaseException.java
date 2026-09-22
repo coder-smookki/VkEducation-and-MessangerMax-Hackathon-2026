@@ -16,13 +16,13 @@ public class CaseException extends RuntimeException {
 
     // Never reflect caller input in messages; never leak the existence of a foreign resource.
     public static CaseException notFound() {
-        return new CaseException("NOT_FOUND", 404, "Resource is not available");
+        return new CaseException("RESOURCE_NOT_FOUND", 404, "Resource is not available");
     }
     public static CaseException forbidden() {
-        return new CaseException("FORBIDDEN", 403, "Action is not allowed for this actor");
+        return new CaseException("ACTION_FORBIDDEN", 403, "Action is not allowed for this actor");
     }
     public static CaseException versionConflict() {
-        return new CaseException("VERSION_CONFLICT", 409, "Expected version does not match the current state");
+        return new CaseException("CASE_VERSION_CONFLICT", 409, "Expected version does not match the current state");
     }
     public static CaseException alreadyConfirmed() {
         return new CaseException("CASE_ALREADY_CONFIRMED", 409, "Confirmed case content is frozen");

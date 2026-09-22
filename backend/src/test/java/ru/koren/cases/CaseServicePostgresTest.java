@@ -175,9 +175,9 @@ class CaseServicePostgresTest {
         UUID foreignItem = jdbc.queryForObject(
                 "SELECT id FROM case_item WHERE case_id = ?", UUID.class, foreign.caseId());
 
-        assertEquals("NOT_FOUND", errorOf(() -> service.patchItems(a, created.caseId(), 1, List.of(
+        assertEquals("RESOURCE_NOT_FOUND", errorOf(() -> service.patchItems(a, created.caseId(), 1, List.of(
                 new DraftItemInput(foreignItem, "LIGHTING", "Этаж 3", "Темно")), "items-4a")).code());
-        assertEquals("NOT_FOUND", errorOf(() -> service.patchItems(a, created.caseId(), 1, List.of(
+        assertEquals("RESOURCE_NOT_FOUND", errorOf(() -> service.patchItems(a, created.caseId(), 1, List.of(
                 new DraftItemInput(UUID.randomUUID(), "LIGHTING", "Этаж 3", "Темно")), "items-4b")).code());
 
         var tooMany = new ArrayList<DraftItemInput>();
@@ -207,7 +207,7 @@ class CaseServicePostgresTest {
         service.patchItems(a, created.caseId(), 2, List.of(
                 item("LIGHTING", "Этаж 3", "Темно"), item("ENTRANCE_DOOR", "Вход", "Не закрывается")), "items-5");
         // Stale sourceRevision is rejected even with the current caseVersion.
-        assertEquals("VERSION_CONFLICT", errorOf(() ->
+        assertEquals("CASE_VERSION_CONFLICT", errorOf(() ->
                 service.confirm(a, created.caseId(), 3, 1, "confirm-5stale")).code());
 
         var confirmed = service.confirm(a, created.caseId(), 3, withSource2.sourceRevision(), "confirm-5");
@@ -233,20 +233,20 @@ class CaseServicePostgresTest {
     @Test void draftIsVisibleOnlyToAuthorAndConfirmedToDispatcher() {
         var draft = draftWithTwoItems();
         for (UUID outsider : List.of(b, c, d)) {
-            assertEquals("NOT_FOUND", errorOf(() -> service.getCase(outsider, draft.caseId())).code());
+            assertEquals("RESOURCE_NOT_FOUND", errorOf(() -> service.getCase(outsider, draft.caseId())).code());
         }
         assertTrue(service.listCases(b, h1, null, null).items().isEmpty());
         assertTrue(service.listCases(d, h1, null, null).items().isEmpty());
         assertEquals(1, service.listCases(a, h1, null, null).items().size());
-        assertEquals("FORBIDDEN", errorOf(() -> service.listCases(b, h2, null, null)).code());
-        assertEquals("FORBIDDEN", errorOf(() -> service.create(c, h1, "Нет membership", "create-6denied")).code());
-        assertEquals("NOT_FOUND", errorOf(() -> service.patchSource(b, draft.caseId(), 2, "Подмена", "source-6")).code());
-        assertEquals("NOT_FOUND", errorOf(() -> service.confirm(d, draft.caseId(), 2, 1, "confirm-6")).code());
+        assertEquals("ACTION_FORBIDDEN", errorOf(() -> service.listCases(b, h2, null, null)).code());
+        assertEquals("ACTION_FORBIDDEN", errorOf(() -> service.create(c, h1, "Нет membership", "create-6denied")).code());
+        assertEquals("RESOURCE_NOT_FOUND", errorOf(() -> service.patchSource(b, draft.caseId(), 2, "Подмена", "source-6")).code());
+        assertEquals("RESOURCE_NOT_FOUND", errorOf(() -> service.confirm(d, draft.caseId(), 2, 1, "confirm-6")).code());
 
         var confirmed = service.confirm(a, draft.caseId(), 2, 1, "confirm-6ok");
         assertEquals(confirmed, service.getCase(d, confirmed.caseId()));
         assertEquals(1, service.listCases(d, h1, null, null).items().size());
-        assertEquals("NOT_FOUND", errorOf(() -> service.getCase(b, confirmed.caseId())).code());
+        assertEquals("RESOURCE_NOT_FOUND", errorOf(() -> service.getCase(b, confirmed.caseId())).code());
         assertTrue(service.listCases(b, h1, null, null).items().isEmpty());
         assertTrue(service.listCases(c, h2, null, null).items().isEmpty());
     }
@@ -275,7 +275,7 @@ class CaseServicePostgresTest {
             for (var future : futures) results.add(future.get(30, java.util.concurrent.TimeUnit.SECONDS));
             long successes = results.stream().filter(CaseView.class::isInstance).count();
             long conflicts = results.stream().filter(CaseException.class::isInstance)
-                    .map(CaseException.class::cast).filter(e -> e.code().equals("VERSION_CONFLICT")).count();
+                    .map(CaseException.class::cast).filter(e -> e.code().equals("CASE_VERSION_CONFLICT")).count();
             assertEquals(1, successes);
             assertEquals(1, conflicts);
         }
@@ -338,7 +338,7 @@ class CaseServicePostgresTest {
             jdbc.update("DELETE FROM service_case WHERE id = ?", created.caseId());
             jdbc.update("DELETE FROM membership WHERE user_id = ? AND house_id = ?", a, h1);
         });
-        assertEquals("FORBIDDEN", errorOf(() -> service.create(a, h1, "Текст", "create-9")).code());
+        assertEquals("ACTION_FORBIDDEN", errorOf(() -> service.create(a, h1, "Текст", "create-9")).code());
     }
 
     @Test void failureBetweenProjectionAndHistoryLeavesNoRows() {
