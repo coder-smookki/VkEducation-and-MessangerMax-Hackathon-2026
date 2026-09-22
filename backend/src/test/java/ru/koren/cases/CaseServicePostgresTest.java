@@ -137,8 +137,9 @@ class CaseServicePostgresTest {
         var created = service.create(a, h1, "Текст", "create-3");
         var first = service.patchItems(a, created.caseId(), 1,
                 List.of(item("LIGHTING", "Этаж 3", "Темно"), item("CLEANING", "Этаж 1", "Грязно")), "items-3a");
-        UUID light = first.items().get(0).itemId();
-        UUID cleaning = first.items().get(1).itemId();
+
+        UUID light = itemIdByCategory(first, "LIGHTING");
+        UUID cleaning = itemIdByCategory(first, "CLEANING");
 
         var second = service.patchItems(a, created.caseId(), 2, List.of(
                 new DraftItemInput(light, "LIGHTING", "Этаж 3", "Темно"),
@@ -408,5 +409,11 @@ class CaseServicePostgresTest {
                 service.create(a, h1, "Текст", "key with spaces")).code());
         assertEquals("INVALID_FIELDS", errorOf(() ->
                 service.create(a, h1, "Текст", "k".repeat(201))).code());
+    }
+
+    private static UUID itemIdByCategory(ru.koren.cases.application.CaseView view, String category) {
+        return view.items().stream()
+            .filter(item -> item.category().equals(category))
+            .findFirst().orElseThrow().itemId();
     }
 }
