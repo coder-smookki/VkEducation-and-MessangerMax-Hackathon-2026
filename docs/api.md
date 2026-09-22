@@ -29,7 +29,7 @@ Prefix `/api/v1`. UUID - строки, времена - UTC ISO 8601. Верси
 
 ## C1. Вход и черновик
 
-Реальный `CaseView` на исходном dev содержит caseId/houseId/authorId/submissionStatus/caseVersion/sourceRevision/sourceText/items/progress/createdAt. Поля visibility, assignedExecutorId и новые поля ниже - целевые расширения, которых в текущем record нет. `author-review.openapi.json` также SCHEMA_ONLY. На S-01 синхронизировать новые fixtures/схемы, на S-02 реализовать и проверить HTTP; не приводить UI к виду успешного ответа через подставленные константы.
+Реальный `CaseView` на исходном dev содержит caseId/houseId/authorId/submissionStatus/caseVersion/sourceRevision/sourceText/items/progress/createdAt. S-01: visibility (сейчас всегда FULL) и assignedExecutorId (сейчас всегда null, назначений нет) добавлены в Java-record; CaseViewContractTest проверяет, что review/confirm примеры проходят круговое чтение Java без потерь. Новые поля ниже (receipt, nextAction, allowedActions, displayNumber) - целевые расширения, которых в текущем record нет. `author-review.openapi.json` также SCHEMA_ONLY. На S-01 синхронизировать новые fixtures/схемы, на S-02 реализовать и проверить HTTP; не приводить UI к виду успешного ответа через подставленные константы.
 
 Правка/подтверждение списка дополнительно описаны машинно в [author-review.openapi.json](../contracts/author-review.openapi.json), статус SCHEMA_ONLY. [Контракт 03](../contracts/03-author-review.md) объясняет уровни NEEDS_DETAILS → READY_FOR_REVIEW → авторское CONFIRMED. Неполные proposals с null остаются в форме; PATCH принимает полные пункты. READY_FOR_REVIEW не означает готовые работы.
 
