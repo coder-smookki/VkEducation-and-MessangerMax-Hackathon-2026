@@ -279,6 +279,40 @@
           }
         }
       }
+    },
+    "/api/v1/me": {
+      "get": {
+        "operationId": "getMe",
+        "summary": "Текущий проверенный пользователь и его действующие дома",
+        "x-implementation-status": "SCHEMA_ONLY",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Only active memberships of the session user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -627,6 +661,67 @@
           "status",
           "code",
           "requestId"
+        ]
+      },
+      "Membership": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "One house context of the current user. The role belongs to this house only and is never taken from the client.",
+        "properties": {
+          "houseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "address": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "role": {
+            "enum": [
+              "RESIDENT",
+              "DISPATCHER",
+              "EXECUTOR"
+            ]
+          }
+        },
+        "required": [
+          "houseId",
+          "address",
+          "role"
+        ]
+      },
+      "MeView": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Verified MAX user and currently active memberships. Empty memberships means a verified account without house access, not an implicit RESIDENT.",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "memberships": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Membership"
+            }
+          }
+        },
+        "required": [
+          "userId",
+          "displayName",
+          "memberships"
         ]
       }
     }

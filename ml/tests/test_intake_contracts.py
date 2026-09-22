@@ -143,6 +143,8 @@ def test_confirmed_context_schema_is_current():
         ("AuthorCaseView", "review-items-response.json"),
         ("AuthorCaseView", "confirm-items-response.json"),
         ("Problem", "review-version-conflict.json"),
+        ("MeView", "me-response.json"),
+        ("MeView", "me-no-access.json"),
     ],
 )
 def test_planned_java_review_examples_match_schema(name, example):
