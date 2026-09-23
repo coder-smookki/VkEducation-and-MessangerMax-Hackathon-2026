@@ -147,9 +147,12 @@ def test_confirmed_context_schema_is_current():
         ("MeView", "me-no-access.json"),
         ("CasePage", "case-list-response.json"),
         ("CasePage", "case-list-empty.json"),
-        ("Problem", "unauthorized-401.json"),                ("Problem", "forbidden-403.json"),
+        ("Problem", "unauthorized-401.json"),
+        ("Problem", "forbidden-403.json"),
         ("Problem", "not-found-404.json"),
         ("Problem", "invalid-fields-422.json"),
+        ("Problem", "invalid-fields-422.json"),
+        ("TargetCaseView", "case-view-target.json"),
     ],
 )
 def test_planned_java_review_examples_match_schema(name, example):

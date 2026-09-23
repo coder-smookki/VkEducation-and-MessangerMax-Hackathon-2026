@@ -177,3 +177,29 @@ Webhook имеет отдельный корневой путь `/max/webhook`, 
 ### Фильтр диспетчерской очереди (TARGET)
 
 На GET `/cases` необязательный `queueState`: NEEDS_ACCEPTANCE, NEEDS_ACTION, AWAITING_AUTHOR, ARCHIVED. Только DISPATCHER в разрешённом houseId; неизвестное значение 422. NEEDS_ACCEPTANCE: CONFIRMED и нет acceptedAt. NEEDS_ACTION: принят и есть ACTIVE пункт без RESTORED, для которого нет актуального nextAction либо наблюдение PERSISTS/истёк срок обновления. AWAITING_AUTHOR: есть ACTIVE REPORTED_DONE с NOT_RECEIVED/CANNOT_CHECK. ARCHIVED: есть ARCHIVED пункт. Категории могут пересекаться, это фильтры по фактам, а не новый взаимоисключающий статус. Cursor привязан к houseId/queueState. Без фильтра серверный список не раскрывает DRAFT другого автора. Схему параметра и fixtures закрепить на S-01/S-03.
+
+
+## S-01, 23.09: сверка полей и несовместимости
+
+Проверено на реальном коде (`CaseView`, `CaseItemView`, `CasePage`, `CaseException`), а не по макетам.
+
+| Поле экрана | В БД | В Java | Решение |
+|---|---|---|---|
+| `visibility` | не нужно | **добавлено** (всегда FULL) | S-01 |
+| `assignedExecutorId` | нет | **добавлено** (всегда null) | назначения - S-04 |
+| `receipt.confirmedAt` | **есть**: `item_revision.confirmed_at` | нет | вывести в S-02, миграция не нужна |
+| `receipt.acceptedAt/acceptedBy` | нет | нет | миграция S-03 |
+| `items[].nextAction` | нет | нет | миграция S-03 |
+| `displayNumber` | нет | нет | миграция S-03 |
+| порядок пунктов | нет | сортировка по случайному UUID | миграция S-03 |
+| `allowedActions` | не нужно | нет | вычисляется в Java, S-02 |
+| `queueState` | - | - | параметр фильтра, S-03 |
+
+Найденные несовместимости и что сделано:
+
+1. Схема требовала `visibility`, примеры содержали `visibility` и `assignedExecutorId`, Java их не отдавала. Python сверял пример со схемой, Java - ни с чем. Поля добавлены в record; `CaseViewContractTest` читает общие примеры через `CaseView`/`CasePage` и сравнивает круговой прогон.
+2. Коды ошибок Java расходились с этим документом: `NOT_FOUND`, `FORBIDDEN`, `VERSION_CONFLICT`. Выровнены на `RESOURCE_NOT_FOUND`, `ACTION_FORBIDDEN`, `CASE_VERSION_CONFLICT`. Фронтенд их ещё не использовал.
+3. Пункты возвращаются в порядке случайного UUID: `ORDER BY i.id`. Из-за этого `patchItemsReplacesDraftListWithoutFictitiousRevisions` падал примерно в половине запусков; тест исправлен на поиск по категории. Сам дефект остаётся: автор видит пункты не в том порядке, в котором вводил. Severity P2, чинится колонкой позиции в S-03.
+4. Java читает неизвестные поля молча, без ошибки. Поэтому расхождение схемы и record не было заметно до кругового теста; по той же причине старые сохранённые ответы в `processed_command` останутся читаемыми после добавления полей.
+
+Новые машинные контракты: `MeView`, `Membership`, `CasePage` и пути `/me`, `/cases` со статусом SCHEMA_ONLY; `CaseReceipt`, `NextAction`, `TargetCaseView`, `TargetCaseItemView` и команды приёма, следующего шага, обмена приглашения и административного решения по одному пункту - со статусом TARGET. Примеры: me-response, me-no-access, case-list-response, case-list-empty, unauthorized-401, forbidden-403, not-found-404, invalid-fields-422, case-view-target.

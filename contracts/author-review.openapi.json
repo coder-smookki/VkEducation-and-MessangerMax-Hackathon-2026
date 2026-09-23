@@ -398,6 +398,512 @@
           }
         }
       }
+    },
+    "/api/v1/memberships/claim": {
+      "post": {
+        "operationId": "claimMembership",
+        "summary": "TARGET S-02: обменять одноразовый код приглашения на членство RESIDENT",
+        "x-implementation-status": "TARGET",
+        "x-task": "S-02/K-02",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "invitationCode": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "invitationCode"
+                ],
+                "description": "The code carries no client-assigned role or house; the server stores only its hash and consumes it atomically."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "MeView после успешного обмена",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нет сессии",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Нет активного членства или роли",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ресурс недоступен",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Версия устарела или ключ идемпотентности переиспользован",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Недопустимые поля или переход",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cases/{caseId}/acceptance": {
+      "post": {
+        "operationId": "acceptCase",
+        "summary": "TARGET S-03: диспетчер принимает подтверждённое обращение",
+        "x-implementation-status": "TARGET",
+        "x-task": "S-03",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "expectedCaseVersion": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "expectedCaseVersion"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "CaseView после команды",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TargetCaseView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нет сессии",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Нет активного членства или роли",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ресурс недоступен",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Версия устарела или ключ идемпотентности переиспользован",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Недопустимые поля или переход",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/items/{itemId}/next-action": {
+      "put": {
+        "operationId": "setNextAction",
+        "summary": "TARGET S-03: диспетчер задаёт следующий шаг по пункту",
+        "x-implementation-status": "TARGET",
+        "x-task": "S-03",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "itemId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "expectedCaseVersion": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "expectedItemVersion": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000,
+                    "pattern": "\\S"
+                  },
+                  "ownerId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "updateDueAt": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "expectedCaseVersion",
+                  "expectedItemVersion",
+                  "text",
+                  "ownerId",
+                  "updateDueAt"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "CaseView после команды",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TargetCaseView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нет сессии",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Нет активного членства или роли",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ресурс недоступен",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Версия устарела или ключ идемпотентности переиспользован",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Недопустимые поля или переход",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/items/{itemId}/administrative-decisions": {
+      "post": {
+        "operationId": "decideItem",
+        "summary": "TARGET: архив диспетчером или отзыв автором ОДНОГО пункта, причина обязательна",
+        "x-implementation-status": "TARGET",
+        "x-task": "S-05",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "itemId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "expectedCaseVersion": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "expectedItemVersion": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "action": {
+                    "enum": [
+                      "ARCHIVE",
+                      "WITHDRAW"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000,
+                    "pattern": "\\S"
+                  }
+                },
+                "required": [
+                  "expectedCaseVersion",
+                  "expectedItemVersion",
+                  "action",
+                  "reason"
+                ],
+                "description": "Archiving keeps observation and nextAction history, does not reduce progress.total and is never shown as a repair."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "CaseView после команды",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TargetCaseView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нет сессии",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Нет активного членства или роли",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ресурс недоступен",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Версия устарела или ключ идемпотентности переиспользован",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Недопустимые поля или переход",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -836,6 +1342,326 @@
           "items",
           "nextCursor"
         ]
+      },
+      "CaseReceipt": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "TARGET (S-03). Acceptance never changes workStatus or observation; acceptedBy is exposed only to a reader allowed to see it.",
+        "properties": {
+          "confirmedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "acceptedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "acceptedBy": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "confirmedAt",
+          "acceptedAt",
+          "acceptedBy"
+        ]
+      },
+      "NextAction": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "TARGET (S-03). ownerId is an active dispatcher of this house. An overdue plan stays visible as is; the server never shifts updateDueAt forward.",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000,
+            "pattern": "\\S"
+          },
+          "ownerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "ownerDisplayName": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "updateDueAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "text",
+          "ownerId",
+          "ownerDisplayName",
+          "updateDueAt",
+          "updatedAt"
+        ]
+      },
+      "TargetCaseItemView": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "itemVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "contentVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "LIGHTING",
+              "ENTRANCE_DOOR",
+              "CLEANING",
+              "OTHER"
+            ]
+          },
+          "location": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "pattern": "\\S"
+          },
+          "symptom": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000,
+            "pattern": "\\S"
+          },
+          "workRound": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "workStatus": {
+            "type": "string",
+            "enum": [
+              "NOT_ASSIGNED",
+              "PLANNED",
+              "REPORTED_DONE"
+            ]
+          },
+          "observation": {
+            "type": "string",
+            "enum": [
+              "NOT_RECEIVED",
+              "RESTORED",
+              "PERSISTS",
+              "CANNOT_CHECK"
+            ]
+          },
+          "administrativeStatus": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "ARCHIVED",
+              "WITHDRAWN"
+            ]
+          },
+          "administrativeReason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000,
+                "pattern": "\\S"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "assignedExecutorId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "nextAction": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NextAction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "itemId",
+          "itemVersion",
+          "contentVersion",
+          "category",
+          "location",
+          "symptom",
+          "workRound",
+          "workStatus",
+          "observation",
+          "administrativeStatus",
+          "administrativeReason",
+          "assignedExecutorId",
+          "nextAction"
+        ],
+        "description": "TARGET (S-03). CaseItemView plus the planned next action; kept after archiving as a historical plan."
+      },
+      "TargetCaseView": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "caseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "houseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "authorId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "submissionStatus": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "CONFIRMED"
+            ]
+          },
+          "caseVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "sourceRevision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "sourceText": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 5000,
+            "pattern": "\\S"
+          },
+          "visibility": {
+            "const": "FULL",
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "$ref": "#/components/schemas/TargetCaseItemView"
+            }
+          },
+          "progress": {
+            "$ref": "#/components/schemas/CaseProgress"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "displayNumber": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/CaseReceipt"
+          },
+          "allowedActions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "required": [
+          "caseId",
+          "houseId",
+          "authorId",
+          "submissionStatus",
+          "caseVersion",
+          "sourceRevision",
+          "sourceText",
+          "visibility",
+          "items",
+          "progress",
+          "createdAt",
+          "displayNumber",
+          "receipt",
+          "allowedActions"
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "submissionStatus": {
+                  "const": "CONFIRMED"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "items": {
+                  "minItems": 1
+                }
+              }
+            }
+          }
+        ],
+        "description": "TARGET (S-02/S-03). Not returned by Java yet. allowedActions is an interface convenience: the server re-checks every command and never trusts it as a permission."
       }
     }
   }
