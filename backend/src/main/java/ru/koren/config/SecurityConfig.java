@@ -11,6 +11,7 @@ import org.springframework.security.web.authentication.session.SessionAuthentica
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.http.HttpStatus;
 
 /** Closed by default. A route opens only together with authentication and object authorization. */
 @Configuration
@@ -31,6 +32,13 @@ public class SecurityConfig {
         http.securityContext(context -> context.securityContextRepository(securityContextRepository()));
         // Cookie commands stay CSRF protected; the token is readable by the Mini App script.
         http.csrf(csrf -> csrf.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse()));
+        http.exceptionHandling(handling -> handling.authenticationEntryPoint((request, response, e) -> {
+            response.setStatus(HttpStatus.UNAUTHORIZED.value());
+            response.setContentType("application/problem+json");
+            response.getWriter().write(
+                "{\"type\":\"about:blank\",\"title\":\"Нужен вход через MAX\","
+                    + "\"status\":401,\"code\":\"AUTH_REQUIRED\"}");
+        }));
         http.authorizeHttpRequests(auth -> {
             auth.requestMatchers(HttpMethod.GET, "/actuator/health").permitAll();
             if (environment.matchesProfiles("demo")) {

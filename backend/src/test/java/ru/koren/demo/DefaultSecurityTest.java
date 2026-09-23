@@ -15,7 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class DefaultSecurityTest {
     @Autowired MockMvc mvc;
     @Test void demoIsUnavailableOutsideDemoProfile() throws Exception {
-        mvc.perform(get("/api/v1/demo/case")).andExpect(status().isForbidden());
+        mvc.perform(get("/api/v1/demo/case")).andExpect(status().isUnauthorized());
         mvc.perform(get("/actuator/health")).andExpect(status().isOk());
     }
 }

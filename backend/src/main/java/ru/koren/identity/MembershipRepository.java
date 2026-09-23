@@ -20,7 +20,7 @@ public final class MembershipRepository {
             FROM membership m
             JOIN house h ON h.id = m.house_id
             WHERE m.user_id = ?
-            OERDER BY h.address, m.house_id
+            ORDER BY h.address, m.house_id
             """,
             (rs, rowNum) -> new MembershipView(
                 rs.getObject("house_id", UUID.class), rs.getString("address"),
