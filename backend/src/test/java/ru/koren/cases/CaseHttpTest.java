@@ -110,4 +110,28 @@ class CaseHttpTest {
             .andReturn().getResponse().getContentAsString();
         assertTrue(list.contains(caseId.toString()), "the author must see the case in the list");
     }
+
+    @Test
+    void revokedMembershipClosesAccessImmediately() throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        UUID author = login(session, AUTHOR_INIT_DATA);
+        UUID house = UUID.randomUUID();
+        jdbc.update("INSERT INTO house(id, address) VALUES (?, 'Дом с отзывом')", house);
+        jdbc.update("INSERT INTO membership VALUES (?,?,'RESIDENT')", author, house);
+        String created = mvc.perform(post("/api/v1/cases").session(session).with(csrf())
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"houseId\":\"" + house + "\",\"sourceText\":\"Течёт кран\"}"))
+            .andExpect(status().isCreated())
+            .andReturn().getResponse().getContentAsString();
+        UUID caseId = UUID.fromString(json.readTree(created).get("caseId").asString());
+        mvc.perform(get("/api/v1/cases/" + caseId).session(session)).andExpect(status().isOk());
+        // Revocation keeps the row: service_case still references it.
+        jdbc.update("UPDATE membership SET revoked_at = now() WHERE user_id = ? AND house_id = ?", author, house);
+        // The same live session must lose access without a new login.
+        mvc.perform(get("/api/v1/cases/" + caseId).session(session)).andExpect(status().isNotFound());
+        String me = mvc.perform(get("/api/v1/me").session(session)).andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        assertFalse(me.contains(house.toString()), "a revoked house must disappear from /me");
+    }
 }

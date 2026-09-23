@@ -32,8 +32,8 @@ public class CaseRepository {
     public record Cursor(Timestamp createdAt, UUID id) {}
 
     public Optional<String> membershipRole(UUID userId, UUID houseId) {
-        return jdbc.query("SELECT role FROM membership WHERE user_id = ? AND house_id = ?",
-                (rs, row) -> rs.getString("role"), userId, houseId).stream().findFirst();
+        return jdbc.query("SELECT role FROM membership WHERE user_id = ? AND house_id = ? AND revoked_at IS NULL",
+            (rs, rowNum) -> rs.getString(1), userId, houseId).stream().findFirst();
     }
 
     public Optional<CaseRow> findCase(UUID caseId) {
@@ -71,7 +71,8 @@ public class CaseRepository {
                 WHERE (CAST(? AS uuid) IS NULL OR c.house_id = CAST(? AS uuid))
                   AND (c.author_id = ? OR (c.submission_status = 'CONFIRMED' AND EXISTS (
                         SELECT 1 FROM membership m
-                        WHERE m.user_id = ? AND m.house_id = c.house_id AND m.role = 'DISPATCHER')))
+                        WHERE m.user_id = ? AND m.house_id = c.house_id AND m.role = 'DISPATCHER'
+                         AND m.revoked_at IS NULL )))
                 """;
         if (after == null) {
             return jdbc.query(visibility + " ORDER BY c.created_at DESC, c.id DESC LIMIT ?",

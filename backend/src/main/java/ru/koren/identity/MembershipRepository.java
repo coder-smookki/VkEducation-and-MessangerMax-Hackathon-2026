@@ -19,7 +19,7 @@ public final class MembershipRepository {
             SELECT m.house_id, h.address, m.role
             FROM membership m
             JOIN house h ON h.id = m.house_id
-            WHERE m.user_id = ?
+            WHERE m.user_id = ? AND m.revoked_at IS NULL
             ORDER BY h.address, m.house_id
             """,
             (rs, rowNum) -> new MembershipView(

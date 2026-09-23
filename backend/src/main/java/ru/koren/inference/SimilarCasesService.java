@@ -61,7 +61,7 @@ public class SimilarCasesService {
         var query = load(actor, caseId);
         List<UUID> ids = jdbc.query("""
                 SELECT c.id FROM service_case c
-                JOIN membership m ON m.house_id = c.house_id AND m.user_id = ?
+                JOIN membership m ON m.house_id = c.house_id AND m.user_id = ? AND m.revoked_at IS NULL
                 WHERE c.house_id = ? AND c.id <> ? AND c.submission_status = 'CONFIRMED'
                   AND (c.author_id = ? OR m.role = 'DISPATCHER')
                 ORDER BY c.created_at DESC, c.id LIMIT 20
@@ -82,7 +82,7 @@ public class SimilarCasesService {
                 SELECT c.id, c.house_id, c.version, c.source_revision, r.source_text
                 FROM service_case c
                 JOIN case_revision r ON r.case_id = c.id AND r.revision = c.source_revision
-                JOIN membership m ON m.house_id = c.house_id AND m.user_id = ?
+                JOIN membership m ON m.house_id = c.house_id AND m.user_id = ? AND m.revoked_at IS NULL
                 WHERE c.id = ? AND c.submission_status = 'CONFIRMED'
                   AND (c.author_id = ? OR m.role = 'DISPATCHER')
                 """, (rs, row) -> new Header(rs.getObject("id", UUID.class), rs.getObject("house_id", UUID.class),
