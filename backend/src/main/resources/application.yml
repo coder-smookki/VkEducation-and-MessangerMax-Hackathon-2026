@@ -23,6 +23,13 @@ spring:
 server:
   address: ${SERVER_ADDRESS:127.0.0.1}
   port: ${SERVER_PORT:8080}
+  servlet:
+    session:
+      timeout: 30m
+      cookie:
+        http-only: true
+        secure: ${SESSION_COOKIE_SECURE:false}
+        same-site: ${SESSION_COOKIE_SAMESITE:Lax}
   error:
     include-message: never
     include-stacktrace: never
@@ -39,3 +46,5 @@ koren:
   kafka:
     enabled: ${KAFKA_ENABLED:false}
     case-updates-topic: ${KAFKA_CASE_UPDATES_TOPIC:koren.case-updates}
+  max:
+    bot-token: ${MAX_BOT_TOKEN:}
