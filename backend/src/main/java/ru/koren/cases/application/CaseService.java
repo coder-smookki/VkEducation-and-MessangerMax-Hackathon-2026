@@ -293,8 +293,8 @@ public class CaseService {
             views.add(CaseItemView.of(item));
         }
         return new CaseView(row.id(), row.houseId(), row.authorId(), row.submissionStatus(), row.version(),
-                row.sourceRevision(), repo.currentSourceText(row.id(), row.sourceRevision()), views,
-                CaseProgress.from(states), row.createdAt().toInstant());
+                row.sourceRevision(), repo.currentSourceText(row.id(), row.sourceRevision()), "FULL",
+            views, CaseProgress.from(states), row.createdAt().toInstant());
     }
 
     private Map<String, Object> canonicalItemsBody(long expectedCaseVersion, List<DraftItemInput> items) {

@@ -1,0 +1,7 @@
+{
+  "type": "about:blank",
+  "title": "Проверьте заполненные поля",
+  "status": 422,
+  "code": "INVALID_FIELDS",
+  "requestId": "00000000-0000-0000-0000-000000000204"
+}
