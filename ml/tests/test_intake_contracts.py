@@ -151,7 +151,6 @@ def test_confirmed_context_schema_is_current():
         ("Problem", "forbidden-403.json"),
         ("Problem", "not-found-404.json"),
         ("Problem", "invalid-fields-422.json"),
-        ("Problem", "invalid-fields-422.json"),
         ("TargetCaseView", "case-view-target.json"),
     ],
 )
