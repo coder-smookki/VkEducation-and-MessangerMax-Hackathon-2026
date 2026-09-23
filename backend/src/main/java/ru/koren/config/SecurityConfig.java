@@ -45,8 +45,10 @@ public class SecurityConfig {
                 auth.requestMatchers(HttpMethod.GET, "/api/v1/demo/**").permitAll();
             }
             // Login itself cannot require a session; the signature is the credential.
+            auth.requestMatchers(HttpMethod.GET, "/api/v1/csrf").permitAll();
             auth.requestMatchers(HttpMethod.POST, "/api/v1/auth/max").permitAll();
             auth.requestMatchers(HttpMethod.GET, "/api/v1/me").authenticated();
+            auth.requestMatchers("/api/v1/cases", "/api/v1/cases/**").authenticated();
             auth.requestMatchers(HttpMethod.POST, "/api/v1/auth/logout").authenticated();
             // Case routes stay closed until object authorization is wired in the next step.
             auth.anyRequest().denyAll();
