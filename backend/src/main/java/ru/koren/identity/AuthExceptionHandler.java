@@ -16,4 +16,12 @@ public class AuthExceptionHandler {
         problem.setProperty("code", "INVALID_MAX_INIT_DATA");
         return problem;
     }
+
+    @ExceptionHandler(InvitationException.class)
+    ProblemDetail invitation(InvitationException e) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.valueOf(e.httpStatus()));
+        problem.setTitle("Приглашение отклонено");
+        problem.setProperty("code", e.code());
+        return problem;
+    }
 }

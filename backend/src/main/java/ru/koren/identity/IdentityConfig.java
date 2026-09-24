@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.web.authentication.session.SessionAuthenticationStrategy;
 import org.springframework.security.web.context.SecurityContextRepository;
+import org.springframework.transaction.PlatformTransactionManager;
 
 
 /** Wires MAX login. Without a bot token the validator bean is absent and /auth/max stays unavailable. */
@@ -44,5 +45,18 @@ public class IdentityConfig {
                                   MembershipRepository memberships, SecurityContextRepository contextRepository,
                                   SessionAuthenticationStrategy sessionStrategy) {
         return new AuthController(validator, provisioner, memberships, contextRepository, sessionStrategy);
+    }
+
+    @Bean
+    @Profile("!no-db")
+    InvitationRepository invitationRepository(JdbcTemplate jdbc) {
+        return new InvitationRepository(jdbc);
+    }
+
+    @Bean
+    @Profile("!no-db")
+    InvitationService invitationService(InvitationRepository invitations, JdbcTemplate jdbc,
+                                        PlatformTransactionManager transactions) {
+        return new InvitationService(invitations, jdbc, transactions);
     }
 }
