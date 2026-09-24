@@ -27,8 +27,8 @@ class DemoApiTest {
                 .andExpect(jsonPath("$.suggestions.length()").value(2));
     }
     @Test void applicationRoutesAreClosed() throws Exception {
-        mvc.perform(get("/api/v1/cases")).andExpect(status().isForbidden());
+        mvc.perform(get("/api/v1/cases")).andExpect(status().isUnauthorized());
         mvc.perform(post("/api/v1/cases").contentType("application/json").content("{}"))
-                .andExpect(status().isForbidden());
+            .andExpect(status().isForbidden());
     }
 }

@@ -258,10 +258,11 @@ public class CaseService {
 
     private CaseRow loadVisible(UUID actorId, UUID caseId) {
         var row = repo.findCase(caseId).orElseThrow(CaseException::notFound);
+        if (repo.membershipRole(actorId, row.houseId()).isEmpty()) throw CaseException.notFound();
         if (row.authorId().equals(actorId)) return row;
         if (row.isDraft()) throw CaseException.notFound();
         var role = repo.membershipRole(actorId, row.houseId());
-        if (role.isEmpty() || !role.get().equals("DISPATCHER")) throw CaseException.notFound();
+        if (!role.get().equals("DISPATCHER")) throw CaseException.notFound();
         return row;
     }
 
