@@ -1127,6 +1127,16 @@
                 "type": "null"
               }
             ]
+          },
+          "nextAction": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NextAction"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -1141,7 +1151,8 @@
           "observation",
           "administrativeStatus",
           "administrativeReason",
-          "assignedExecutorId"
+          "assignedExecutorId",
+          "nextAction"
         ]
       },
       "AuthorCaseView": {
@@ -1418,7 +1429,7 @@
       "NextAction": {
         "type": "object",
         "additionalProperties": false,
-        "description": "TARGET (S-03). ownerId is an active dispatcher of this house. An overdue plan stays visible as is; the server never shifts updateDueAt forward.",
+        "description": "A plan, never a report: it never implies that work happened. ownerId is an active dispatcher of this house. An overdue plan stays visible as is; the server never shifts updateDueAt forward. Kept after archiving as a historical plan, not as a live promise.",
         "properties": {
           "text": {
             "type": "string",
@@ -1464,124 +1475,6 @@
           "updateDueAt",
           "updatedAt"
         ]
-      },
-      "TargetCaseItemView": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "itemId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "itemVersion": {
-            "type": "integer",
-            "minimum": 1
-          },
-          "contentVersion": {
-            "type": "integer",
-            "minimum": 1
-          },
-          "category": {
-            "type": "string",
-            "enum": [
-              "LIGHTING",
-              "ENTRANCE_DOOR",
-              "CLEANING",
-              "OTHER"
-            ]
-          },
-          "location": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 300,
-            "pattern": "\\S"
-          },
-          "symptom": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 1000,
-            "pattern": "\\S"
-          },
-          "workRound": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "workStatus": {
-            "type": "string",
-            "enum": [
-              "NOT_ASSIGNED",
-              "PLANNED",
-              "REPORTED_DONE"
-            ]
-          },
-          "observation": {
-            "type": "string",
-            "enum": [
-              "NOT_RECEIVED",
-              "RESTORED",
-              "PERSISTS",
-              "CANNOT_CHECK"
-            ]
-          },
-          "administrativeStatus": {
-            "type": "string",
-            "enum": [
-              "ACTIVE",
-              "ARCHIVED",
-              "WITHDRAWN"
-            ]
-          },
-          "administrativeReason": {
-            "anyOf": [
-              {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 1000,
-                "pattern": "\\S"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "assignedExecutorId": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "nextAction": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/NextAction"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "itemId",
-          "itemVersion",
-          "contentVersion",
-          "category",
-          "location",
-          "symptom",
-          "workRound",
-          "workStatus",
-          "observation",
-          "administrativeStatus",
-          "administrativeReason",
-          "assignedExecutorId",
-          "nextAction"
-        ],
-        "description": "TARGET (S-03). CaseItemView plus the planned next action; kept after archiving as a historical plan."
       },
       "TargetCaseView": {
         "type": "object",
@@ -1637,7 +1530,7 @@
             "type": "array",
             "maxItems": 20,
             "items": {
-              "$ref": "#/components/schemas/TargetCaseItemView"
+              "$ref": "#/components/schemas/CaseItemView"
             }
           },
           "progress": {
@@ -1689,7 +1582,7 @@
             }
           }
         ],
-        "description": "TARGET (S-04+). AuthorCaseView plus allowedActions and per-item nextAction; not returned by Java yet. allowedActions is an interface convenience: the server re-checks every command and never trusts it as a permission."
+        "description": "TARGET (S-04+). AuthorCaseView plus allowedActions; not returned by Java yet. allowedActions is an interface convenience: the server re-checks every command and never trusts it as a permission."
       }
     }
   }

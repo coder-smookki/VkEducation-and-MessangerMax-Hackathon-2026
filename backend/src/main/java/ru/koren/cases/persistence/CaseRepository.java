@@ -26,7 +26,9 @@ public class CaseRepository {
     /** Current projection joined with the current content revision. */
     public record ItemRow(UUID id, int contentVersion, long version, int workRound, String workStatus,
                           String observation, String administrativeStatus, String administrativeReason,
-                          String category, String location, String symptom) {}
+                          String category, String location, String symptom,
+                          String nextActionText, UUID nextActionOwnerId,
+                          Timestamp nextActionUpdateDueAt, Timestamp nextActionUpdatedAt) {}
 
     public record ProcessedRow(String requestHash, int responseStatus, String responseBody) {}
 
@@ -62,15 +64,52 @@ public class CaseRepository {
     public List<ItemRow> findItems(UUID caseId) {
         return jdbc.query("""
                 SELECT i.id, i.content_version, i.version, i.work_round, i.work_status, i.observation,
-                       i.administrative_status, i.administrative_reason, r.category, r.location, r.symptom
+                       i.administrative_status, i.administrative_reason, r.category, r.location, r.symptom,
+                       i.next_action_text, i.next_action_owner_id,
+                       i.next_action_update_due_at, i.next_action_updated_at
                 FROM case_item i
                 JOIN item_revision r ON r.item_id = i.id AND r.content_version = i.content_version
                 WHERE i.case_id = ? ORDER BY i.position
                 """, (rs, row) -> new ItemRow(rs.getObject("id", UUID.class), rs.getInt("content_version"),
-                rs.getLong("version"), rs.getInt("work_round"), rs.getString("work_status"),
-                rs.getString("observation"), rs.getString("administrative_status"),
-                rs.getString("administrative_reason"), rs.getString("category"),
-                rs.getString("location"), rs.getString("symptom")), caseId);
+            rs.getLong("version"), rs.getInt("work_round"), rs.getString("work_status"),
+            rs.getString("observation"), rs.getString("administrative_status"),
+            rs.getString("administrative_reason"), rs.getString("category"),
+            rs.getString("location"), rs.getString("symptom"),
+            rs.getString("next_action_text"), rs.getObject("next_action_owner_id", UUID.class),
+            rs.getTimestamp("next_action_update_due_at"), rs.getTimestamp("next_action_updated_at")), caseId);
+    }
+
+    /** Everything a per-item command needs to authorize itself, in one round trip. */
+    public record ItemContextRow(UUID itemId, long itemVersion, String administrativeStatus,
+                                 UUID caseId, UUID houseId, long caseVersion, String submissionStatus) {
+        public boolean isDraft() { return "DRAFT".equals(submissionStatus); }
+    }
+
+    public Optional<ItemContextRow> findItemContext(UUID itemId) {
+        return jdbc.query("""
+                SELECT i.id, i.version, i.administrative_status,
+                       c.id AS case_id, c.house_id, c.version AS case_version, c.submission_status
+                FROM case_item i
+                JOIN service_case c ON c.id = i.case_id
+                WHERE i.id = ?
+                """, (rs, row) -> new ItemContextRow(rs.getObject("id", UUID.class), rs.getLong("version"),
+            rs.getString("administrative_status"), rs.getObject("case_id", UUID.class),
+            rs.getObject("house_id", UUID.class), rs.getLong("case_version"),
+            rs.getString("submission_status")), itemId).stream().findFirst();
+    }
+
+    /** Optimistic lock on the item row: zero rows means the caller held a stale itemVersion. */
+    public int setNextAction(UUID itemId, long expectedItemVersion,
+                             String text, UUID ownerId, Timestamp updateDueAt) {
+        return jdbc.update("""
+                UPDATE case_item
+                   SET version = version + 1,
+                       next_action_text = ?,
+                       next_action_owner_id = ?,
+                       next_action_update_due_at = ?,
+                       next_action_updated_at = now()
+                 WHERE id = ? AND version = ?
+                """, text, ownerId, updateDueAt, itemId, expectedItemVersion);
     }
 
     /** Own cases of any status plus confirmed cases of houses where the actor is a dispatcher. */

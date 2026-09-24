@@ -26,7 +26,8 @@
       "observation": "NOT_RECEIVED",
       "administrativeStatus": "ACTIVE",
       "administrativeReason": null,
-      "assignedExecutorId": null
+      "assignedExecutorId": null,
+      "nextAction": null
     },
     {
       "itemId": "00000000-0000-0000-0000-000000000005",
@@ -40,7 +41,8 @@
       "observation": "NOT_RECEIVED",
       "administrativeStatus": "ACTIVE",
       "administrativeReason": null,
-      "assignedExecutorId": null
+      "assignedExecutorId": null,
+      "nextAction": null
     }
   ],
   "progress": {

@@ -10,18 +10,19 @@ import ru.koren.cases.domain.ItemState.WorkStatus;
 public record CaseItemView(UUID itemId, long itemVersion, int contentVersion, String category, String location,
                            String symptom, int workRound, WorkStatus workStatus, Observation observation,
                            AdministrativeStatus administrativeStatus, String administrativeReason,
-                           UUID assignedExecutorId) {
+                           UUID assignedExecutorId, NextActionView nextAction) {
     public CaseItemView {
         if (administrativeStatus != AdministrativeStatus.ACTIVE
-                && (administrativeReason == null || administrativeReason.isBlank())) {
+            && (administrativeReason == null || administrativeReason.isBlank())) {
             throw new IllegalArgumentException("Non-active item requires a reason");
         }
     }
 
     static CaseItemView of(ru.koren.cases.persistence.CaseRepository.ItemRow row) {
         return new CaseItemView(row.id(), row.version(), row.contentVersion(), row.category(), row.location(),
-                row.symptom(), row.workRound(), ItemState.WorkStatus.valueOf(row.workStatus()),
-                ItemState.Observation.valueOf(row.observation()),
-                ItemState.AdministrativeStatus.valueOf(row.administrativeStatus()), row.administrativeReason(), null);
+            row.symptom(), row.workRound(), ItemState.WorkStatus.valueOf(row.workStatus()),
+            ItemState.Observation.valueOf(row.observation()),
+            ItemState.AdministrativeStatus.valueOf(row.administrativeStatus()), row.administrativeReason(),
+            null, NextActionView.of(row));
     }
 }

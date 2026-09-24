@@ -22,6 +22,7 @@ import ru.koren.cases.application.CaseView;
 import ru.koren.cases.application.DraftItemInput;
 import ru.koren.cases.persistence.CaseRepository;
 import static org.junit.jupiter.api.Assertions.*;
+import java.time.Clock;
 
 /** Real PostgreSQL only; skipped without DB_TEST_URL. Fixture: A/B residents of H1, C resident of H2, D dispatcher of H1. */
 @SpringBootTest(properties = {
@@ -347,7 +348,7 @@ class CaseServicePostgresTest {
                 throw new IllegalStateException("Injected failure after projection");
             }
         };
-        var failingService = new CaseService(failing, transactions);
+        var failingService = new CaseService(failing, transactions, Clock.systemUTC());
         assertThrows(IllegalStateException.class,
                 () -> failingService.create(a, h1, "Откатываемый текст", "create-10"));
         assertEquals(0, count("SELECT count(*) FROM service_case WHERE author_id = ?", a));

@@ -26,6 +26,9 @@ import ru.koren.cases.persistence.CaseRepository.Cursor;
 import ru.koren.cases.persistence.CaseRepository.ProcessedRow;
 import tools.jackson.databind.json.JsonMapper;
 import java.time.Instant;
+import java.time.Clock;
+
+
 /**
  * S1 use cases for drafts and confirmation. actorId must come from server authentication, never a request body.
  * Every command: validate -> authorize -> idempotent replay check -> CAS on caseVersion -> effect -> audit ->
@@ -35,6 +38,7 @@ import java.time.Instant;
 @Profile("!no-db")
 public class CaseService {
     static final int MAX_SOURCE_CODE_POINTS = 5000;
+    static final int MAX_NEXT_ACTION_CODE_POINTS = 1000;
     static final int MAX_LOCATION_CODE_POINTS = 300;
     static final int MAX_SYMPTOM_CODE_POINTS = 1000;
     static final int MAX_ITEMS = 20;
@@ -46,10 +50,12 @@ public class CaseService {
     private final CaseRepository repo;
     private final TransactionTemplate tx;
     private final TransactionTemplate readTx;
+    private final Clock clock;
     private final JsonMapper json = JsonMapper.builder().build();
 
-    public CaseService(CaseRepository repo, PlatformTransactionManager transactions) {
+    public CaseService(CaseRepository repo, PlatformTransactionManager transactions, Clock clock) {
         this.repo = repo;
+        this.clock = clock;
         tx = new TransactionTemplate(transactions);
         readTx = new TransactionTemplate(transactions);
         readTx.setReadOnly(true);
@@ -108,7 +114,7 @@ public class CaseService {
         return runCommand(actorId, "patch-source", idempotencyKey, hash, 200, access, () -> {
             loadDraftForAuthor(actorId, caseId);
             if (repo.bumpDraftCaseVersion(caseId, expectedCaseVersion) == 0) {
-                return conflictOrReplay(actorId, "patch-source", idempotencyKey, hash, caseId, access);
+                return conflictOrReplay(actorId, "patch-source", idempotencyKey, hash, caseId, access, true);
             }
             int revision = repo.findCase(caseId).orElseThrow().sourceRevision();
             int nextRevision = revision + 1;
@@ -132,7 +138,7 @@ public class CaseService {
         return runCommand(actorId, "patch-items", idempotencyKey, hash, 200, access, () -> {
             loadDraftForAuthor(actorId, caseId);
             if (repo.bumpDraftCaseVersion(caseId, expectedCaseVersion) == 0) {
-                return conflictOrReplay(actorId, "patch-items", idempotencyKey, hash, caseId, access);
+                return conflictOrReplay(actorId, "patch-items", idempotencyKey, hash, caseId, access, true);
             }
             applyItemReplacement(caseId, items);
             repo.insertAudit(caseId, actorId, "CASE_ITEMS_PATCHED",
@@ -154,7 +160,7 @@ public class CaseService {
         return runCommand(actorId, "confirm", idempotencyKey, hash, 200, access, () -> {
             var row = loadDraftForAuthor(actorId, caseId);
             if (repo.bumpDraftCaseVersion(caseId, expectedCaseVersion) == 0) {
-                return conflictOrReplay(actorId, "confirm", idempotencyKey, hash, caseId, access);
+                return conflictOrReplay(actorId, "confirm", idempotencyKey, hash, caseId, access, true);
             }
             // CAS success pins the row we read: the version is unchanged since our read.
             if (row.sourceRevision() != sourceRevision) throw CaseException.versionConflict();
@@ -243,12 +249,13 @@ public class CaseService {
 
     /** A lost CAS may be a concurrent identical retry that has just committed; check before reporting 409. */
     private TxOutcome conflictOrReplay(UUID actorId, String operation, String key, String hash,
-                                       UUID caseId, Runnable accessRecheck) {
+                                       UUID caseId, Runnable accessRecheck, boolean draftOnly) {
         var prior = repo.findProcessed(actorId, operation, key);
         if (prior.isPresent()) return TxOutcome.replay(replay(prior.get(), hash, accessRecheck));
-        var current = repo.findCase(caseId);
-        if (current.isEmpty() || !current.get().authorId().equals(actorId)) throw CaseException.notFound();
-        if (!current.get().isDraft()) throw CaseException.alreadyConfirmed();
+        // The command's own access rule decides 404/403 here; a dispatcher is not the author.
+        accessRecheck.run();
+        var current = repo.findCase(caseId).orElseThrow(CaseException::notFound);
+        if (draftOnly && !current.isDraft()) throw CaseException.alreadyConfirmed();
         throw CaseException.versionConflict();
     }
 
@@ -416,7 +423,7 @@ public class CaseService {
                 throw CaseException.invalidTransition("The case is already accepted");
             }
             if (repo.bumpConfirmedCaseVersion(caseId, expectedCaseVersion) == 0) {
-                return conflictOrReplay(actorId, "accept", idempotencyKey, hash, caseId, access);
+                return conflictOrReplay(actorId, "accept", idempotencyKey, hash, caseId, access, true);
             }
             // Re-accepting is not an error, but it must not overwrite who accepted first.
             repo.acceptCase(caseId, actorId);
@@ -426,10 +433,61 @@ public class CaseService {
         });
     }
 
+    public CaseView setNextAction(UUID actorId, UUID itemId, long expectedCaseVersion, long expectedItemVersion,
+                                  String text, UUID ownerId, Instant updateDueAt, String idempotencyKey) {
+        Objects.requireNonNull(actorId);
+        Objects.requireNonNull(itemId);
+        validateKey(idempotencyKey);
+        validateVersion(expectedCaseVersion);
+        validateVersion(expectedItemVersion);
+        validateText("text", text, MAX_NEXT_ACTION_CODE_POINTS);
+        if (ownerId == null) throw CaseException.invalidFields("ownerId is required");
+        if (updateDueAt != null && updateDueAt.isBefore(clock.instant())) {
+            throw CaseException.invalidFields("updateDueAt must not be in the past");
+        }
+        String hash = hash("next-action", itemId, orderedMap(
+            "expectedCaseVersion", expectedCaseVersion, "expectedItemVersion", expectedItemVersion,
+            "text", text, "ownerId", ownerId,
+            "updateDueAt", updateDueAt == null ? null : updateDueAt.toString()));
+        Runnable access = () -> requireDispatcherOfItem(actorId, itemId);
+        return runCommand(actorId, "next-action", idempotencyKey, hash, 200, access, () -> {
+            var ctx = requireDispatcherOfItem(actorId, itemId);
+            if (ctx.isDraft()) {
+                throw CaseException.invalidTransition("A next action needs a confirmed case");
+            }
+            if (!"ACTIVE".equals(ctx.administrativeStatus())) {
+                throw CaseException.invalidTransition("A next action needs an active item");
+            }
+            var ownerRole = repo.membershipRole(ownerId, ctx.houseId());
+            if (ownerRole.isEmpty() || !"DISPATCHER".equals(ownerRole.get())) {
+                throw CaseException.invalidFields("ownerId must be an active dispatcher of this house");
+            }
+            if (repo.bumpConfirmedCaseVersion(ctx.caseId(), expectedCaseVersion) == 0) {
+                return conflictOrReplay(actorId, "next-action", idempotencyKey, hash, ctx.caseId(), access, false);
+            }
+            if (repo.setNextAction(itemId, expectedItemVersion, text, ownerId,
+                updateDueAt == null ? null : Timestamp.from(updateDueAt)) == 0) {
+                throw CaseException.itemVersionConflict();
+            }
+            repo.insertAudit(ctx.caseId(), actorId, "ITEM_NEXT_ACTION_SET",
+                json.writeValueAsString(orderedMap("caseId", ctx.caseId(), "itemId", itemId,
+                    "ownerId", ownerId)));
+            return TxOutcome.fresh(viewOf(repo.findCase(ctx.caseId()).orElseThrow()));
+        });
+    }
+
     private void requireDispatcherOfCase(UUID actorId, UUID caseId) {
         var row = repo.findCase(caseId).orElseThrow(CaseException::notFound);
         var role = repo.membershipRole(actorId, row.houseId());
         if (role.isEmpty() || !role.get().equals("DISPATCHER")) throw CaseException.forbidden();
+    }
+
+    /** A per-item command authorizes itself through the case that owns the item. */
+    private CaseRepository.ItemContextRow requireDispatcherOfItem(UUID actorId, UUID itemId) {
+        var ctx = repo.findItemContext(itemId).orElseThrow(CaseException::notFound);
+        loadVisible(actorId, ctx.caseId());
+        requireDispatcherOfCase(actorId, ctx.caseId());
+        return ctx;
     }
 
     private static Instant instant(java.sql.Timestamp value) {

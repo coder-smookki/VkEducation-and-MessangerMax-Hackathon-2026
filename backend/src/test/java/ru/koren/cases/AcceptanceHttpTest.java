@@ -1,0 +1,259 @@
+package ru.koren.cases;
+
+import java.sql.Timestamp;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
+import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockHttpSession;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
+import tools.jackson.databind.json.JsonMapper;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+/**
+ * S-03 over HTTP: acceptance of a confirmed case and the next action of one item.
+ * Author A is a resident; the second signed MAX user is the dispatcher of the same house.
+ * The clock is fixed at 2027-01-15T08:00:00Z, so a due date is in the past or in the future on purpose.
+ */
+@SpringBootTest(properties = {
+    "spring.datasource.url=${DB_TEST_URL}", "spring.datasource.username=${DB_TEST_USER:koren}",
+    "spring.datasource.password=${DB_TEST_PASSWORD:koren_local_only}",
+    "koren.max.bot-token=k1-test-bot-token:not-a-real-secret"
+})
+@AutoConfigureMockMvc
+@EnabledIfEnvironmentVariable(named = "DB_TEST_URL", matches = ".+")
+class AcceptanceHttpTest {
+
+    private static final String AUTHOR_INIT_DATA =
+        "user=%7B%22id%22%3A424242%2C%22first_name%22%3A%22Max%22%2C%22last_name%22%3A%22User%22"
+            + "%2C%22username%22%3Anull%2C%22language_code%22%3A%22ru%22%7D&ip=192.168.0.1"
+            + "&auth_date=1800000000&query_id=AAE1YmYAAAAANTmv4t3W0h01"
+            + "&hash=fa2ff9a4255c0e16b0e5be5a4bc6bded45aadad37b589cebb251fc95d7080ad4";
+    private static final String DISPATCHER_INIT_DATA =
+        "start_param=ref%3Da%3Db&auth_date=1800000000"
+            + "&user=%7B%22id%22%3A31337%2C%22first_name%22%3A%22Eq%22%2C%22last_name%22%3Anull%7D"
+            + "&hash=b27c3f005d80d8ccfcca2d27e0dc2d5c33f0be1ee3526adf0945cc854d11cc98";
+
+    private static final String FUTURE_DUE = "2027-01-20T12:00:00Z";
+    private static final String PAST_DUE = "2026-09-01T12:00:00Z";
+
+    @TestConfiguration
+    static class FixedClockConfig {
+        @Bean
+        @Primary
+        Clock testClock() {
+            return Clock.fixed(Instant.ofEpochSecond(1_800_000_000L), ZoneOffset.UTC);
+        }
+    }
+
+    @Autowired MockMvc mvc;
+    @Autowired JdbcTemplate jdbc;
+
+    private final JsonMapper json = JsonMapper.builder().build();
+
+    private record Fixture(MockHttpSession authorSession, MockHttpSession dispatcherSession,
+                           UUID author, UUID dispatcher, UUID house, UUID caseId) {}
+
+    private UUID login(MockHttpSession session, String initData) throws Exception {
+        String body = mvc.perform(post("/api/v1/auth/max").session(session).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"initData\":\"" + initData + "\"}"))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        return UUID.fromString(json.readTree(body).get("userId").asString());
+    }
+
+    /** A fresh house with a resident author and a dispatcher, plus one draft case. Case version is 1. */
+    private Fixture newDraft(String address) throws Exception {
+        MockHttpSession authorSession = new MockHttpSession();
+        UUID author = login(authorSession, AUTHOR_INIT_DATA);
+        MockHttpSession dispatcherSession = new MockHttpSession();
+        UUID dispatcher = login(dispatcherSession, DISPATCHER_INIT_DATA);
+        UUID house = UUID.randomUUID();
+        jdbc.update("INSERT INTO house(id, address) VALUES (?, ?)", house, address);
+        jdbc.update("INSERT INTO membership VALUES (?,?,'RESIDENT'), (?,?,'DISPATCHER')",
+            author, house, dispatcher, house);
+        String created = mvc.perform(post("/api/v1/cases").session(authorSession).with(csrf())
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"houseId\":\"" + house + "\",\"sourceText\":\"На третьем этаже темно\"}"))
+            .andExpect(status().isCreated())
+            .andReturn().getResponse().getContentAsString();
+        return new Fixture(authorSession, dispatcherSession, author, dispatcher, house,
+            UUID.fromString(json.readTree(created).get("caseId").asString()));
+    }
+
+    /** One item, then confirmation. The case version is 3 afterwards. */
+    private String confirmWithOneItem(Fixture f) throws Exception {
+        mvc.perform(patch("/api/v1/cases/" + f.caseId() + "/items").session(f.authorSession()).with(csrf())
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"expectedCaseVersion\":1,\"items\":[{\"itemId\":null,\"category\":\"LIGHTING\","
+                    + "\"location\":\"Этаж 3\",\"symptom\":\"Не горит свет\"}]}"))
+            .andExpect(status().isOk());
+        return mvc.perform(post("/api/v1/cases/" + f.caseId() + "/confirm").session(f.authorSession()).with(csrf())
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"expectedCaseVersion\":2,\"sourceRevision\":1}"))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+    }
+
+    private ResultActions acceptance(Fixture f, MockHttpSession session, String key, String body) throws Exception {
+        return mvc.perform(post("/api/v1/cases/" + f.caseId() + "/acceptance").session(session).with(csrf())
+            .header("Idempotency-Key", key)
+            .contentType(MediaType.APPLICATION_JSON).content(body));
+    }
+
+    private ResultActions nextAction(MockHttpSession session, UUID itemId, String key, String body) throws Exception {
+        return mvc.perform(put("/api/v1/items/" + itemId + "/next-action").session(session).with(csrf())
+            .header("Idempotency-Key", key)
+            .contentType(MediaType.APPLICATION_JSON).content(body));
+    }
+
+    private String plan(UUID owner, long caseVersion, long itemVersion, String text, String due) {
+        return "{\"expectedCaseVersion\":" + caseVersion + ",\"expectedItemVersion\":" + itemVersion
+            + ",\"text\":\"" + text + "\",\"ownerId\":\"" + owner + "\""
+            + ",\"updateDueAt\":" + (due == null ? "null" : "\"" + due + "\"") + "}";
+    }
+
+    private long acceptedCount(UUID caseId) {
+        return jdbc.queryForObject(
+            "SELECT count(*) FROM audit_event WHERE case_id = ? AND event_type = 'CASE_ACCEPTED'",
+            Long.class, caseId);
+    }
+
+    @Test
+    void acceptanceNeedsAConfirmedCaseAndADispatcher() throws Exception {
+        var f = newDraft("Дом приёма: черновик");
+        // A draft belongs to its author alone: the dispatcher must not even learn that it exists.
+        acceptance(f, f.dispatcherSession(), UUID.randomUUID().toString(), "{\"expectedCaseVersion\":1}")
+            .andExpect(status().isNotFound());
+        // The author does see this case, so hiding it would be a lie. The action is refused, not the object.
+        acceptance(f, f.authorSession(), UUID.randomUUID().toString(), "{\"expectedCaseVersion\":1}")
+            .andExpect(status().isForbidden());
+        assertEquals(0L, acceptedCount(f.caseId()), "a refused acceptance must not write an event");
+        assertNull(jdbc.queryForObject("SELECT accepted_at FROM service_case WHERE id = ?",
+            Timestamp.class, f.caseId()), "a refused acceptance must not stamp the case");
+    }
+
+    @Test
+    void repeatedAcceptanceDoesNotCreateASecondEvent() throws Exception {
+        var f = newDraft("Дом приёма: повтор");
+        confirmWithOneItem(f);
+        String key = UUID.randomUUID().toString();
+        String first = acceptance(f, f.dispatcherSession(), key, "{\"expectedCaseVersion\":3}")
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        Timestamp acceptedFirst = jdbc.queryForObject(
+            "SELECT accepted_at FROM service_case WHERE id = ?", Timestamp.class, f.caseId());
+        assertNotNull(acceptedFirst);
+
+        // The same key and the same body: the stored response comes back, the database is not touched again.
+        String second = acceptance(f, f.dispatcherSession(), key, "{\"expectedCaseVersion\":3}")
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        assertEquals(first, second, "a replay must return the stored response byte for byte");
+        assertEquals(acceptedFirst, jdbc.queryForObject(
+                "SELECT accepted_at FROM service_case WHERE id = ?", Timestamp.class, f.caseId()),
+            "a replay must not move acceptedAt");
+        assertEquals(1L, acceptedCount(f.caseId()), "a replay must not write a second acceptance event");
+        var receipt = json.readTree(first).get("receipt");
+        assertEquals(f.dispatcher().toString(), receipt.get("acceptedBy").asString());
+        assertFalse(receipt.get("confirmedAt").isNull(), "confirmedAt survives acceptance");
+    }
+
+    @Test
+    void aStaleCaseVersionOnAcceptanceIsAConflict() throws Exception {
+        var f = newDraft("Дом приёма: конфликт");
+        confirmWithOneItem(f);
+        // The dispatcher is not the author. A stale version must still read as 409, never as 404.
+        acceptance(f, f.dispatcherSession(), UUID.randomUUID().toString(), "{\"expectedCaseVersion\":2}")
+            .andExpect(status().isConflict());
+        assertEquals(0L, acceptedCount(f.caseId()));
+    }
+
+    @Test
+    void nextActionChecksTheItemVersionSeparatelyFromTheCase() throws Exception {
+        var f = newDraft("Дом шага: версии");
+        String confirmed = confirmWithOneItem(f);
+        acceptance(f, f.dispatcherSession(), UUID.randomUUID().toString(), "{\"expectedCaseVersion\":3}")
+            .andExpect(status().isOk());
+        var item = json.readTree(confirmed).get("items").get(0);
+        UUID itemId = UUID.fromString(item.get("itemId").asString());
+        long itemVersion = item.get("itemVersion").asLong();
+        assertTrue(item.get("nextAction").isNull(), "a fresh item carries no plan");
+        // A fresh case version with a stale item version: the second guard has to catch it.
+        nextAction(f.dispatcherSession(), itemId, UUID.randomUUID().toString(),
+            plan(f.dispatcher(), 4, itemVersion - 1, "Вызвать электрика", FUTURE_DUE))
+            .andExpect(status().isConflict());
+        assertEquals(4L, (long) jdbc.queryForObject("SELECT version FROM service_case WHERE id = ?",
+                Long.class, f.caseId()),
+            "a rolled back command must not consume a case version");
+        String view = nextAction(f.dispatcherSession(), itemId, UUID.randomUUID().toString(),
+            plan(f.dispatcher(), 4, itemVersion, "Вызвать электрика", FUTURE_DUE))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        var saved = json.readTree(view).get("items").get(0);
+        assertEquals("Вызвать электрика", saved.get("nextAction").get("text").asString());
+        assertEquals(f.dispatcher().toString(), saved.get("nextAction").get("ownerId").asString());
+        assertEquals(itemVersion + 1, saved.get("itemVersion").asLong(), "the plan bumps the item version");
+        assertEquals(item.get("contentVersion").asLong(), saved.get("contentVersion").asLong(),
+            "a plan is not content: contentVersion must not move");
+        assertEquals(item.get("workRound").asLong(), saved.get("workRound").asLong(),
+            "a plan is not a report: workRound must not move");
+        assertEquals(5L, json.readTree(view).get("caseVersion").asLong());
+    }
+
+    @Test
+    void nextActionRejectsADueDateInThePastAndAnOwnerWithoutTheRole() throws Exception {
+        var f = newDraft("Дом шага: проверки");
+        String confirmed = confirmWithOneItem(f);
+        acceptance(f, f.dispatcherSession(), UUID.randomUUID().toString(), "{\"expectedCaseVersion\":3}")
+            .andExpect(status().isOk());
+        var item = json.readTree(confirmed).get("items").get(0);
+        UUID itemId = UUID.fromString(item.get("itemId").asString());
+        long itemVersion = item.get("itemVersion").asLong();
+        // The clock is fixed at 2027-01-15, so this date is in the past.
+        nextAction(f.dispatcherSession(), itemId, UUID.randomUUID().toString(),
+            plan(f.dispatcher(), 4, itemVersion, "Поздний план", PAST_DUE))
+            .andExpect(status().isUnprocessableEntity());
+        // A plan owned by a resident would be a promise nobody can keep.
+        nextAction(f.dispatcherSession(), itemId, UUID.randomUUID().toString(),
+            plan(f.author(), 4, itemVersion, "Чужой ответственный", FUTURE_DUE))
+            .andExpect(status().isUnprocessableEntity());
+        assertNull(jdbc.queryForObject("SELECT next_action_text FROM case_item WHERE id = ?",
+            String.class, itemId), "a refused plan must not reach the item");
+    }
+
+    @Test
+    void aResidentCannotSetANextActionOnTheirOwnCase() throws Exception {
+        var f = newDraft("Дом шага: житель");
+        String confirmed = confirmWithOneItem(f);
+        acceptance(f, f.dispatcherSession(), UUID.randomUUID().toString(), "{\"expectedCaseVersion\":3}")
+            .andExpect(status().isOk());
+        var item = json.readTree(confirmed).get("items").get(0);
+        UUID itemId = UUID.fromString(item.get("itemId").asString());
+        long itemVersion = item.get("itemVersion").asLong();
+        nextAction(f.authorSession(), itemId, UUID.randomUUID().toString(),
+            plan(f.dispatcher(), 4, itemVersion, "Сам себе план", FUTURE_DUE))
+            .andExpect(status().isForbidden());
+        assertNull(jdbc.queryForObject("SELECT next_action_text FROM case_item WHERE id = ?",
+            String.class, itemId));
+    }
+}
