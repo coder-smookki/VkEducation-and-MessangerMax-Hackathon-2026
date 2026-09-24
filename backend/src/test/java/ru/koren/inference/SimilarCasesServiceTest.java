@@ -53,7 +53,7 @@ class SimilarCasesServiceTest {
         jdbc.update("INSERT INTO service_case(id,house_id,author_id,submission_status) VALUES (?,?,?,?)",
                 id,h,author,confirmed ? "CONFIRMED" : "DRAFT");
         jdbc.update("INSERT INTO case_revision(case_id,revision,source_text) VALUES (?,1,'Synthetic lighting issue')", id);
-        jdbc.update("INSERT INTO case_item(id,case_id) VALUES (?,?)", item,id);
+        jdbc.update("INSERT INTO case_item(id,case_id,position) VALUES (?,?,1)", item,id);
         jdbc.update("INSERT INTO item_revision(item_id,content_version,category,location,symptom,confirmed_at) VALUES (?,1,'LIGHTING','Floor 3','Dark',now())", item);
         return id;
     }
@@ -117,7 +117,7 @@ class SimilarCasesServiceTest {
                 jdbc.update("UPDATE case_revision SET source_text=? WHERE case_id=?", "я".repeat(5000),id);
                 for (int i=0;i<19;i++) {
                     UUID item=UUID.randomUUID();
-                    jdbc.update("INSERT INTO case_item(id,case_id) VALUES (?,?)",item,id);
+                    jdbc.update("INSERT INTO case_item(id,case_id,position) VALUES (?,?,?)",item,id,i+2);
                     jdbc.update("INSERT INTO item_revision(item_id,content_version,category,location,symptom,confirmed_at) VALUES (?,1,'LIGHTING',?,?,now())",item,"я".repeat(300),"я".repeat(1000));
                 }
             }

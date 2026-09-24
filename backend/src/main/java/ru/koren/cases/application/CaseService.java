@@ -180,10 +180,12 @@ public class CaseService {
         var currentById = new java.util.HashMap<UUID, CaseRepository.ItemRow>();
         current.forEach(item -> currentById.put(item.id(), item));
         var kept = new HashSet<UUID>();
+        int position = 0;
         for (var input : items) {
+            position++;
             if (input.itemId() == null) {
                 UUID itemId = UUID.randomUUID();
-                repo.insertItem(itemId, caseId);
+                repo.insertItem(itemId, caseId, position);
                 repo.insertItemRevision(itemId, 1, input.category(), input.location(), input.symptom());
                 kept.add(itemId);
                 continue;
@@ -191,6 +193,7 @@ public class CaseService {
             var existing = currentById.get(input.itemId());
             if (existing == null) throw CaseException.notFound();
             kept.add(existing.id());
+            repo.updateItemPosition(existing.id(), position);
             boolean changed = !existing.category().equals(input.category())
                     || !existing.location().equals(input.location())
                     || !existing.symptom().equals(input.symptom());

@@ -55,7 +55,7 @@ public class CaseRepository {
                        i.administrative_status, i.administrative_reason, r.category, r.location, r.symptom
                 FROM case_item i
                 JOIN item_revision r ON r.item_id = i.id AND r.content_version = i.content_version
-                WHERE i.case_id = ? ORDER BY i.id
+                WHERE i.case_id = ? ORDER BY i.position
                 """, (rs, row) -> new ItemRow(rs.getObject("id", UUID.class), rs.getInt("content_version"),
                 rs.getLong("version"), rs.getInt("work_round"), rs.getString("work_status"),
                 rs.getString("observation"), rs.getString("administrative_status"),
@@ -117,8 +117,8 @@ public class CaseRepository {
         jdbc.update("UPDATE service_case SET submission_status = 'CONFIRMED' WHERE id = ?", caseId);
     }
 
-    public void insertItem(UUID itemId, UUID caseId) {
-        jdbc.update("INSERT INTO case_item(id, case_id) VALUES (?, ?)", itemId, caseId);
+    public void insertItem(UUID itemId, UUID caseId, int position) {
+        jdbc.update("INSERT INTO case_item(id, case_id, position) VALUES (?, ?, ?)", itemId, caseId, position);
     }
 
     public void insertItemRevision(UUID itemId, int contentVersion, String category, String location, String symptom) {
@@ -180,5 +180,10 @@ public class CaseRepository {
                 INSERT INTO processed_command(actor_id, operation, idempotency_key, request_hash, response_status, response_body)
                 VALUES (?, ?, ?, ?, ?, ?::jsonb)
                 """, actorId, operation, idempotencyKey, requestHash, responseStatus, responseBody);
+    }
+
+    /** Reordering is not a content change: neither contentVersion nor version moves. */
+    public void updateItemPosition(UUID itemId, int position) {
+        jdbc.update("UPDATE case_item SET position = ? WHERE id = ?", position, itemId);
     }
 }
