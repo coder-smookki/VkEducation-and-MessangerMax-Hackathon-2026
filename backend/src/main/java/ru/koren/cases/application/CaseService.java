@@ -25,7 +25,7 @@ import ru.koren.cases.persistence.CaseRepository.CaseRow;
 import ru.koren.cases.persistence.CaseRepository.Cursor;
 import ru.koren.cases.persistence.CaseRepository.ProcessedRow;
 import tools.jackson.databind.json.JsonMapper;
-
+import java.time.Instant;
 /**
  * S1 use cases for drafts and confirmation. actorId must come from server authentication, never a request body.
  * Every command: validate -> authorize -> idempotent replay check -> CAS on caseVersion -> effect -> audit ->
@@ -297,8 +297,10 @@ public class CaseService {
             views.add(CaseItemView.of(item));
         }
         return new CaseView(row.id(), row.houseId(), row.authorId(), row.submissionStatus(), row.version(),
-                row.sourceRevision(), repo.currentSourceText(row.id(), row.sourceRevision()), "FULL",
-            views, CaseProgress.from(states), row.createdAt().toInstant());
+            row.sourceRevision(), repo.currentSourceText(row.id(), row.sourceRevision()),
+            "ДЕМО-" + row.displayNumber(),
+            new CaseReceipt(repo.confirmedAt(row.id()), instant(row.acceptedAt()), row.acceptedBy()),
+            "FULL", views, CaseProgress.from(states), row.createdAt().toInstant());
     }
 
     private Map<String, Object> canonicalItemsBody(long expectedCaseVersion, List<DraftItemInput> items) {
@@ -394,5 +396,43 @@ public class CaseService {
         long micros = ts.getTime() * 1000 + (ts.getNanos() % 1_000_000) / 1000;
         String raw = "v1|" + (houseId == null ? "-" : houseId) + "|" + micros + "|" + last.id();
         return Base64.getUrlEncoder().withoutPadding().encodeToString(raw.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** Acceptance is a separate fact: it never touches work status, round or observation. */
+    public CaseView accept(UUID actorId, UUID caseId, long expectedCaseVersion, String idempotencyKey) {
+        Objects.requireNonNull(actorId);
+        Objects.requireNonNull(caseId);
+        validateKey(idempotencyKey);
+        validateVersion(expectedCaseVersion);
+        String hash = hash("accept", caseId, orderedMap("expectedCaseVersion", expectedCaseVersion));
+        Runnable access = () -> requireDispatcherOfCase(actorId, caseId);
+        return runCommand(actorId, "accept", idempotencyKey, hash, 200, access, () -> {
+            var row = loadVisible(actorId, caseId);
+            requireDispatcherOfCase(actorId, caseId);
+            if (!"CONFIRMED".equals(row.submissionStatus())) {
+                throw CaseException.invalidTransition("Only a confirmed case can be accepted");
+            }
+            if (row.acceptedAt() != null) {
+                throw CaseException.invalidTransition("The case is already accepted");
+            }
+            if (repo.bumpConfirmedCaseVersion(caseId, expectedCaseVersion) == 0) {
+                return conflictOrReplay(actorId, "accept", idempotencyKey, hash, caseId, access);
+            }
+            // Re-accepting is not an error, but it must not overwrite who accepted first.
+            repo.acceptCase(caseId, actorId);
+            repo.insertAudit(caseId, actorId, "CASE_ACCEPTED",
+                json.writeValueAsString(orderedMap("caseId", caseId)));
+            return TxOutcome.fresh(viewOf(repo.findCase(caseId).orElseThrow()));
+        });
+    }
+
+    private void requireDispatcherOfCase(UUID actorId, UUID caseId) {
+        var row = repo.findCase(caseId).orElseThrow(CaseException::notFound);
+        var role = repo.membershipRole(actorId, row.houseId());
+        if (role.isEmpty() || !role.get().equals("DISPATCHER")) throw CaseException.forbidden();
+    }
+
+    private static Instant instant(java.sql.Timestamp value) {
+        return value == null ? null : value.toInstant();
     }
 }

@@ -353,6 +353,22 @@
               "maximum": 50,
               "default": 20
             }
+          },
+          {
+            "name": "queueState",
+            "in": "query",
+            "required": false,
+            "x-implementation-status": "TARGET",
+            "x-task": "S-03",
+            "description": "TARGET (S-03): dispatcher queue filter. Overlapping fact-based filters, not a new exclusive status. DISPATCHER only, inside an allowed houseId; an unknown value is 422. The cursor is bound to houseId and queueState. NEEDS_ACCEPTANCE: CONFIRMED without acceptedAt. NEEDS_ACTION: accepted, has an ACTIVE item without RESTORED that has no current nextAction, or observation PERSISTS, or an expired updateDueAt. AWAITING_AUTHOR: has an ACTIVE REPORTED_DONE item with NOT_RECEIVED or CANNOT_CHECK. ARCHIVED: has an ARCHIVED item. Depends on acceptedAt and nextAction, which do not exist yet.",
+            "schema": {
+              "enum": [
+                "NEEDS_ACCEPTANCE",
+                "NEEDS_ACTION",
+                "AWAITING_AUTHOR",
+                "ARCHIVED"
+              ]
+            }
           }
         ],
         "responses": {
@@ -1165,6 +1181,15 @@
             "maxLength": 5000,
             "pattern": "\\S"
           },
+          "displayNumber": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32,
+            "description": "Human-readable case number. Assigned when the case row is created, never reused, never re-issued."
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/CaseReceipt"
+          },
           "visibility": {
             "const": "FULL",
             "type": "string"
@@ -1192,6 +1217,8 @@
           "caseVersion",
           "sourceRevision",
           "sourceText",
+          "displayNumber",
+          "receipt",
           "visibility",
           "items",
           "progress",
@@ -1346,7 +1373,7 @@
       "CaseReceipt": {
         "type": "object",
         "additionalProperties": false,
-        "description": "TARGET (S-03). Acceptance never changes workStatus or observation; acceptedBy is exposed only to a reader allowed to see it.",
+        "description": "Four independent facts of a case never collapse into one status: this record carries only the two case-level timestamps. Acceptance never changes workStatus or observation. acceptedBy is exposed only to a reader allowed to see it.",
         "properties": {
           "confirmedAt": {
             "anyOf": [
@@ -1593,6 +1620,15 @@
             "maxLength": 5000,
             "pattern": "\\S"
           },
+          "displayNumber": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32,
+            "description": "Human-readable case number. Assigned when the case row is created, never reused, never re-issued."
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/CaseReceipt"
+          },
           "visibility": {
             "const": "FULL",
             "type": "string"
@@ -1611,14 +1647,6 @@
             "type": "string",
             "format": "date-time"
           },
-          "displayNumber": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 32
-          },
-          "receipt": {
-            "$ref": "#/components/schemas/CaseReceipt"
-          },
           "allowedActions": {
             "type": "array",
             "items": {
@@ -1635,12 +1663,12 @@
           "caseVersion",
           "sourceRevision",
           "sourceText",
+          "displayNumber",
+          "receipt",
           "visibility",
           "items",
           "progress",
           "createdAt",
-          "displayNumber",
-          "receipt",
           "allowedActions"
         ],
         "allOf": [
@@ -1661,7 +1689,7 @@
             }
           }
         ],
-        "description": "TARGET (S-02/S-03). Not returned by Java yet. allowedActions is an interface convenience: the server re-checks every command and never trusts it as a permission."
+        "description": "TARGET (S-04+). AuthorCaseView plus allowedActions and per-item nextAction; not returned by Java yet. allowedActions is an interface convenience: the server re-checks every command and never trusts it as a permission."
       }
     }
   }

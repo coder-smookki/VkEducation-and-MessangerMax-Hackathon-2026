@@ -21,6 +21,8 @@ import ru.koren.cases.application.ConfirmRequest;
 import ru.koren.cases.application.CreateCaseRequest;
 import ru.koren.cases.application.PatchItemsRequest;
 import ru.koren.cases.application.PatchSourceRequest;
+import ru.koren.cases.application.AcceptRequest;
+
 
 /** Thin HTTP layer: the actor comes from the session, every rule stays in CaseService. */
 @RestController
@@ -75,5 +77,11 @@ public class CaseController {
                             @RequestBody ConfirmRequest body, @RequestHeader("Idempotency-Key") String idempotencyKey) {
         return service.confirm(actor(authentication), caseId, body.expectedCaseVersion(),
             body.sourceRevision(), idempotencyKey);
+    }
+
+    @PostMapping("/{caseId}/acceptance")
+    public CaseView accept(Authentication authentication, @PathVariable UUID caseId,
+                           @RequestBody AcceptRequest body, @RequestHeader("Idempotency-Key") String idempotencyKey) {
+        return service.accept(actor(authentication), caseId, body.expectedCaseVersion(), idempotencyKey);
     }
 }

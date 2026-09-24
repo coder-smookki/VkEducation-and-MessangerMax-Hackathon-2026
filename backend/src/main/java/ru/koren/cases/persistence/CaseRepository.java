@@ -7,6 +7,7 @@ import java.util.UUID;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+import java.time.Instant;
 
 /** Explicit SQL only; no JPA. Every statement runs inside the caller's transaction unless noted otherwise. */
 @Repository
@@ -17,7 +18,8 @@ public class CaseRepository {
     public CaseRepository(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
     public record CaseRow(UUID id, UUID houseId, UUID authorId, int sourceRevision, long version,
-                          String submissionStatus, Timestamp createdAt) {
+                          String submissionStatus, Timestamp createdAt,
+                          long displayNumber, Timestamp acceptedAt, UUID acceptedBy) {
         public boolean isDraft() { return "DRAFT".equals(submissionStatus); }
     }
 
@@ -38,9 +40,17 @@ public class CaseRepository {
 
     public Optional<CaseRow> findCase(UUID caseId) {
         return jdbc.query("""
-                SELECT id, house_id, author_id, source_revision, version, submission_status, created_at
+                SELECT id, house_id, author_id, source_revision, version, submission_status, created_at,
+                       display_number, accepted_at, accepted_by
                 FROM service_case WHERE id = ?
-                """, (rs, row) -> mapCase(rs), caseId).stream().findFirst();
+                """,
+            (rs, rowNum) -> new CaseRow(
+                rs.getObject("id", UUID.class), rs.getObject("house_id", UUID.class),
+                rs.getObject("author_id", UUID.class), rs.getInt("source_revision"),
+                rs.getLong("version"), rs.getString("submission_status"), rs.getTimestamp("created_at"),
+                rs.getLong("display_number"), rs.getTimestamp("accepted_at"),
+                rs.getObject("accepted_by", UUID.class)),
+            caseId).stream().findFirst();
     }
 
     public String currentSourceText(UUID caseId, int revision) {
@@ -66,7 +76,8 @@ public class CaseRepository {
     /** Own cases of any status plus confirmed cases of houses where the actor is a dispatcher. */
     public List<CaseRow> listVisibleCases(UUID actorId, UUID houseId, Cursor after, int limit) {
         String visibility = """
-                SELECT c.id, c.house_id, c.author_id, c.source_revision, c.version, c.submission_status, c.created_at
+                SELECT c.id, c.house_id, c.author_id, c.source_revision, c.version, c.submission_status, c.created_at,
+                c.display_number, c.accepted_at, c.accepted_by
                 FROM service_case c
                 WHERE (CAST(? AS uuid) IS NULL OR c.house_id = CAST(? AS uuid))
                   AND (c.author_id = ? OR (c.submission_status = 'CONFIRMED' AND EXISTS (
@@ -88,7 +99,9 @@ public class CaseRepository {
     private static CaseRow mapCase(java.sql.ResultSet rs) throws java.sql.SQLException {
         return new CaseRow(rs.getObject("id", UUID.class), rs.getObject("house_id", UUID.class),
                 rs.getObject("author_id", UUID.class), rs.getInt("source_revision"), rs.getLong("version"),
-                rs.getString("submission_status"), rs.getTimestamp("created_at"));
+                rs.getString("submission_status"), rs.getTimestamp("created_at"),
+                rs.getLong("display_number"), rs.getTimestamp("accepted_at"),
+                rs.getObject("accepted_by", UUID.class));
     }
 
     public void insertCase(UUID id, UUID houseId, UUID authorId) {
@@ -185,5 +198,32 @@ public class CaseRepository {
     /** Reordering is not a content change: neither contentVersion nor version moves. */
     public void updateItemPosition(UUID itemId, int position) {
         jdbc.update("UPDATE case_item SET position = ? WHERE id = ?", position, itemId);
+    }
+
+    /** Optimistic lock for commands on a confirmed case: the draft-only guard does not apply here. */
+    public int bumpConfirmedCaseVersion(UUID caseId, long expectedVersion) {
+        return jdbc.update("""
+                UPDATE service_case SET version = version + 1
+                WHERE id = ? AND version = ? AND submission_status = 'CONFIRMED'
+                """, caseId, expectedVersion);
+    }
+
+    /** Acceptance is recorded once: a repeat must not overwrite who accepted first. */
+    public void acceptCase(UUID caseId, UUID dispatcherId) {
+        jdbc.update("""
+                UPDATE service_case SET accepted_at = now(), accepted_by = ?
+                WHERE id = ? AND accepted_at IS NULL
+                """, dispatcherId, caseId);
+    }
+
+    /** Confirmation time is already stored on the item revisions stamped by confirm. */
+    public Instant confirmedAt(UUID caseId) {
+        var times = jdbc.query("""
+                SELECT max(r.confirmed_at) AS confirmed_at
+                FROM case_item i JOIN item_revision r ON r.item_id = i.id AND r.content_version = i.content_version
+                WHERE i.case_id = ?
+                """, (rs, rowNum) -> rs.getTimestamp("confirmed_at"), caseId);
+        var value = times.isEmpty() ? null : times.getFirst();
+        return value == null ? null : value.toInstant();
     }
 }

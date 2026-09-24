@@ -8,6 +8,12 @@
       "caseVersion": 5,
       "sourceRevision": 1,
       "sourceText": "На третьем этаже темно, и входная дверь не закрывается.",
+      "displayNumber": "ДЕМО-7",
+      "receipt": {
+        "confirmedAt": "2026-09-13T09:05:00Z",
+        "acceptedAt": null,
+        "acceptedBy": null
+      },
       "visibility": "FULL",
       "items": [
         {
@@ -56,6 +62,12 @@
       "caseVersion": 4,
       "sourceRevision": 1,
       "sourceText": "На третьем этаже темно, и входная дверь не закрывается.",
+      "displayNumber": "ДЕМО-7",
+      "receipt": {
+        "confirmedAt": null,
+        "acceptedAt": null,
+        "acceptedBy": null
+      },
       "visibility": "FULL",
       "items": [
         {
