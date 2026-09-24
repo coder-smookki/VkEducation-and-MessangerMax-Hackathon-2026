@@ -48,9 +48,9 @@ for base in (args.api_url, args.web_url):
         assert len(result["suggestions"]) == 2
         assert all(s["relation"] == "INSUFFICIENT_INFORMATION" and s["evidence"] is None
                    and s["reason"] == "ANALYSIS_UNAVAILABLE" for s in result["suggestions"])
-    try:
-        fetch(base + "/api/v1/cases")
-        raise AssertionError("Unimplemented business route must not be public")
-    except urllib.error.HTTPError as error:
-        assert error.code == 403
-print(f"PASS: frontend, proxy, Java, {args.expect_mode} comparison, full item list, closed business routes")
+        try:
+            fetch(base + "/api/v1/cases")
+            raise AssertionError("Business route must require a session")
+        except urllib.error.HTTPError as error:
+            assert error.code == 401, f"anonymous read must be 401 AUTH_REQUIRED, got {error.code}"
+print(f"PASS: frontend, proxy, Java, {args.expect_mode} comparison, full item list, business routes require a session")
