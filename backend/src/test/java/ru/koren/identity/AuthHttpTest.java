@@ -1,5 +1,6 @@
 package ru.koren.identity;
 
+import static org.junit.jupiter.api.Assertions.*;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -100,5 +101,17 @@ class AuthHttpTest {
         mvc.perform(post("/api/v1/auth/logout").session(session).with(csrf()))
             .andExpect(status().isNoContent());
         assertTrue(session.isInvalid(), "logout must invalidate the server session");
+    }
+
+    @Test
+    void loginIssuesANewSessionId() throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        String before = session.getId();
+
+        mvc.perform(post("/api/v1/auth/max").session(session).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(body(VALID_INIT_DATA)))
+            .andExpect(status().isOk());
+        // A session id known before the login must not stay valid after it.
+        assertNotEquals(before, session.getId(), "login must rotate the session id");
     }
 }

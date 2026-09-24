@@ -134,4 +134,25 @@ class CaseHttpTest {
             .andReturn().getResponse().getContentAsString();
         assertFalse(me.contains(house.toString()), "a revoked house must disappear from /me");
     }
+
+    @Test
+    void replayAfterRevocationDoesNotLeakTheStoredResult() throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        UUID author = login(session, AUTHOR_INIT_DATA);
+        UUID house = UUID.randomUUID();
+        jdbc.update("INSERT INTO house(id, address) VALUES (?, 'Дом replay')", house);
+        jdbc.update("INSERT INTO membership VALUES (?,?,'RESIDENT')", author, house);
+        String key = UUID.randomUUID().toString();
+        String body = "{\"houseId\":\"" + house + "\",\"sourceText\":\"Не работает домофон\"}";
+        mvc.perform(post("/api/v1/cases").session(session).with(csrf())
+                .header("Idempotency-Key", key)
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isCreated());
+        jdbc.update("UPDATE membership SET revoked_at = now() WHERE user_id = ? AND house_id = ?", author, house);
+        // The stored response must not be replayed to someone who lost access.
+        mvc.perform(post("/api/v1/cases").session(session).with(csrf())
+                .header("Idempotency-Key", key)
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isForbidden());
+    }
 }
