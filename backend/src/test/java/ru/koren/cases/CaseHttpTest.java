@@ -155,4 +155,34 @@ class CaseHttpTest {
                 .contentType(MediaType.APPLICATION_JSON).content(body))
             .andExpect(status().isForbidden());
     }
+
+    @Test
+    void bodyFieldsCannotGrantAccessOrRole() throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        UUID author = login(session, AUTHOR_INIT_DATA);
+        UUID foreignHouse = UUID.randomUUID();
+        jdbc.update("INSERT INTO house(id, address) VALUES (?, 'Чужой дом')", foreignHouse);
+        // A house the actor has no membership in is refused even though the body names it.
+        mvc.perform(post("/api/v1/cases").session(session).with(csrf())
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"houseId\":\"" + foreignHouse + "\",\"sourceText\":\"Чужой дом\"}"))
+            .andExpect(status().isForbidden());
+        // Unknown body fields such as role or authorId must not be honoured.
+        UUID ownHouse = UUID.randomUUID();
+        jdbc.update("INSERT INTO house(id, address) VALUES (?, 'Свой дом')", ownHouse);
+        jdbc.update("INSERT INTO membership VALUES (?,?,'RESIDENT')", author, ownHouse);
+        String created = mvc.perform(post("/api/v1/cases").session(session).with(csrf())
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"houseId\":\"" + ownHouse + "\",\"sourceText\":\"Свой дом\","
+                    + "\"authorId\":\"" + UUID.randomUUID() + "\",\"role\":\"DISPATCHER\"}"))
+            .andExpect(status().isCreated())
+            .andReturn().getResponse().getContentAsString();
+        assertEquals(author.toString(), json.readTree(created).get("authorId").asString(),
+            "the author must come from the session, never from the body");
+        assertEquals(0, (int) jdbc.queryForObject(
+            "SELECT count(*) FROM membership WHERE user_id = ? AND role = 'DISPATCHER'",
+            Integer.class, author), "a body field must not grant a dispatcher role");
+    }
 }
