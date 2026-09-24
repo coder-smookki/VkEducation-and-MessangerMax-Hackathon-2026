@@ -1,9 +1,11 @@
-package ru.koren.identity;
+package ru.koren.identity.persistence;
 
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
+import ru.koren.identity.MeView;
+import ru.koren.identity.MembershipView;
 
 /** Reads the current memberships of one user. Roles never come from the client. */
 public final class MembershipRepository {

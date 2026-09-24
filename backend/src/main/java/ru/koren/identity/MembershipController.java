@@ -8,6 +8,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import ru.koren.identity.application.InvitationService;
+import ru.koren.identity.persistence.MembershipRepository;
 
 /** Claiming an invitation is the only self-service way to get a membership, and it always grants RESIDENT. */
 @RestController

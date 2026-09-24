@@ -1,4 +1,4 @@
-package ru.koren.identity;
+package ru.koren.identity.persistence;
 
 import java.util.Objects;
 import java.util.UUID;

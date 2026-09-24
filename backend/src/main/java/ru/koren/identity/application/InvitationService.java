@@ -1,4 +1,4 @@
-package ru.koren.identity;
+package ru.koren.identity.application;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -10,6 +10,8 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import ru.koren.identity.InvitationException;
+import ru.koren.identity.persistence.InvitationRepository;
 
 /** Exchanges a one-time code for RESIDENT membership. The code itself is never stored or logged. */
 public final class InvitationService {

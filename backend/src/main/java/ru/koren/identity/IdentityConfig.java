@@ -10,7 +10,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.web.authentication.session.SessionAuthenticationStrategy;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.transaction.PlatformTransactionManager;
-
+import ru.koren.identity.application.InvitationService;
+import ru.koren.identity.persistence.InvitationRepository;
+import ru.koren.identity.persistence.MaxUserProvisioner;
+import ru.koren.identity.persistence.MembershipRepository;
 
 /** Wires MAX login. Without a bot token the validator bean is absent and /auth/max stays unavailable. */
 @Configuration
