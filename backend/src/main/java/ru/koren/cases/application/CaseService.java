@@ -104,7 +104,14 @@ public class CaseService {
             boolean more = rows.size() > pageSize;
             var page = more ? rows.subList(0, pageSize) : rows;
             String next = more ? encodeCursor(houseId, queueState, page.getLast()) : null;
-            return new CasePage(page.stream().map(this::viewOf).toList(), next);
+            var ids = page.stream().map(CaseRow::id).toList();
+            var itemsByCase = repo.findItemsByCase(ids);
+            var textByCase = repo.currentSourceTexts(ids);
+            var confirmedByCase = repo.confirmedAtByCase(ids);
+            return new CasePage(page.stream()
+                .map(r -> viewOf(r, itemsByCase.getOrDefault(r.id(), List.of()),
+                    textByCase.get(r.id()), confirmedByCase.get(r.id())))
+                .toList(), next);
         });
     }
 
@@ -305,20 +312,26 @@ public class CaseService {
     }
 
     private CaseView viewOf(CaseRow row) {
-        var items = repo.findItems(row.id());
+        return viewOf(row, repo.findItems(row.id()),
+            repo.currentSourceText(row.id(), row.sourceRevision()), repo.confirmedAt(row.id()));
+    }
+
+    /** A page loads the three projections once for every case, not once per case. */
+    private CaseView viewOf(CaseRow row, List<CaseRepository.ItemRow> items,
+                            String sourceText, Instant confirmedAt) {
         var states = new ArrayList<ItemState>(items.size());
         var views = new ArrayList<CaseItemView>(items.size());
         for (var item : items) {
             states.add(new ItemState(item.id(), row.authorId(), item.contentVersion(), item.workRound(),
-                    ItemState.WorkStatus.valueOf(item.workStatus()),
-                    ItemState.Observation.valueOf(item.observation()),
-                    ItemState.AdministrativeStatus.valueOf(item.administrativeStatus())));
+                ItemState.WorkStatus.valueOf(item.workStatus()),
+                ItemState.Observation.valueOf(item.observation()),
+                ItemState.AdministrativeStatus.valueOf(item.administrativeStatus())));
             views.add(CaseItemView.of(item));
         }
         return new CaseView(row.id(), row.houseId(), row.authorId(), row.submissionStatus(), row.version(),
-            row.sourceRevision(), repo.currentSourceText(row.id(), row.sourceRevision()),
+            row.sourceRevision(), sourceText,
             "ДЕМО-" + row.displayNumber(),
-            new CaseReceipt(repo.confirmedAt(row.id()), instant(row.acceptedAt()), row.acceptedBy()),
+            new CaseReceipt(confirmedAt, instant(row.acceptedAt()), row.acceptedBy()),
             "FULL", views, CaseProgress.from(states), row.createdAt().toInstant());
     }
 

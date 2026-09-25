@@ -9,6 +9,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.ArrayList;
+import org.springframework.jdbc.core.RowCallbackHandler;
 
 /** Explicit SQL only; no JPA. Every statement runs inside the caller's transaction unless noted otherwise. */
 @Repository
@@ -22,6 +27,25 @@ public class CaseRepository {
                           String submissionStatus, Timestamp createdAt,
                           long displayNumber, Timestamp acceptedAt, UUID acceptedBy) {
         public boolean isDraft() { return "DRAFT".equals(submissionStatus); }
+    }
+
+    private static final String ITEM_SELECT = """
+            SELECT i.case_id, i.id, i.content_version, i.version, i.work_round, i.work_status, i.observation,
+                   i.administrative_status, i.administrative_reason, r.category, r.location, r.symptom,
+                   i.next_action_text, i.next_action_owner_id,
+                   i.next_action_update_due_at, i.next_action_updated_at
+            FROM case_item i
+            JOIN item_revision r ON r.item_id = i.id AND r.content_version = i.content_version
+            """;
+
+    private static ItemRow mapItem(java.sql.ResultSet rs) throws java.sql.SQLException {
+        return new ItemRow(rs.getObject("id", UUID.class), rs.getInt("content_version"),
+            rs.getLong("version"), rs.getInt("work_round"), rs.getString("work_status"),
+            rs.getString("observation"), rs.getString("administrative_status"),
+            rs.getString("administrative_reason"), rs.getString("category"),
+            rs.getString("location"), rs.getString("symptom"),
+            rs.getString("next_action_text"), rs.getObject("next_action_owner_id", UUID.class),
+            rs.getTimestamp("next_action_update_due_at"), rs.getTimestamp("next_action_updated_at"));
     }
 
     /** Current projection joined with the current content revision. */
@@ -63,21 +87,51 @@ public class CaseRepository {
     }
 
     public List<ItemRow> findItems(UUID caseId) {
-        return jdbc.query("""
-                SELECT i.id, i.content_version, i.version, i.work_round, i.work_status, i.observation,
-                       i.administrative_status, i.administrative_reason, r.category, r.location, r.symptom,
-                       i.next_action_text, i.next_action_owner_id,
-                       i.next_action_update_due_at, i.next_action_updated_at
-                FROM case_item i
-                JOIN item_revision r ON r.item_id = i.id AND r.content_version = i.content_version
-                WHERE i.case_id = ? ORDER BY i.position
-                """, (rs, row) -> new ItemRow(rs.getObject("id", UUID.class), rs.getInt("content_version"),
-            rs.getLong("version"), rs.getInt("work_round"), rs.getString("work_status"),
-            rs.getString("observation"), rs.getString("administrative_status"),
-            rs.getString("administrative_reason"), rs.getString("category"),
-            rs.getString("location"), rs.getString("symptom"),
-            rs.getString("next_action_text"), rs.getObject("next_action_owner_id", UUID.class),
-            rs.getTimestamp("next_action_update_due_at"), rs.getTimestamp("next_action_updated_at")), caseId);
+        return jdbc.query(ITEM_SELECT + " WHERE i.case_id = ? ORDER BY i.position",
+            (rs, row) -> mapItem(rs), caseId);
+    }
+
+    private static String placeholders(int count) {
+        return String.join(",", Collections.nCopies(count, "?"));
+    }
+
+    /** One query for the whole page: a dispatcher queue must not fan out into a query per case. */
+    public Map<UUID, List<ItemRow>> findItemsByCase(List<UUID> caseIds) {
+        if (caseIds.isEmpty()) return Map.of();
+        Map<UUID, List<ItemRow>> byCase = new LinkedHashMap<>();
+        jdbc.query(ITEM_SELECT + " WHERE i.case_id IN (" + placeholders(caseIds.size())
+                + ") ORDER BY i.case_id, i.position",
+            (RowCallbackHandler) rs -> byCase
+                .computeIfAbsent(rs.getObject("case_id", UUID.class), key -> new ArrayList<>())
+                .add(mapItem(rs)),
+            caseIds.toArray());
+        return byCase;
+    }
+
+    public Map<UUID, String> currentSourceTexts(List<UUID> caseIds) {
+        if (caseIds.isEmpty()) return Map.of();
+        Map<UUID, String> byCase = new LinkedHashMap<>();
+        jdbc.query("SELECT c.id, r.source_text FROM service_case c"
+                + " JOIN case_revision r ON r.case_id = c.id AND r.revision = c.source_revision"
+                + " WHERE c.id IN (" + placeholders(caseIds.size()) + ")",
+            (RowCallbackHandler) rs ->
+                byCase.put(rs.getObject("id", UUID.class), rs.getString("source_text")),
+            caseIds.toArray());
+        return byCase;
+    }
+
+    public Map<UUID, Instant> confirmedAtByCase(List<UUID> caseIds) {
+        if (caseIds.isEmpty()) return Map.of();
+        Map<UUID, Instant> byCase = new LinkedHashMap<>();
+        jdbc.query("SELECT i.case_id, max(r.confirmed_at) AS confirmed_at FROM case_item i"
+                + " JOIN item_revision r ON r.item_id = i.id AND r.content_version = i.content_version"
+                + " WHERE i.case_id IN (" + placeholders(caseIds.size()) + ") GROUP BY i.case_id",
+            (RowCallbackHandler) rs -> {
+                var stamp = rs.getTimestamp("confirmed_at");
+                if (stamp != null) byCase.put(rs.getObject("case_id", UUID.class), stamp.toInstant());
+            },
+            caseIds.toArray());
+        return byCase;
     }
 
     /** Everything a per-item command needs to authorize itself, in one round trip. */

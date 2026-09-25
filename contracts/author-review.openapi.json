@@ -422,7 +422,7 @@
     "/api/v1/memberships/claim": {
       "post": {
         "operationId": "claimMembership",
-        "summary": "TARGET S-02: обменять одноразовый код приглашения на членство RESIDENT",
+        "summary": "обменять одноразовый код приглашения на членство RESIDENT",
         "x-implementation-status": "IMPLEMENTED",
         "x-task": "S-02",
         "security": [
@@ -531,7 +531,7 @@
     "/api/v1/cases/{caseId}/acceptance": {
       "post": {
         "operationId": "acceptCase",
-        "summary": "TARGET S-03: диспетчер принимает подтверждённое обращение",
+        "summary": "диспетчер принимает подтверждённое обращение",
         "x-implementation-status": "IMPLEMENTED",
         "x-task": "S-03",
         "security": [
@@ -586,7 +586,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TargetCaseView"
+                  "$ref": "#/components/schemas/AuthorCaseView"
                 }
               }
             }
@@ -647,7 +647,7 @@
     "/api/v1/items/{itemId}/next-action": {
       "put": {
         "operationId": "setNextAction",
-        "summary": "TARGET S-03: диспетчер задаёт следующий шаг по пункту",
+        "summary": "диспетчер задаёт следующий шаг по пункту",
         "x-implementation-status": "IMPLEMENTED",
         "x-task": "S-03",
         "security": [
@@ -731,7 +731,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TargetCaseView"
+                  "$ref": "#/components/schemas/AuthorCaseView"
                 }
               }
             }
@@ -1586,7 +1586,7 @@
             }
           }
         ],
-        "description": "TARGET (S-04+). AuthorCaseView plus allowedActions; not returned by Java yet. allowedActions is an interface convenience: the server re-checks every command and never trusts it as a permission."
+        "description": "TARGET (S-04+). AuthorCaseView plus allowedActions; not returned by Java yet, so no implemented operation may answer with it. allowedActions is an interface convenience: the server re-checks every command and never trusts it as a permission."
       }
     }
   }

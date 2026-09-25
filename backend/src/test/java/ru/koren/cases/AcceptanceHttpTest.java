@@ -347,4 +347,36 @@ class AcceptanceHttpTest {
                 .param("houseId", f.house().toString()).param("queueState", "URGENT"))
             .andExpect(status().isUnprocessableEntity());
     }
+
+    @Test
+    void aPageOfCasesKeepsEveryCaseItsOwnItemsAndText() throws Exception {
+        var f = newDraft("Дом страницы");
+        confirmWithOneItem(f);
+        UUID second = createCase(f, "Дверь не закрывается");
+        confirmOneItem(f, second);
+
+        String body = mvc.perform(get("/api/v1/cases").session(f.authorSession())
+                .param("houseId", f.house().toString()))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        var page = json.readTree(body).get("items");
+        var first = caseNode(page, f.caseId());
+        var other = caseNode(page, second);
+
+        // A batched page must not mix one case's projection into another.
+        assertEquals("LIGHTING", first.get("items").get(0).get("category").asString());
+        assertEquals("ENTRANCE_DOOR", other.get("items").get(0).get("category").asString());
+        assertTrue(first.get("sourceText").asString().contains("темно"));
+        assertTrue(other.get("sourceText").asString().contains("Дверь"));
+        assertFalse(first.get("receipt").get("confirmedAt").isNull(),
+            "each case keeps its own confirmedAt");
+        assertFalse(other.get("receipt").get("confirmedAt").isNull());
+        assertNotEquals(first.get("displayNumber").asString(), other.get("displayNumber").asString());
+    }
+
+    private static tools.jackson.databind.JsonNode caseNode(tools.jackson.databind.JsonNode page, UUID caseId) {        for (var node : page) {
+            if (node.get("caseId").asString().equals(caseId.toString())) return node;
+        }
+        throw new AssertionError("case " + caseId + " is missing from the page");
+    }
 }
