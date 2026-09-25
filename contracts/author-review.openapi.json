@@ -1223,6 +1223,113 @@
           }
         }
       }
+    },
+    "/api/v1/items/{itemId}/observations": {
+      "post": {
+        "operationId": "recordObservation",
+        "summary": "автор сообщает, что он наблюдает по пункту",
+        "description": "Only the author, and only for the current content version and round. A positive answer is what counts as confirmed in progress; a staff report never does. The answer does not change workStatus and does not open a round.",
+        "x-implementation-status": "IMPLEMENTED",
+        "x-task": "S-05",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "itemId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordObservation"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "CaseView после записи наблюдения",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorCaseView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нет сессии",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Нет активного членства или роли",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ресурс недоступен",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Версия устарела или ключ идемпотентности переиспользован",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Недопустимые поля или переход",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2115,6 +2222,52 @@
         "required": [
           "expectedCaseVersion",
           "links"
+        ]
+      },
+      "RecordObservation": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "The author's answer for one item, for this exact content version and round. NOT_RECEIVED is the absence of an answer and is never sent. AFTER_REPORT requires workStatus REPORTED_DONE in this round; INDEPENDENT does not and changes no work status.",
+        "properties": {
+          "expectedCaseVersion": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expectedItemVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "contentVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "workRound": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "value": {
+            "type": "string",
+            "enum": [
+              "RESTORED",
+              "PERSISTS",
+              "CANNOT_CHECK"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "AFTER_REPORT",
+              "INDEPENDENT"
+            ]
+          }
+        },
+        "required": [
+          "expectedCaseVersion",
+          "expectedItemVersion",
+          "contentVersion",
+          "workRound",
+          "value",
+          "source"
         ]
       }
     }

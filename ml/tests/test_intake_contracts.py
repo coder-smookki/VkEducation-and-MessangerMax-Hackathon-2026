@@ -156,6 +156,7 @@ def test_confirmed_context_schema_is_current():
         ("ConfirmReportLinks", "report-links-request.json"),
         ("CreateReportResponse", "report-create-response.json"),
         ("WorkReportView", "report-view.json"),
+        ("RecordObservation", "observation-request.json"),
     ],
 )
 def test_planned_java_review_examples_match_schema(name, example):

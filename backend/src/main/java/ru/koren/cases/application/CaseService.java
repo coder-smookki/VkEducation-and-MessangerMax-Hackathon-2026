@@ -34,6 +34,7 @@ import ru.koren.reports.application.LinkView;
 import ru.koren.reports.application.WorkReportView;
 import java.util.Comparator;
 import ru.koren.reports.application.LinkInput;
+import ru.koren.observations.persistence.ObservationRepository;
 
 /**
  * S1 use cases for drafts and confirmation. actorId must come from server authentication, never a request body.
@@ -54,17 +55,23 @@ public class CaseService {
             java.util.Set.of("LIGHTING", "ENTRANCE_DOOR", "CLEANING", "OTHER");
     private static final java.util.Set<String> QUEUE_STATES =
         java.util.Set.of("NEEDS_ACCEPTANCE", "NEEDS_ACTION", "AWAITING_AUTHOR", "ARCHIVED");
+    private static final java.util.Set<String> OBSERVATION_VALUES =
+        java.util.Set.of("RESTORED", "PERSISTS", "CANNOT_CHECK");
+    private static final java.util.Set<String> OBSERVATION_SOURCES =
+        java.util.Set.of("AFTER_REPORT", "INDEPENDENT");
     private final CaseRepository repo;
     private final ReportRepository reports;
+    private final ObservationRepository observations;
     private final TransactionTemplate tx;
     private final TransactionTemplate readTx;
     private final Clock clock;
     private final JsonMapper json = JsonMapper.builder().build();
 
-    public CaseService(CaseRepository repo, ReportRepository reports,
+    public CaseService(CaseRepository repo, ReportRepository reports, ObservationRepository observations,
                        PlatformTransactionManager transactions, Clock clock) {
         this.repo = repo;
         this.reports = reports;
+        this.observations = observations;
         this.clock = clock;
         tx = new TransactionTemplate(transactions);
         readTx = new TransactionTemplate(transactions);
@@ -692,5 +699,74 @@ public class CaseService {
             }
             return TxOutcome.fresh(viewOf(repo.findCase(report.caseId()).orElseThrow()));
         });
+    }
+
+    public CaseView observe(UUID actorId, UUID itemId, long expectedCaseVersion, long expectedItemVersion,
+                            int contentVersion, int workRound, String value, String source,
+                            String idempotencyKey) {
+        Objects.requireNonNull(actorId);
+        Objects.requireNonNull(itemId);
+        validateKey(idempotencyKey);
+        validateVersion(expectedCaseVersion);
+        validateVersion(expectedItemVersion);
+        if (contentVersion < 1) throw CaseException.invalidFields("Invalid contentVersion");
+        if (workRound < 0) throw CaseException.invalidFields("Invalid workRound");
+        if (!OBSERVATION_VALUES.contains(value)) {
+            // NOT_RECEIVED is the absence of an answer, so it is not a value the author can send.
+            throw CaseException.invalidFields("value must be RESTORED, PERSISTS or CANNOT_CHECK");
+        }
+        if (!OBSERVATION_SOURCES.contains(source)) {
+            throw CaseException.invalidFields("source must be AFTER_REPORT or INDEPENDENT");
+        }
+        String hash = hash("observe", itemId, orderedMap(
+            "expectedCaseVersion", expectedCaseVersion, "expectedItemVersion", expectedItemVersion,
+            "contentVersion", contentVersion, "workRound", workRound,
+            "value", value, "source", source));
+        Runnable access = () -> requireAuthorOfItem(actorId, itemId);
+        return runCommand(actorId, "observe", idempotencyKey, hash, 200, access, CaseView.class, () -> {
+            var ctx = requireAuthorOfItem(actorId, itemId);
+            if (ctx.isDraft()) {
+                throw CaseException.invalidTransition("An observation needs a confirmed case");
+            }
+            // A stale answer deserves its own code: the round moved on, the author must look again.
+            if (ctx.contentVersion() != contentVersion || ctx.workRound() != workRound) {
+                throw CaseException.staleContext();
+            }
+            var state = new ItemState(itemId, actorId, ctx.contentVersion(), ctx.workRound(),
+                ItemState.WorkStatus.valueOf(ctx.workStatus()),
+                ItemState.Observation.valueOf(ctx.observation()),
+                ItemState.AdministrativeStatus.valueOf(ctx.administrativeStatus()));
+            ItemState observed;
+            try {
+                // The domain rules live in ItemState and are covered by ItemStateTest; this only translates.
+                observed = state.observe(actorId, ItemState.Observation.valueOf(value),
+                    ItemState.ObservationSource.valueOf(source), contentVersion, workRound);
+            } catch (SecurityException denied) {
+                throw CaseException.forbidden();
+            } catch (IllegalStateException | IllegalArgumentException rejected) {
+                throw CaseException.invalidTransition(rejected.getMessage());
+            }
+            if (repo.bumpConfirmedCaseVersion(ctx.caseId(), expectedCaseVersion) == 0) {
+                return conflictOrReplay(actorId, "observe", idempotencyKey, hash, ctx.caseId(), access,
+                    false, CaseView.class);
+            }
+            if (repo.applyObservation(itemId, expectedItemVersion, contentVersion, workRound,
+                observed.observation().name()) == 0) {
+                throw CaseException.itemVersionConflict();
+            }
+            observations.insertObservation(UUID.randomUUID(), itemId, ctx.caseId(), actorId,
+                contentVersion, workRound, value, source);
+            repo.insertAudit(ctx.caseId(), actorId, "OBSERVATION_RECORDED",
+                json.writeValueAsString(orderedMap("caseId", ctx.caseId(), "itemId", itemId,
+                    "workRound", workRound, "value", value, "source", source)));
+            return TxOutcome.fresh(viewOf(repo.findCase(ctx.caseId()).orElseThrow()));
+        });
+    }
+
+    private CaseRepository.ItemContextRow requireAuthorOfItem(UUID actorId, UUID itemId) {
+        var ctx = repo.findItemContext(itemId).orElseThrow(CaseException::notFound);
+        var row = loadVisible(actorId, ctx.caseId());
+        if (!row.authorId().equals(actorId)) throw CaseException.forbidden();
+        return ctx;
     }
 }

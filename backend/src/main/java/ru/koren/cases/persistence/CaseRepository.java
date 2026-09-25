@@ -136,23 +136,24 @@ public class CaseRepository {
 
     /** Everything a per-item command needs to authorize itself and check its context, in one round trip. */
     public record ItemContextRow(UUID itemId, long itemVersion, int contentVersion, int workRound,
-                                 String administrativeStatus, UUID caseId, UUID houseId,
-                                 long caseVersion, String submissionStatus) {
+                                 String workStatus, String observation, String administrativeStatus,
+                                 UUID caseId, UUID houseId, long caseVersion, String submissionStatus) {
         public boolean isDraft() { return "DRAFT".equals(submissionStatus); }
     }
 
     public Optional<ItemContextRow> findItemContext(UUID itemId) {
         return jdbc.query("""
-                SELECT i.id, i.version, i.content_version, i.work_round, i.administrative_status,
+                SELECT i.id, i.version, i.content_version, i.work_round, i.work_status, i.observation,
+                       i.administrative_status,
                        c.id AS case_id, c.house_id, c.version AS case_version, c.submission_status
                 FROM case_item i
                 JOIN service_case c ON c.id = i.case_id
                 WHERE i.id = ?
                 """, (rs, row) -> new ItemContextRow(rs.getObject("id", UUID.class), rs.getLong("version"),
-            rs.getInt("content_version"), rs.getInt("work_round"),
-            rs.getString("administrative_status"), rs.getObject("case_id", UUID.class),
-            rs.getObject("house_id", UUID.class), rs.getLong("case_version"),
-            rs.getString("submission_status")), itemId).stream().findFirst();
+            rs.getInt("content_version"), rs.getInt("work_round"), rs.getString("work_status"),
+            rs.getString("observation"), rs.getString("administrative_status"),
+            rs.getObject("case_id", UUID.class), rs.getObject("house_id", UUID.class),
+            rs.getLong("case_version"), rs.getString("submission_status")), itemId).stream().findFirst();
     }
 
     /** Optimistic lock on the item row: zero rows means the caller held a stale itemVersion. */
@@ -380,5 +381,18 @@ public class CaseRepository {
                                              work_status, confirmed_by)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """, reportId, itemId, caseId, contentVersion, workRound, workStatus, confirmedBy);
+    }
+
+    /**
+     * The author's answer for this exact round and content. Four guards: an answer to an old round
+     * must not land on a new one.
+     */
+    public int applyObservation(UUID itemId, long expectedItemVersion, int expectedContentVersion,
+                                int expectedWorkRound, String value) {
+        return jdbc.update("""
+                UPDATE case_item
+                   SET version = version + 1, observation = ?
+                 WHERE id = ? AND version = ? AND content_version = ? AND work_round = ?
+                """, value, itemId, expectedItemVersion, expectedContentVersion, expectedWorkRound);
     }
 }
