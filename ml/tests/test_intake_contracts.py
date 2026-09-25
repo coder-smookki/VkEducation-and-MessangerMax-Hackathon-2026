@@ -152,6 +152,10 @@ def test_confirmed_context_schema_is_current():
         ("Problem", "not-found-404.json"),
         ("Problem", "invalid-fields-422.json"),
         ("TargetCaseView", "case-view-target.json"),
+        ("SaveReport", "report-create-request.json"),
+        ("ConfirmReportLinks", "report-links-request.json"),
+        ("CreateReportResponse", "report-create-response.json"),
+        ("WorkReportView", "report-view.json"),
     ],
 )
 def test_planned_java_review_examples_match_schema(name, example):

@@ -962,36 +962,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "expectedCaseVersion": {
-                    "type": "integer",
-                    "minimum": 0
-                  },
-                  "reportText": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 5000,
-                    "pattern": "\\S"
-                  },
-                  "targetItemIds": {
-                    "type": "array",
-                    "minItems": 1,
-                    "maxItems": 20,
-                    "uniqueItems": true,
-                    "items": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "description": "Items this report may concern. Scope for a later link, never a claim that work happened."
-                  }
-                },
-                "required": [
-                  "expectedCaseVersion",
-                  "reportText",
-                  "targetItemIds"
-                ]
+                "$ref": "#/components/schemas/SaveReport"
               }
             }
           }
@@ -1089,6 +1060,113 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/WorkReportView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нет сессии",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Нет активного членства или роли",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ресурс недоступен",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Версия устарела или ключ идемпотентности переиспользован",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Недопустимые поля или переход",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reports/{reportId}/links": {
+      "post": {
+        "operationId": "confirmReportLinks",
+        "summary": "диспетчер подтверждает связи отчёта с пунктами",
+        "description": "Only a confirmed link makes a report concern an item: it opens a new round for that item alone and resets that item's current observation to NOT_RECEIVED. Items left out of the set do not move. Saving the report text changed nothing.",
+        "x-implementation-status": "IMPLEMENTED",
+        "x-task": "S-04",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "reportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmReportLinks"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "CaseView после применения набора связей",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorCaseView"
                 }
               }
             }
@@ -1944,6 +2022,99 @@
           "report",
           "case",
           "analysis"
+        ]
+      },
+      "LinkInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Three expected values guard three different drifts: the item row, its content, and its round. A link is news about work, so NOT_ASSIGNED is not a valid workStatus.",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedItemVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "contentVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "expectedWorkRound": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "workStatus": {
+            "type": "string",
+            "enum": [
+              "PLANNED",
+              "REPORTED_DONE"
+            ]
+          }
+        },
+        "required": [
+          "itemId",
+          "expectedItemVersion",
+          "contentVersion",
+          "expectedWorkRound",
+          "workStatus"
+        ]
+      },
+      "SaveReport": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "expectedCaseVersion": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reportText": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 5000,
+            "pattern": "\\S"
+          },
+          "targetItemIds": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 20,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Items this report may concern. Scope for a later link, never a claim that work happened."
+          }
+        },
+        "required": [
+          "expectedCaseVersion",
+          "reportText",
+          "targetItemIds"
+        ]
+      },
+      "ConfirmReportLinks": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "expectedCaseVersion": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "links": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 20,
+            "uniqueItems": true,
+            "items": {
+              "$ref": "#/components/schemas/LinkInput"
+            },
+            "description": "Applied atomically: one refused link leaves the whole set unapplied. A repeated itemId is refused by the server; JSON Schema cannot express uniqueness by one property."
+          }
+        },
+        "required": [
+          "expectedCaseVersion",
+          "links"
         ]
       }
     }

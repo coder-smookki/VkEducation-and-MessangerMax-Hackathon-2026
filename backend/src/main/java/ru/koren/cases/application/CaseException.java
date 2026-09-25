@@ -39,4 +39,10 @@ public class CaseException extends RuntimeException {
     public static CaseException invalidTransition(String message) {
         return new CaseException("INVALID_TRANSITION", 422, message);
     }
+    public static CaseException linkAlreadyExists() {
+        return new CaseException("LINK_ALREADY_EXISTS", 409, "This report is already linked to this item");
+    }
+    public static CaseException staleContext() {
+        return new CaseException("STALE_CONTEXT", 409, "Expected content version or work round does not match");
+    }
 }

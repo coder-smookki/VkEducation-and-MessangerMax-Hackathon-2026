@@ -32,6 +32,9 @@ import ru.koren.reports.application.AnalysisView;
 import ru.koren.reports.application.CreateReportResponse;
 import ru.koren.reports.application.LinkView;
 import ru.koren.reports.application.WorkReportView;
+import java.util.Comparator;
+import ru.koren.reports.application.LinkInput;
+
 /**
  * S1 use cases for drafts and confirmation. actorId must come from server authentication, never a request body.
  * Every command: validate -> authorize -> idempotent replay check -> CAS on caseVersion -> effect -> audit ->
@@ -599,6 +602,95 @@ public class CaseService {
                     .map(link -> new LinkView(link.itemId(), link.contentVersion(), link.workRound(),
                         link.workStatus(), link.confirmedBy(), link.createdAt().toInstant()))
                     .toList());
+        });
+    }
+
+    private static final java.util.Set<String> LINK_WORK_STATUSES =
+        java.util.Set.of("PLANNED", "REPORTED_DONE");
+
+    private void requireDispatcherOfReport(UUID actorId, UUID reportId) {
+        var report = reports.findReport(reportId).orElseThrow(CaseException::notFound);
+        requireDispatcherOfCase(actorId, report.caseId());
+    }
+
+    private static void validateLinks(List<LinkInput> links) {
+        if (links == null || links.isEmpty()) throw CaseException.invalidFields("links must not be empty");
+        if (links.size() > MAX_ITEMS) throw CaseException.invalidFields("Too many links");
+        var seen = new HashSet<UUID>();
+        for (LinkInput link : links) {
+            if (link == null || link.itemId() == null) {
+                throw CaseException.invalidFields("Each link needs an itemId");
+            }
+            if (!seen.add(link.itemId())) throw CaseException.invalidFields("Duplicate itemId in links");
+            if (!LINK_WORK_STATUSES.contains(link.workStatus())) {
+                // NOT_ASSIGNED is the absence of news about work; a link is news, so it cannot mean that.
+                throw CaseException.invalidFields("workStatus must be PLANNED or REPORTED_DONE");
+            }
+            validateVersion(link.expectedItemVersion());
+            if (link.contentVersion() < 1) throw CaseException.invalidFields("Invalid contentVersion");
+            if (link.expectedWorkRound() < 0) throw CaseException.invalidFields("Invalid expectedWorkRound");
+        }
+    }
+
+    private static List<Map<String, Object>> canonicalLinks(List<LinkInput> links) {
+        return links.stream()
+            .sorted(Comparator.comparing(link -> link.itemId().toString()))
+            .map(link -> orderedMap("itemId", link.itemId().toString(),
+                "expectedItemVersion", link.expectedItemVersion(),
+                "contentVersion", link.contentVersion(),
+                "expectedWorkRound", link.expectedWorkRound(),
+                "workStatus", link.workStatus()))
+            .toList();
+    }
+
+    public CaseView confirmLinks(UUID actorId, UUID reportId, long expectedCaseVersion,
+                                 List<LinkInput> links, String idempotencyKey) {
+        Objects.requireNonNull(actorId);
+        Objects.requireNonNull(reportId);
+        validateKey(idempotencyKey);
+        validateVersion(expectedCaseVersion);
+        validateLinks(links);
+        String hash = hash("confirm-links", reportId, orderedMap(
+            "expectedCaseVersion", expectedCaseVersion, "links", canonicalLinks(links)));
+        Runnable access = () -> requireDispatcherOfReport(actorId, reportId);
+        return runCommand(actorId, "confirm-links", idempotencyKey, hash, 200, access, CaseView.class, () -> {
+            var report = reports.findReport(reportId).orElseThrow(CaseException::notFound);
+            requireDispatcherOfCase(actorId, report.caseId());
+            var targets = new HashSet<>(reports.findTargets(reportId));
+            // One CAS for the whole set: either every link lands, or the transaction rolls back.
+            if (repo.bumpConfirmedCaseVersion(report.caseId(), expectedCaseVersion) == 0) {
+                return conflictOrReplay(actorId, "confirm-links", idempotencyKey, hash, report.caseId(),
+                    access, false, CaseView.class);
+            }
+            for (LinkInput link : links) {
+                if (!targets.contains(link.itemId())) {
+                    // A fitting suggestion outside the report's scope still does not authorize a link.
+                    throw CaseException.invalidFields("An item outside targetItemIds cannot be linked");
+                }
+                if (reports.linkExists(reportId, link.itemId())) {
+                    throw CaseException.linkAlreadyExists();
+                }
+                var ctx = repo.findItemContext(link.itemId()).orElseThrow(CaseException::notFound);
+                if (!ctx.caseId().equals(report.caseId())) throw CaseException.notFound();
+                if (!"ACTIVE".equals(ctx.administrativeStatus())) {
+                    throw CaseException.invalidTransition("An inactive item takes no new round");
+                }
+                if (ctx.contentVersion() != link.contentVersion()
+                    || ctx.workRound() != link.expectedWorkRound()) {
+                    throw CaseException.staleContext();
+                }
+                if (repo.openRoundForLink(link.itemId(), link.expectedItemVersion(), link.contentVersion(),
+                    link.expectedWorkRound(), link.workStatus()) == 0) {
+                    throw CaseException.itemVersionConflict();
+                }
+                reports.insertLink(reportId, link.itemId(), report.caseId(), link.contentVersion(),
+                    link.expectedWorkRound() + 1, link.workStatus(), actorId);
+                repo.insertAudit(report.caseId(), actorId, "REPORT_LINK_CONFIRMED",
+                    json.writeValueAsString(orderedMap("caseId", report.caseId(), "reportId", reportId,
+                        "itemId", link.itemId(), "workRound", link.expectedWorkRound() + 1,
+                        "workStatus", link.workStatus())));
+            }
+            return TxOutcome.fresh(viewOf(repo.findCase(report.caseId()).orElseThrow()));
         });
     }
 }

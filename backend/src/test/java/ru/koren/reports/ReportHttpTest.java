@@ -254,4 +254,179 @@ class ReportHttpTest {
         assertEquals(door.toString(), view.get("targetItemIds").get(0).asString());
         assertEquals(0, view.get("links").size());
     }
+
+    private ResultActions links(MockHttpSession session, UUID reportId, String key, String body)
+        throws Exception {
+        return mvc.perform(post("/api/v1/reports/" + reportId + "/links").session(session).with(csrf())
+            .header("Idempotency-Key", key)
+            .contentType(MediaType.APPLICATION_JSON).content(body));
+    }
+
+    private static String link(JsonNode item, String workStatus) {
+        return "{\"itemId\":\"" + item.get("itemId").asString()
+            + "\",\"expectedItemVersion\":" + item.get("itemVersion").asLong()
+            + ",\"contentVersion\":" + item.get("contentVersion").asInt()
+            + ",\"expectedWorkRound\":" + item.get("workRound").asInt()
+            + ",\"workStatus\":\"" + workStatus + "\"}";
+    }
+
+    private static String linksBody(long caseVersion, String... fragments) {
+        return "{\"expectedCaseVersion\":" + caseVersion + ",\"links\":[" + String.join(",", fragments) + "]}";
+    }
+
+    /** A confirmed case, a saved report about both items, and the case as it stands afterwards. */
+    private record Saved(UUID caseId, UUID reportId, JsonNode caseAfterReport) {}
+
+    private Saved savedReport(Fixture f, String text) throws Exception {
+        var confirmed = confirmedCase(f);
+        UUID caseId = UUID.fromString(confirmed.get("caseId").asString());
+        String created = report(f.dispatcherSession(), caseId, UUID.randomUUID().toString(),
+            body(confirmed.get("caseVersion").asLong(), text,
+                itemId(confirmed, "LIGHTING"), itemId(confirmed, "ENTRANCE_DOOR")))
+            .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        var response = json.readTree(created);
+        return new Saved(caseId,
+            UUID.fromString(response.get("report").get("reportId").asString()),
+            response.get("case"));
+    }
+
+    private long linkCount(UUID caseId) {
+        return jdbc.queryForObject("SELECT count(*) FROM report_item_link WHERE case_id = ?",
+            Long.class, caseId);
+    }
+
+    @Test
+    void aConfirmedLinkMovesOnlyTheLinkedItem() throws Exception {
+        var f = house("Дом связи: точность");
+        var saved = savedReport(f, "Лампу заменили, дверь посмотрим позже");
+        var before = saved.caseAfterReport();
+        UUID light = itemId(before, "LIGHTING");
+        UUID door = itemId(before, "ENTRANCE_DOOR");
+
+        String result = links(f.dispatcherSession(), saved.reportId(), UUID.randomUUID().toString(),
+            linksBody(before.get("caseVersion").asLong(), link(item(before, light), "REPORTED_DONE")))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        var after = json.readTree(result);
+
+        var lightAfter = item(after, light);
+        assertEquals(item(before, light).get("workRound").asInt() + 1, lightAfter.get("workRound").asInt(),
+            "a confirmed link opens a new round");
+        assertEquals("REPORTED_DONE", lightAfter.get("workStatus").asString());
+        assertEquals("NOT_RECEIVED", lightAfter.get("observation").asString(),
+            "the new round starts without the author's answer");
+        assertEquals(item(before, light).get("itemVersion").asLong() + 1,
+            lightAfter.get("itemVersion").asLong());
+        assertEquals(item(before, light).get("contentVersion").asInt(),
+            lightAfter.get("contentVersion").asInt(), "a link is not a content change");
+
+        // The door was named in the report and left out of the links: nothing about it may move.
+        var doorBefore = item(before, door);
+        var doorAfter = item(after, door);
+        assertEquals(doorBefore.get("workRound").asInt(), doorAfter.get("workRound").asInt());
+        assertEquals(doorBefore.get("workStatus").asString(), doorAfter.get("workStatus").asString());
+        assertEquals(doorBefore.get("observation").asString(), doorAfter.get("observation").asString());
+        assertEquals(doorBefore.get("itemVersion").asLong(), doorAfter.get("itemVersion").asLong());
+
+        assertEquals(before.get("progress").get("confirmed").asInt(),
+            after.get("progress").get("confirmed").asInt(),
+            "a report about work is not the author's confirmation of a fix");
+
+        String read = mvc.perform(get("/api/v1/reports/" + saved.reportId()).session(f.dispatcherSession()))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        var view = json.readTree(read);
+        assertEquals(1, view.get("links").size());
+        assertEquals(light.toString(), view.get("links").get(0).get("itemId").asString());
+        assertEquals(1, view.get("links").get(0).get("workRound").asInt());
+    }
+
+    @Test
+    void aStaleWorkRoundIsRefusedAndChangesNothing() throws Exception {
+        var f = house("Дом связи: устаревший контекст");
+        var saved = savedReport(f, "Лампу заменили");
+        var before = saved.caseAfterReport();
+        UUID light = itemId(before, "LIGHTING");
+        var stale = link(item(before, light), "REPORTED_DONE")
+            .replace("\"expectedWorkRound\":0", "\"expectedWorkRound\":5");
+
+        String problem = links(f.dispatcherSession(), saved.reportId(), UUID.randomUUID().toString(),
+            linksBody(before.get("caseVersion").asLong(), stale))
+            .andExpect(status().isConflict()).andReturn().getResponse().getContentAsString();
+        assertEquals("STALE_CONTEXT", json.readTree(problem).get("code").asString(),
+            "a wrong round is not the same failure as a wrong item version");
+        assertEquals(0L, linkCount(saved.caseId()));
+        assertEquals(0, (int) jdbc.queryForObject(
+            "SELECT work_round FROM case_item WHERE id = ?", Integer.class, light));
+    }
+
+    @Test
+    void oneBadLinkLeavesTheWholeSetUnapplied() throws Exception {
+        var f = house("Дом связи: атомарность");
+        var saved = savedReport(f, "Лампу заменили, дверь заменим");
+        var before = saved.caseAfterReport();
+        UUID light = itemId(before, "LIGHTING");
+        UUID door = itemId(before, "ENTRANCE_DOOR");
+        var badDoor = link(item(before, door), "PLANNED")
+            .replace("\"contentVersion\":1", "\"contentVersion\":7");
+
+        links(f.dispatcherSession(), saved.reportId(), UUID.randomUUID().toString(),
+            linksBody(before.get("caseVersion").asLong(),
+                link(item(before, light), "REPORTED_DONE"), badDoor))
+            .andExpect(status().isConflict());
+
+        // The light came first in the set and looked valid; a later failure must undo it too.
+        assertEquals(0L, linkCount(saved.caseId()), "a partial set must not survive");
+        assertEquals(0, (int) jdbc.queryForObject(
+            "SELECT work_round FROM case_item WHERE id = ?", Integer.class, light));
+        assertEquals(before.get("caseVersion").asLong(), (long) jdbc.queryForObject(
+                "SELECT version FROM service_case WHERE id = ?", Long.class, saved.caseId()),
+            "a rolled back command must not consume a case version");
+    }
+
+    @Test
+    void aRepeatedLinkKeyAppliesOnceAndADifferentBodyIsRefused() throws Exception {
+        var f = house("Дом связи: идемпотентность");
+        var saved = savedReport(f, "Лампу заменили");
+        var before = saved.caseAfterReport();
+        UUID light = itemId(before, "LIGHTING");
+        UUID door = itemId(before, "ENTRANCE_DOOR");
+        String key = UUID.randomUUID().toString();
+        String payload = linksBody(before.get("caseVersion").asLong(),
+            link(item(before, light), "REPORTED_DONE"));
+
+        String first = links(f.dispatcherSession(), saved.reportId(), key, payload)
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String second = links(f.dispatcherSession(), saved.reportId(), key, payload)
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertEquals(first, second);
+        assertEquals(1L, linkCount(saved.caseId()), "a replay must not open a second round");
+        assertEquals(1, (int) jdbc.queryForObject(
+            "SELECT work_round FROM case_item WHERE id = ?", Integer.class, light));
+
+        // The same key with a different body is a client mistake, not a retry.
+        String problem = links(f.dispatcherSession(), saved.reportId(), key,
+            linksBody(before.get("caseVersion").asLong(), link(item(before, door), "PLANNED")))
+            .andExpect(status().isConflict()).andReturn().getResponse().getContentAsString();
+        assertEquals("IDEMPOTENCY_KEY_REUSED", json.readTree(problem).get("code").asString());
+    }
+
+    @Test
+    void theSameReportCannotBeLinkedToAnItemTwice() throws Exception {
+        var f = house("Дом связи: повтор пары");
+        var saved = savedReport(f, "Лампу заменили");
+        var before = saved.caseAfterReport();
+        UUID light = itemId(before, "LIGHTING");
+
+        String result = links(f.dispatcherSession(), saved.reportId(), UUID.randomUUID().toString(),
+            linksBody(before.get("caseVersion").asLong(), link(item(before, light), "PLANNED")))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        var afterFirst = json.readTree(result);
+
+        // A fresh key does not buy a second link for the same pair; new facts need a new report.
+        String problem = links(f.dispatcherSession(), saved.reportId(), UUID.randomUUID().toString(),
+            linksBody(afterFirst.get("caseVersion").asLong(),
+                link(item(afterFirst, light), "REPORTED_DONE")))
+            .andExpect(status().isConflict()).andReturn().getResponse().getContentAsString();
+        assertEquals("LINK_ALREADY_EXISTS", json.readTree(problem).get("code").asString());
+        assertEquals(1L, linkCount(saved.caseId()));
+    }
 }

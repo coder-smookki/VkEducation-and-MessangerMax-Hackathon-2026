@@ -60,4 +60,21 @@ public class ReportRepository {
             "SELECT count(*) FROM case_item WHERE case_id = ? AND id IN (" + placeholders + ")",
             Integer.class, args);
     }
+
+    /** Checked before inserting: the primary key would throw a DuplicateKeyException that runCommand
+     *  mistakes for a race over the idempotency record, turning a 409 into a 500. */
+    public boolean linkExists(UUID reportId, UUID itemId) {
+        return jdbc.queryForObject(
+            "SELECT count(*) FROM report_item_link WHERE report_id = ? AND item_id = ?",
+            Integer.class, reportId, itemId) > 0;
+    }
+
+    public void insertLink(UUID reportId, UUID itemId, UUID caseId, int contentVersion, int workRound,
+                           String workStatus, UUID confirmedBy) {
+        jdbc.update("""
+                INSERT INTO report_item_link(report_id, item_id, case_id, content_version, work_round,
+                                             work_status, confirmed_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, reportId, itemId, caseId, contentVersion, workRound, workStatus, confirmedBy);
+    }
 }

@@ -16,6 +16,8 @@ import ru.koren.cases.application.CaseService;
 import ru.koren.reports.application.CreateReportRequest;
 import ru.koren.reports.application.CreateReportResponse;
 import ru.koren.reports.application.WorkReportView;
+import ru.koren.cases.application.CaseView;
+import ru.koren.reports.application.ConfirmLinksRequest;
 
 /** Work reports; every rule stays in CaseService, the actor comes from the session. */
 @RestController
@@ -47,5 +49,13 @@ public class ReportController {
     @GetMapping("/reports/{reportId}")
     public WorkReportView get(Authentication authentication, @PathVariable UUID reportId) {
         return service.getReport(actor(authentication), reportId);
+    }
+
+    @PostMapping("/reports/{reportId}/links")
+    public CaseView confirmLinks(Authentication authentication, @PathVariable UUID reportId,
+                                 @RequestBody ConfirmLinksRequest body,
+                                 @RequestHeader("Idempotency-Key") String idempotencyKey) {
+        return service.confirmLinks(actor(authentication), reportId, body.expectedCaseVersion(),
+            body.links(), idempotencyKey);
     }
 }
