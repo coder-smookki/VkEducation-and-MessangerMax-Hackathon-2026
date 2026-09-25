@@ -183,8 +183,12 @@ class AcceptanceHttpTest {
         var f = newDraft("Дом приёма: конфликт");
         confirmWithOneItem(f);
         // The dispatcher is not the author. A stale version must still read as 409, never as 404.
-        acceptance(f, f.dispatcherSession(), UUID.randomUUID().toString(), "{\"expectedCaseVersion\":2}")
-            .andExpect(status().isConflict());
+        String problem = acceptance(f, f.dispatcherSession(), UUID.randomUUID().toString(),
+            "{\"expectedCaseVersion\":2}")
+            .andExpect(status().isConflict())
+            .andReturn().getResponse().getContentAsString();
+        // Four different codes share status 409; a stale version must name the right one.
+        assertEquals("CASE_VERSION_CONFLICT", json.readTree(problem).get("code").asString());
         assertEquals(0L, acceptedCount(f.caseId()));
     }
 

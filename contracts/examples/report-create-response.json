@@ -1,0 +1,73 @@
+{
+  "report": {
+    "reportId": "00000000-0000-0000-0000-000000000020",
+    "caseId": "00000000-0000-0000-0000-000000000001",
+    "actorId": "00000000-0000-0000-0000-000000000007",
+    "reportText": "Заменили лампу на третьем этаже, дверь посмотрим на следующей неделе.",
+    "targetItemIds": [
+      "00000000-0000-0000-0000-000000000004",
+      "00000000-0000-0000-0000-000000000005"
+    ],
+    "createdAt": "2026-09-13T10:00:00Z",
+    "links": []
+  },
+  "case": {
+    "caseId": "00000000-0000-0000-0000-000000000001",
+    "houseId": "00000000-0000-0000-0000-000000000010",
+    "authorId": "00000000-0000-0000-0000-000000000002",
+    "submissionStatus": "CONFIRMED",
+    "caseVersion": 6,
+    "sourceRevision": 1,
+    "sourceText": "На третьем этаже темно, и входная дверь не закрывается.",
+    "displayNumber": "ДЕМО-7",
+    "receipt": {
+      "confirmedAt": "2026-09-13T09:05:00Z",
+      "acceptedAt": null,
+      "acceptedBy": null
+    },
+    "visibility": "FULL",
+    "items": [
+      {
+        "itemId": "00000000-0000-0000-0000-000000000004",
+        "contentVersion": 1,
+        "workRound": 0,
+        "category": "LIGHTING",
+        "location": "Этаж 3",
+        "symptom": "Не горит свет",
+        "itemVersion": 2,
+        "workStatus": "NOT_ASSIGNED",
+        "observation": "NOT_RECEIVED",
+        "administrativeStatus": "ACTIVE",
+        "administrativeReason": null,
+        "assignedExecutorId": null,
+        "nextAction": null
+      },
+      {
+        "itemId": "00000000-0000-0000-0000-000000000005",
+        "contentVersion": 1,
+        "workRound": 0,
+        "category": "ENTRANCE_DOOR",
+        "location": "Вход",
+        "symptom": "Дверь не закрывается",
+        "itemVersion": 2,
+        "workStatus": "NOT_ASSIGNED",
+        "observation": "NOT_RECEIVED",
+        "administrativeStatus": "ACTIVE",
+        "administrativeReason": null,
+        "assignedExecutorId": null,
+        "nextAction": null
+      }
+    ],
+    "progress": {
+      "total": 2,
+      "confirmed": 0,
+      "withdrawn": 0,
+      "remaining": 2,
+      "allConfirmed": false
+    },
+    "createdAt": "2026-09-13T09:00:00Z"
+  },
+  "analysis": {
+    "status": "MANUAL_REQUIRED"
+  }
+}
