@@ -31,8 +31,8 @@ public class SecurityConfig {
     SecurityFilterChain securityFilterChain(HttpSecurity http, Environment environment) throws Exception {
         http.securityContext(context -> context.securityContextRepository(securityContextRepository()));
         // Cookie commands stay CSRF protected; the token is readable by the Mini App script.
-        http.csrf(csrf -> csrf.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse()));
-        http.exceptionHandling(handling -> handling.authenticationEntryPoint((request, response, e) -> {
+        http.csrf(csrf -> csrf.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+            .ignoringRequestMatchers("/max/webhook"));        http.exceptionHandling(handling -> handling.authenticationEntryPoint((request, response, e) -> {
             response.setStatus(HttpStatus.UNAUTHORIZED.value());
             response.setContentType("application/problem+json;charset=UTF-8");
             response.getWriter().write(
@@ -53,6 +53,7 @@ public class SecurityConfig {
             auth.requestMatchers("/api/v1/reports/**").authenticated();
             auth.requestMatchers(HttpMethod.POST, "/api/v1/auth/logout").authenticated();
             auth.requestMatchers(HttpMethod.POST, "/api/v1/memberships/claim").authenticated();
+            auth.requestMatchers(HttpMethod.POST, "/max/webhook").permitAll();
             // Case routes stay closed until object authorization is wired in the next step.
             auth.anyRequest().denyAll();
         });
