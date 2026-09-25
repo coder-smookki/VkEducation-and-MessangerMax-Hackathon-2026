@@ -8,6 +8,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import java.time.Instant;
+import java.util.ArrayList;
 
 /** Explicit SQL only; no JPA. Every statement runs inside the caller's transaction unless noted otherwise. */
 @Repository
@@ -112,9 +113,32 @@ public class CaseRepository {
                 """, text, ownerId, updateDueAt, itemId, expectedItemVersion);
     }
 
+    /** Overlapping fact-based queue filters, not a new exclusive status; null means no filter. */
+    private static String queuePredicate(String queueState) {
+        if (queueState == null) return "";
+        return switch (queueState) {
+            case "NEEDS_ACCEPTANCE" -> " AND c.submission_status = 'CONFIRMED' AND c.accepted_at IS NULL";
+            case "NEEDS_ACTION" -> """
+                     AND c.accepted_at IS NOT NULL AND EXISTS (
+                           SELECT 1 FROM case_item i WHERE i.case_id = c.id
+                             AND i.administrative_status = 'ACTIVE' AND i.observation <> 'RESTORED'
+                             AND (i.next_action_text IS NULL OR i.observation = 'PERSISTS'
+                                  OR i.next_action_update_due_at < CAST(? AS timestamptz)))""";
+            case "AWAITING_AUTHOR" -> """
+                     AND EXISTS (SELECT 1 FROM case_item i WHERE i.case_id = c.id
+                           AND i.administrative_status = 'ACTIVE' AND i.work_status = 'REPORTED_DONE'
+                           AND i.observation IN ('NOT_RECEIVED', 'CANNOT_CHECK'))""";
+            case "ARCHIVED" -> """
+                     AND EXISTS (SELECT 1 FROM case_item i WHERE i.case_id = c.id
+                           AND i.administrative_status = 'ARCHIVED')""";
+            default -> throw new IllegalArgumentException("Unknown queue state: " + queueState);
+        };
+    }
+
     /** Own cases of any status plus confirmed cases of houses where the actor is a dispatcher. */
-    public List<CaseRow> listVisibleCases(UUID actorId, UUID houseId, Cursor after, int limit) {
-        String visibility = """
+    public List<CaseRow> listVisibleCases(UUID actorId, UUID houseId, String queueState,
+                                          Timestamp now, Cursor after, int limit) {
+        String sql = """
                 SELECT c.id, c.house_id, c.author_id, c.source_revision, c.version, c.submission_status, c.created_at,
                 c.display_number, c.accepted_at, c.accepted_by
                 FROM service_case c
@@ -123,16 +147,21 @@ public class CaseRepository {
                         SELECT 1 FROM membership m
                         WHERE m.user_id = ? AND m.house_id = c.house_id AND m.role = 'DISPATCHER'
                          AND m.revoked_at IS NULL )))
-                """;
-        if (after == null) {
-            return jdbc.query(visibility + " ORDER BY c.created_at DESC, c.id DESC LIMIT ?",
-                    (rs, row) -> mapCase(rs), houseId, houseId, actorId, actorId, limit);
+                """ + queuePredicate(queueState);
+        var args = new ArrayList<Object>();
+        args.add(houseId);
+        args.add(houseId);
+        args.add(actorId);
+        args.add(actorId);
+        if ("NEEDS_ACTION".equals(queueState)) args.add(now);
+        if (after != null) {
+            sql += "\n AND (c.created_at, c.id) < (CAST(? AS timestamptz), CAST(? AS uuid))";
+            args.add(after.createdAt());
+            args.add(after.id());
         }
-        return jdbc.query(visibility + """
-                   AND (c.created_at, c.id) < (CAST(? AS timestamptz), CAST(? AS uuid))
-                ORDER BY c.created_at DESC, c.id DESC LIMIT ?
-                """, (rs, row) -> mapCase(rs), houseId, houseId, actorId, actorId,
-                after.createdAt(), after.id(), limit);
+        sql += "\n ORDER BY c.created_at DESC, c.id DESC LIMIT ?";
+        args.add(limit);
+        return jdbc.query(sql, (rs, row) -> mapCase(rs), args.toArray());
     }
 
     private static CaseRow mapCase(java.sql.ResultSet rs) throws java.sql.SQLException {

@@ -236,20 +236,20 @@ class CaseServicePostgresTest {
         for (UUID outsider : List.of(b, c, d)) {
             assertEquals("RESOURCE_NOT_FOUND", errorOf(() -> service.getCase(outsider, draft.caseId())).code());
         }
-        assertTrue(service.listCases(b, h1, null, null).items().isEmpty());
-        assertTrue(service.listCases(d, h1, null, null).items().isEmpty());
-        assertEquals(1, service.listCases(a, h1, null, null).items().size());
-        assertEquals("ACTION_FORBIDDEN", errorOf(() -> service.listCases(b, h2, null, null)).code());
+        assertTrue(service.listCases(b, h1, null, null, null).items().isEmpty());
+        assertTrue(service.listCases(d, h1, null, null, null).items().isEmpty());
+        assertEquals(1, service.listCases(a, h1, null, null, null).items().size());
+        assertEquals("ACTION_FORBIDDEN", errorOf(() -> service.listCases(b, h2, null, null, null)).code());
         assertEquals("ACTION_FORBIDDEN", errorOf(() -> service.create(c, h1, "Нет membership", "create-6denied")).code());
         assertEquals("RESOURCE_NOT_FOUND", errorOf(() -> service.patchSource(b, draft.caseId(), 2, "Подмена", "source-6")).code());
         assertEquals("RESOURCE_NOT_FOUND", errorOf(() -> service.confirm(d, draft.caseId(), 2, 1, "confirm-6")).code());
 
         var confirmed = service.confirm(a, draft.caseId(), 2, 1, "confirm-6ok");
         assertEquals(confirmed, service.getCase(d, confirmed.caseId()));
-        assertEquals(1, service.listCases(d, h1, null, null).items().size());
+        assertEquals(1, service.listCases(d, h1, null, null, null).items().size());
         assertEquals("RESOURCE_NOT_FOUND", errorOf(() -> service.getCase(b, confirmed.caseId())).code());
-        assertTrue(service.listCases(b, h1, null, null).items().isEmpty());
-        assertTrue(service.listCases(c, h2, null, null).items().isEmpty());
+        assertTrue(service.listCases(b, h1, null, null, null).items().isEmpty());
+        assertTrue(service.listCases(c, h2, null, null, null).items().isEmpty());
     }
 
     @Test void concurrentPatchesWithSameVersionHaveOneWinner() throws Exception {
@@ -365,10 +365,10 @@ class CaseServicePostgresTest {
         for (int i = 0; i < 3; i++) {
             caseIds.add(service.create(a, h1, "Текст " + i, "create-11-" + i).caseId());
         }
-        var page1 = service.listCases(a, h1, null, 2);
+        var page1 = service.listCases(a, h1, null, null, 2);
         assertEquals(2, page1.items().size());
         assertNotNull(page1.nextCursor());
-        var page2 = service.listCases(a, h1, page1.nextCursor(), 2);
+        var page2 = service.listCases(a, h1, null, page1.nextCursor(), 2);
         assertEquals(1, page2.items().size());
         assertNull(page2.nextCursor());
         var seen = new ArrayList<UUID>();
@@ -386,10 +386,10 @@ class CaseServicePostgresTest {
                     || (prev.createdAt().equals(current.createdAt()) && prev.caseId().compareTo(current.caseId()) > 0));
         }
         // Cursor is bound to the filter and opaque.
-        assertEquals("INVALID_FIELDS", errorOf(() -> service.listCases(a, h2, page1.nextCursor(), 2)).code());
-        assertEquals("INVALID_FIELDS", errorOf(() -> service.listCases(a, h1, "not-a-cursor", 2)).code());
-        assertEquals("INVALID_FIELDS", errorOf(() -> service.listCases(a, h1, null, 51)).code());
-        assertEquals("INVALID_FIELDS", errorOf(() -> service.listCases(a, h1, null, 0)).code());
+        assertEquals("INVALID_FIELDS", errorOf(() -> service.listCases(a, h2, null, page1.nextCursor(), 2)).code());
+        assertEquals("INVALID_FIELDS", errorOf(() -> service.listCases(a, h1, null, "not-a-cursor", 2)).code());
+        assertEquals("INVALID_FIELDS", errorOf(() -> service.listCases(a, h1, null, null, 51)).code());
+        assertEquals("INVALID_FIELDS", errorOf(() -> service.listCases(a, h1, null, null, 0)).code());
     }
 
     @Test void textLimitsCountUnicodeCodePointsNotUtf16Units() {

@@ -46,7 +46,8 @@ public class CaseService {
     static final int MAX_LIMIT = 50;
     private static final java.util.Set<String> CATEGORIES =
             java.util.Set.of("LIGHTING", "ENTRANCE_DOOR", "CLEANING", "OTHER");
-
+    private static final java.util.Set<String> QUEUE_STATES =
+        java.util.Set.of("NEEDS_ACCEPTANCE", "NEEDS_ACTION", "AWAITING_AUTHOR", "ARCHIVED");
     private final CaseRepository repo;
     private final TransactionTemplate tx;
     private final TransactionTemplate readTx;
@@ -85,18 +86,24 @@ public class CaseService {
         return readTx.execute(status -> viewOf(loadVisible(actorId, caseId)));
     }
 
-    public CasePage listCases(UUID actorId, UUID houseId, String cursor, Integer limit) {
+    public CasePage listCases(UUID actorId, UUID houseId, String queueState, String cursor, Integer limit) {
         Objects.requireNonNull(actorId);
         int pageSize = limit == null ? DEFAULT_LIMIT : limit;
         if (pageSize < 1 || pageSize > MAX_LIMIT) throw CaseException.invalidFields("Invalid limit");
-        Cursor after = decodeCursor(cursor, houseId);
+        if (queueState != null) {
+            if (!QUEUE_STATES.contains(queueState)) throw CaseException.invalidFields("Unknown queueState");
+            if (houseId == null) throw CaseException.invalidFields("queueState requires houseId");
+        }
+        Cursor after = decodeCursor(cursor, houseId, queueState);
+        Timestamp now = Timestamp.from(clock.instant());
         return readTx.execute(status -> {
             // Membership is re-checked on every page; a cursor is not a credential.
             if (houseId != null) requireMembership(actorId, houseId);
-            var rows = repo.listVisibleCases(actorId, houseId, after, pageSize + 1);
+            if (queueState != null) requireDispatcherOfHouse(actorId, houseId);
+            var rows = repo.listVisibleCases(actorId, houseId, queueState, now, after, pageSize + 1);
             boolean more = rows.size() > pageSize;
             var page = more ? rows.subList(0, pageSize) : rows;
-            String next = more ? encodeCursor(houseId, page.getLast()) : null;
+            String next = more ? encodeCursor(houseId, queueState, page.getLast()) : null;
             return new CasePage(page.stream().map(this::viewOf).toList(), next);
         });
     }
@@ -292,6 +299,11 @@ public class CaseService {
         if (repo.membershipRole(userId, houseId).isEmpty()) throw CaseException.forbidden();
     }
 
+    private void requireDispatcherOfHouse(UUID actorId, UUID houseId) {
+        var role = repo.membershipRole(actorId, houseId);
+        if (role.isEmpty() || !role.get().equals("DISPATCHER")) throw CaseException.forbidden();
+    }
+
     private CaseView viewOf(CaseRow row) {
         var items = repo.findItems(row.id());
         var states = new ArrayList<ItemState>(items.size());
@@ -378,30 +390,33 @@ public class CaseService {
         }
     }
 
-    private static Cursor decodeCursor(String cursor, UUID houseId) {
+    private static Cursor decodeCursor(String cursor, UUID houseId, String queueState) {
         if (cursor == null) return null;
         try {
             String raw = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
             String[] parts = raw.split("\\|", -1);
+            if (parts.length != 5 || !"v2".equals(parts[0])) throw CaseException.invalidFields("Invalid cursor");
             String cursorHouse = "-".equals(parts[1]) ? null : parts[1];
-            if (parts.length != 4 || !"v1".equals(parts[0])
-                    || !Objects.equals(cursorHouse, houseId == null ? null : houseId.toString())) {
+            String cursorQueue = "-".equals(parts[2]) ? null : parts[2];
+            if (!Objects.equals(cursorHouse, houseId == null ? null : houseId.toString())
+                || !Objects.equals(cursorQueue, queueState)) {
                 throw CaseException.invalidFields("Invalid cursor");
             }
-            long micros = Long.parseLong(parts[2]);
+            long micros = Long.parseLong(parts[3]);
             long millis = Math.floorDiv(micros, 1000);
             Timestamp createdAt = new Timestamp(millis);
             createdAt.setNanos(createdAt.getNanos() + (int) Math.floorMod(micros, 1000) * 1000);
-            return new Cursor(createdAt, UUID.fromString(parts[3]));
+            return new Cursor(createdAt, UUID.fromString(parts[4]));
         } catch (IllegalArgumentException | IndexOutOfBoundsException e) {
             throw CaseException.invalidFields("Invalid cursor");
         }
     }
 
-    private static String encodeCursor(UUID houseId, CaseRow last) {
+    private static String encodeCursor(UUID houseId, String queueState, CaseRow last) {
         Timestamp ts = last.createdAt();
         long micros = ts.getTime() * 1000 + (ts.getNanos() % 1_000_000) / 1000;
-        String raw = "v1|" + (houseId == null ? "-" : houseId) + "|" + micros + "|" + last.id();
+        String raw = "v2|" + (houseId == null ? "-" : houseId) + "|" + (queueState == null ? "-" : queueState)
+            + "|" + micros + "|" + last.id();
         return Base64.getUrlEncoder().withoutPadding().encodeToString(raw.getBytes(StandardCharsets.UTF_8));
     }
 

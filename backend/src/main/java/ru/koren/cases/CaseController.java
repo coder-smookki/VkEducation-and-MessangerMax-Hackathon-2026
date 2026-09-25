@@ -54,8 +54,10 @@ public class CaseController {
 
     @GetMapping
     public CasePage list(Authentication authentication, @RequestParam(required = false) UUID houseId,
-                         @RequestParam(required = false) String cursor, @RequestParam(required = false) Integer limit) {
-        return service.listCases(actor(authentication), houseId, cursor, limit);
+                         @RequestParam(required = false) String queueState,
+                         @RequestParam(required = false) String cursor,
+                         @RequestParam(required = false) Integer limit) {
+        return service.listCases(actor(authentication), houseId, queueState, cursor, limit);
     }
 
     @PatchMapping("/{caseId}/source")

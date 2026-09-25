@@ -256,4 +256,95 @@ class AcceptanceHttpTest {
         assertNull(jdbc.queryForObject("SELECT next_action_text FROM case_item WHERE id = ?",
             String.class, itemId));
     }
+
+    private UUID createCase(Fixture f, String text) throws Exception {
+        String created = mvc.perform(post("/api/v1/cases").session(f.authorSession()).with(csrf())
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"houseId\":\"" + f.house() + "\",\"sourceText\":\"" + text + "\"}"))
+            .andExpect(status().isCreated())
+            .andReturn().getResponse().getContentAsString();
+        return UUID.fromString(json.readTree(created).get("caseId").asString());
+    }
+
+    /** One door item, then confirmation, for a case other than the fixture's own. */
+    private void confirmOneItem(Fixture f, UUID caseId) throws Exception {
+        mvc.perform(patch("/api/v1/cases/" + caseId + "/items").session(f.authorSession()).with(csrf())
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"expectedCaseVersion\":1,\"items\":[{\"itemId\":null,\"category\":\"ENTRANCE_DOOR\","
+                    + "\"location\":\"Вход\",\"symptom\":\"Дверь не закрывается\"}]}"))
+            .andExpect(status().isOk());
+        mvc.perform(post("/api/v1/cases/" + caseId + "/confirm").session(f.authorSession()).with(csrf())
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"expectedCaseVersion\":2,\"sourceRevision\":1}"))
+            .andExpect(status().isOk());
+    }
+
+    private String queue(MockHttpSession session, UUID house, String state) throws Exception {
+        return mvc.perform(get("/api/v1/cases").session(session)
+                .param("houseId", house.toString()).param("queueState", state))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+    }
+
+    @Test
+    void theAcceptanceQueueShowsOnlyUnacceptedConfirmedCases() throws Exception {
+        var f = newDraft("Дом очереди: приём");
+        confirmWithOneItem(f);
+        acceptance(f, f.dispatcherSession(), UUID.randomUUID().toString(), "{\"expectedCaseVersion\":3}")
+            .andExpect(status().isOk());
+        UUID waiting = createCase(f, "Дверь не закрывается");
+        confirmOneItem(f, waiting);
+        UUID draft = createCase(f, "Ещё не подтверждено");
+
+        String page = queue(f.dispatcherSession(), f.house(), "NEEDS_ACCEPTANCE");
+        assertTrue(page.contains(waiting.toString()), "a confirmed case without acceptance belongs to the queue");
+        assertFalse(page.contains(f.caseId().toString()), "an accepted case leaves the queue");
+        assertFalse(page.contains(draft.toString()), "an author's draft never reaches a dispatcher queue");
+    }
+
+    @Test
+    void theActionQueueFollowsAcceptanceAndThePlan() throws Exception {
+        var f = newDraft("Дом очереди: действие");
+        String confirmed = confirmWithOneItem(f);
+        assertFalse(queue(f.dispatcherSession(), f.house(), "NEEDS_ACTION").contains(f.caseId().toString()),
+            "a case nobody accepted is not yet waiting for a plan");
+
+        acceptance(f, f.dispatcherSession(), UUID.randomUUID().toString(), "{\"expectedCaseVersion\":3}")
+            .andExpect(status().isOk());
+        assertTrue(queue(f.dispatcherSession(), f.house(), "NEEDS_ACTION").contains(f.caseId().toString()),
+            "an accepted case whose item carries no plan needs one");
+
+        var item = json.readTree(confirmed).get("items").get(0);
+        nextAction(f.dispatcherSession(), UUID.fromString(item.get("itemId").asString()),
+            UUID.randomUUID().toString(),
+            plan(f.dispatcher(), 4, item.get("itemVersion").asLong(), "Вызвать электрика", FUTURE_DUE))
+            .andExpect(status().isOk());
+        assertFalse(queue(f.dispatcherSession(), f.house(), "NEEDS_ACTION").contains(f.caseId().toString()),
+            "a plan with a future update date takes the case out of the queue");
+
+        // These two depend on facts that no command can produce yet; they must answer, not fail.
+        assertFalse(queue(f.dispatcherSession(), f.house(), "AWAITING_AUTHOR").contains(f.caseId().toString()));
+        assertFalse(queue(f.dispatcherSession(), f.house(), "ARCHIVED").contains(f.caseId().toString()));
+    }
+
+    @Test
+    void theQueueIsADispatcherToolInsideOneHouse() throws Exception {
+        var f = newDraft("Дом очереди: права");
+        confirmWithOneItem(f);
+        // A resident may list their own cases; a dispatcher queue is a different thing.
+        mvc.perform(get("/api/v1/cases").session(f.authorSession())
+                .param("houseId", f.house().toString()).param("queueState", "NEEDS_ACCEPTANCE"))
+            .andExpect(status().isForbidden());
+        // Without a house a queue would cross house boundaries.
+        mvc.perform(get("/api/v1/cases").session(f.dispatcherSession())
+                .param("queueState", "NEEDS_ACCEPTANCE"))
+            .andExpect(status().isUnprocessableEntity());
+        // An unknown value must not quietly degrade into "no filter at all".
+        mvc.perform(get("/api/v1/cases").session(f.dispatcherSession())
+                .param("houseId", f.house().toString()).param("queueState", "URGENT"))
+            .andExpect(status().isUnprocessableEntity());
+    }
 }

@@ -1,16 +1,16 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "KOREN author review - planned Java API",
+    "title": "KOREN author review - Java API",
     "version": "0.1.0",
-    "description": "Contract 03. Specification and synthetic fixtures only; these Java routes are not implemented or opened."
+    "description": "Contract 03. x-implementation-status per operation: IMPLEMENTED means the route runs on PostgreSQL behind a real session and is covered by tests; TARGET means planned and not routed yet. Fixtures stay synthetic. A schema alone is never proof that an endpoint answers."
   },
   "paths": {
     "/api/v1/cases/{caseId}/items": {
       "patch": {
         "operationId": "updateDraftItems",
         "summary": "Автор исправляет весь список пунктов черновика",
-        "x-implementation-status": "SCHEMA_ONLY",
+        "x-implementation-status": "IMPLEMENTED",
         "x-csrf": "Use the headerName/token returned by GET /api/v1/csrf. Required for session commands.",
         "security": [
           {
@@ -140,14 +140,15 @@
               }
             }
           }
-        }
+        },
+        "x-task": "S-02"
       }
     },
     "/api/v1/cases/{caseId}/confirm": {
       "post": {
         "operationId": "confirmItems",
         "summary": "Автор подтверждает текущую версию содержания",
-        "x-implementation-status": "SCHEMA_ONLY",
+        "x-implementation-status": "IMPLEMENTED",
         "x-csrf": "Use the headerName/token returned by GET /api/v1/csrf. Required for session commands.",
         "security": [
           {
@@ -277,14 +278,15 @@
               }
             }
           }
-        }
+        },
+        "x-task": "S-02"
       }
     },
     "/api/v1/me": {
       "get": {
         "operationId": "getMe",
         "summary": "Текущий проверенный пользователь и его действующие дома",
-        "x-implementation-status": "SCHEMA_ONLY",
+        "x-implementation-status": "IMPLEMENTED",
         "security": [
           {
             "sessionCookie": []
@@ -311,14 +313,15 @@
               }
             }
           }
-        }
+        },
+        "x-task": "S-02"
       }
     },
     "/api/v1/cases": {
       "get": {
         "operationId": "listCases",
         "summary": "Список видимых обращений с курсорной страницей",
-        "x-implementation-status": "SCHEMA_ONLY",
+        "x-implementation-status": "IMPLEMENTED",
         "security": [
           {
             "sessionCookie": []
@@ -358,9 +361,9 @@
             "name": "queueState",
             "in": "query",
             "required": false,
-            "x-implementation-status": "TARGET",
+            "x-implementation-status": "IMPLEMENTED",
             "x-task": "S-03",
-            "description": "TARGET (S-03): dispatcher queue filter. Overlapping fact-based filters, not a new exclusive status. DISPATCHER only, inside an allowed houseId; an unknown value is 422. The cursor is bound to houseId and queueState. NEEDS_ACCEPTANCE: CONFIRMED without acceptedAt. NEEDS_ACTION: accepted, has an ACTIVE item without RESTORED that has no current nextAction, or observation PERSISTS, or an expired updateDueAt. AWAITING_AUTHOR: has an ACTIVE REPORTED_DONE item with NOT_RECEIVED or CANNOT_CHECK. ARCHIVED: has an ARCHIVED item. Depends on acceptedAt and nextAction, which do not exist yet.",
+            "description": "Dispatcher queue filter. Overlapping fact-based filters, not a new exclusive status. DISPATCHER only, inside an allowed houseId; a missing houseId or an unknown value is 422. The cursor is bound to houseId and queueState. NEEDS_ACCEPTANCE: CONFIRMED without acceptedAt. NEEDS_ACTION: accepted, has an ACTIVE item without RESTORED that has no current nextAction, or observation PERSISTS, or an expired updateDueAt. AWAITING_AUTHOR: has an ACTIVE REPORTED_DONE item with NOT_RECEIVED or CANNOT_CHECK. ARCHIVED: has an ARCHIVED item. AWAITING_AUTHOR stays empty until reports exist (S-04) and ARCHIVED until the archive command exists (S-05); the other two are live.",
             "schema": {
               "enum": [
                 "NEEDS_ACCEPTANCE",
@@ -412,15 +415,16 @@
               }
             }
           }
-        }
+        },
+        "x-task": "S-02"
       }
     },
     "/api/v1/memberships/claim": {
       "post": {
         "operationId": "claimMembership",
         "summary": "TARGET S-02: обменять одноразовый код приглашения на членство RESIDENT",
-        "x-implementation-status": "TARGET",
-        "x-task": "S-02/K-02",
+        "x-implementation-status": "IMPLEMENTED",
+        "x-task": "S-02",
         "security": [
           {
             "sessionCookie": []
@@ -528,7 +532,7 @@
       "post": {
         "operationId": "acceptCase",
         "summary": "TARGET S-03: диспетчер принимает подтверждённое обращение",
-        "x-implementation-status": "TARGET",
+        "x-implementation-status": "IMPLEMENTED",
         "x-task": "S-03",
         "security": [
           {
@@ -644,7 +648,7 @@
       "put": {
         "operationId": "setNextAction",
         "summary": "TARGET S-03: диспетчер задаёт следующий шаг по пункту",
-        "x-implementation-status": "TARGET",
+        "x-implementation-status": "IMPLEMENTED",
         "x-task": "S-03",
         "security": [
           {
