@@ -2,7 +2,7 @@
 
 62 ID, включая ошибки/адаптивность/бот/библиотеку/расширение. Один ID не требует отдельного route или endpoint. Все пути API ниже относительно `/api/v1`, кроме MAX webhook. Буква A в screen ID не обозначает QA-A.
 
-**Статус:** все перечисленные интерфейсы проектные; реальное ядро описано в [состоянии](memory/PROJECT_STATE.md). Ключевые новые поля TARGET перечислены в [API](api.md). Ни одна строка не доказывает готовность продукта.
+Статус: все перечисленные интерфейсы проектные; реальное ядро описано в состоянии. Статус каждой серверной операции указан в машинной схеме полем x-implementation-status. Ни одна строка не доказывает готовность продукта.
 
 Каждый экран также обязан обрабатывать loading/denied/error/смену контекста; командный экран - pending/409/unknown outcome. Все реальные значения приходят с сервера; synthetic placeholders не замена API.
 
@@ -12,7 +12,7 @@
 |---|---|---|---|
 | M01 Запуск и восстановление входа<br>[dark](../design/images/mobile/M01_launch_dark.png) / [light](../design/images/mobile/M01_launch_light.png) | Вход: initData → auth/max, затем /me | Сессия, memberships; нет доверия initDataUnsafe | S-02/K-01; QA-A01 |
 | M02 Нет доступа к дому<br>[dark](../design/images/mobile/M02_no-house-access_dark.png) / [light](../design/images/mobile/M02_no-house-access_light.png) | GET /me → нет действующих memberships | Проверенный пользователь без доступа; данные дома скрыты | S-02/K-01; QA-A02 |
-| M03 Ввод приглашения<br>[dark](../design/images/mobile/M03_invitation_dark.png) / [light](../design/images/mobile/M03_invitation_light.png) | POST /memberships/claim [TARGET] | invitationCode; безопасное одноразовое потребление | S-02/K-02; QA-A04 |
+| M03 Ввод приглашения<br>[dark](../design/images/mobile/M03_invitation_dark.png) / [light](../design/images/mobile/M03_invitation_light.png) | POST /memberships/claim | invitationCode; безопасное одноразовое потребление | S-02/K-02; QA-A04 |
 | M04 Выбор доступного дома и контекста<br>[dark](../design/images/mobile/M04_available-contexts_dark.png) / [light](../design/images/mobile/M04_available-contexts_light.png) | GET /me, выбор существующего context | Только memberships пользователя; role не изменяется | S-02/K-01; QA-A02 |
 | M05 Настройки<br>[dark](../design/images/mobile/M05_settings_dark.png) / [light](../design/images/mobile/M05_settings_light.png) | Локальные theme/text prefs | System/light/dark; normal/large; не API прав/уведомлений | K-01/K-06; QA-E12 |
 | M06 Помощь и о сервисе<br>[dark](../design/images/mobile/M06_help_dark.png) / [light](../design/images/mobile/M06_help_light.png) | Публичная фактическая справка | Контакты поддержки/политика должны быть заполнены | K-08; QA-R09 |
@@ -32,7 +32,7 @@
 | A07 Ручной список без подсказки<br>[dark](../design/images/mobile/A07_manual-items_dark.png) / [light](../design/images/mobile/A07_manual-items_light.png) | PATCH items ручным вводом | STUB/MANUAL; исходник и все пункты доступны | S-02/K-02; QA-E10 |
 | A08 Список подтверждён — обращение сохранено<br>[dark](../design/images/mobile/A08_appeal-saved_dark.png) / [light](../design/images/mobile/A08_appeal-saved_light.png) | POST confirm → GET case | CONFIRMED/confirmedAt [расширение]; принятие отдельно | S-02/S-03/K-02; QA-E02 |
 | A09 Карточка до приёма<br>[dark](../design/images/mobile/A09_awaiting-acceptance_dark.png) / [light](../design/images/mobile/A09_awaiting-acceptance_light.png) | GET case: acceptedAt=null | Содержание подтверждено, сотрудник ещё не принял | S-03/K-02; QA-E03 |
-| A10 Карточка после приёма<br>[dark](../design/images/mobile/A10_accepted-appeal_dark.png) / [light](../design/images/mobile/A10_accepted-appeal_light.png) | GET case: receipt + nextAction [TARGET] | acceptedBy/At; действие/owner/дата обновления | S-03/K-02; QA-E03 |
+| A10 Карточка после приёма<br>[dark](../design/images/mobile/A10_accepted-appeal_dark.png) / [light](../design/images/mobile/A10_accepted-appeal_light.png) | GET case: receipt + nextAction | acceptedBy/At; действие/owner/дата обновления | S-03/K-02; QA-E03 |
 | A11 Есть отчёт по свету — ждём автора<br>[dark](../design/images/mobile/A11_light-awaiting-observation_dark.png) / [light](../design/images/mobile/A11_light-awaiting-observation_light.png) | GET case/report после link | REPORTED_DONE текущего пункта; observation NOT_RECEIVED | S-04/K-04; QA-E05 |
 | A12 Наблюдение по одному пункту<br>[dark](../design/images/mobile/A12_item-observation_dark.png) / [light](../design/images/mobile/A12_item-observation_light.png) | POST /items/{id}/observations | value/source, expectedCase/ItemVersion, contentVersion/round | S-05/K-04; QA-E06 |
 | A13 Частичный результат — 1 из 2<br>[dark](../design/images/mobile/A13_partial-result_dark.png) / [light](../design/images/mobile/A13_partial-result_light.png) | GET case / progress | total2/confirmed1/remaining1; дверь и nextAction | S-05/K-04; QA-E07 |
@@ -46,10 +46,10 @@
 
 | Экран и макеты | Команда / чтение | Обязательные данные и смысл | Реализация / проверка |
 |---|---|---|---|
-| D01 Рабочая очередь<br>[dark](../design/images/mobile/D01_work-queue_dark.png) / [light](../design/images/mobile/D01_work-queue_light.png) | GET /cases с серверным queueState [TARGET фильтр] | Только CONFIRMED разрешённых домов; draft скрыт | S-03/K-03; QA-A02 |
+| D01 Рабочая очередь<br>[dark](../design/images/mobile/D01_work-queue_dark.png) / [light](../design/images/mobile/D01_work-queue_light.png) | GET /cases с серверным queueState | Только CONFIRMED разрешённых домов; draft скрыт | S-03/K-03; QA-A02 |
 | D02 Фильтры очереди<br>[dark](../design/images/mobile/D02_queue-filters_dark.png) / [light](../design/images/mobile/D02_queue-filters_light.png) | GET /cases с фильтром/новым cursor | Причина пустоты; фильтр не расширяет scope | S-03/K-03; QA-A02 |
-| D03 Обращение ждёт приёма<br>[dark](../design/images/mobile/D03_accept-appeal_dark.png) / [light](../design/images/mobile/D03_accept-appeal_light.png) | POST /cases/{id}/acceptance [TARGET] | expectedCaseVersion; отдельный receipt | S-03/K-03; QA-E03 |
-| D04 Следующий шаг по двери<br>[dark](../design/images/mobile/D04_door-next-step_dark.png) / [light](../design/images/mobile/D04_door-next-step_light.png) | PUT /items/{id}/next-action [TARGET] | text/ownerId/updateDueAt, expectedCase/ItemVersion | S-03/K-03; QA-E03 |
+| D03 Обращение ждёт приёма<br>[dark](../design/images/mobile/D03_accept-appeal_dark.png) / [light](../design/images/mobile/D03_accept-appeal_light.png) | POST /cases/{id}/acceptance | expectedCaseVersion; отдельный receipt | S-03/K-03; QA-E03 |
+| D04 Следующий шаг по двери<br>[dark](../design/images/mobile/D04_door-next-step_dark.png) / [light](../design/images/mobile/D04_door-next-step_light.png) | PUT /items/{id}/next-action | text/ownerId/updateDueAt, expectedCase/ItemVersion | S-03/K-03; QA-E03 |
 | D05 Сохранение отчёта<br>[dark](../design/images/mobile/D05_save-report_dark.png) / [light](../design/images/mobile/D05_save-report_light.png) | POST /cases/{id}/reports | reportText/targetItemIds; сохранение без link | S-04/K-03; QA-E04 |
 | D06 Проверка подсказки и выбор связей<br>[dark](../design/images/mobile/D06_review-report-links_dark.png) / [light](../design/images/mobile/D06_review-report-links_light.png) | GET report + контракт05 через Java | suggestions/evidence или MANUAL; флажки пустые | S-04/S-06/K-03; QA-E04 |
 | D07 Подтверждение точных связей<br>[dark](../design/images/mobile/D07_confirm-exact-links_dark.png) / [light](../design/images/mobile/D07_confirm-exact-links_light.png) | POST /reports/{id}/links | Явные пары и content/round/lock версии; только свет | S-04/K-03; QA-E05 |
