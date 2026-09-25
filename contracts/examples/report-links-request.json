@@ -1,0 +1,12 @@
+{
+  "expectedCaseVersion": 6,
+  "links": [
+    {
+      "itemId": "00000000-0000-0000-0000-000000000004",
+      "expectedItemVersion": 2,
+      "contentVersion": 1,
+      "expectedWorkRound": 0,
+      "workStatus": "REPORTED_DONE"
+    }
+  ]
+}

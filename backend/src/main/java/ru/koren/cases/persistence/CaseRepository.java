@@ -134,20 +134,22 @@ public class CaseRepository {
         return byCase;
     }
 
-    /** Everything a per-item command needs to authorize itself, in one round trip. */
-    public record ItemContextRow(UUID itemId, long itemVersion, String administrativeStatus,
-                                 UUID caseId, UUID houseId, long caseVersion, String submissionStatus) {
+    /** Everything a per-item command needs to authorize itself and check its context, in one round trip. */
+    public record ItemContextRow(UUID itemId, long itemVersion, int contentVersion, int workRound,
+                                 String administrativeStatus, UUID caseId, UUID houseId,
+                                 long caseVersion, String submissionStatus) {
         public boolean isDraft() { return "DRAFT".equals(submissionStatus); }
     }
 
     public Optional<ItemContextRow> findItemContext(UUID itemId) {
         return jdbc.query("""
-                SELECT i.id, i.version, i.administrative_status,
+                SELECT i.id, i.version, i.content_version, i.work_round, i.administrative_status,
                        c.id AS case_id, c.house_id, c.version AS case_version, c.submission_status
                 FROM case_item i
                 JOIN service_case c ON c.id = i.case_id
                 WHERE i.id = ?
                 """, (rs, row) -> new ItemContextRow(rs.getObject("id", UUID.class), rs.getLong("version"),
+            rs.getInt("content_version"), rs.getInt("work_round"),
             rs.getString("administrative_status"), rs.getObject("case_id", UUID.class),
             rs.getObject("house_id", UUID.class), rs.getLong("case_version"),
             rs.getString("submission_status")), itemId).stream().findFirst();
@@ -347,5 +349,36 @@ public class CaseRepository {
                 """, (rs, rowNum) -> rs.getTimestamp("confirmed_at"), caseId);
         var value = times.isEmpty() ? null : times.getFirst();
         return value == null ? null : value.toInstant();
+    }
+
+    /**
+     * A confirmed link opens a new round for this item alone and resets its current observation.
+     * Four guards in one statement: nothing about the item may have moved since the dispatcher looked.
+     */
+    public int openRoundForLink(UUID itemId, long expectedItemVersion, int expectedContentVersion,
+                                int expectedWorkRound, String workStatus) {
+        return jdbc.update("""
+                UPDATE case_item
+                   SET version = version + 1,
+                       work_round = work_round + 1,
+                       work_status = ?,
+                       observation = 'NOT_RECEIVED'
+                 WHERE id = ? AND version = ? AND content_version = ? AND work_round = ?
+                """, workStatus, itemId, expectedItemVersion, expectedContentVersion, expectedWorkRound);
+    }
+
+    public boolean linkExists(UUID reportId, UUID itemId) {
+        return jdbc.queryForObject(
+            "SELECT count(*) FROM report_item_link WHERE report_id = ? AND item_id = ?",
+            Integer.class, reportId, itemId) > 0;
+    }
+
+    public void insertLink(UUID reportId, UUID itemId, UUID caseId, int contentVersion, int workRound,
+                           String workStatus, UUID confirmedBy) {
+        jdbc.update("""
+                INSERT INTO report_item_link(report_id, item_id, case_id, content_version, work_round,
+                                             work_status, confirmed_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, reportId, itemId, caseId, contentVersion, workRound, workStatus, confirmedBy);
     }
 }

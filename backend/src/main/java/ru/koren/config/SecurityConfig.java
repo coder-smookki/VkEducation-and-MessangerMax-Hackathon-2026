@@ -50,6 +50,7 @@ public class SecurityConfig {
             auth.requestMatchers(HttpMethod.GET, "/api/v1/me").authenticated();
             auth.requestMatchers("/api/v1/cases", "/api/v1/cases/**").authenticated();
             auth.requestMatchers("/api/v1/items/**").authenticated();
+            auth.requestMatchers("/api/v1/reports/**").authenticated();
             auth.requestMatchers(HttpMethod.POST, "/api/v1/auth/logout").authenticated();
             auth.requestMatchers(HttpMethod.POST, "/api/v1/memberships/claim").authenticated();
             // Case routes stay closed until object authorization is wired in the next step.

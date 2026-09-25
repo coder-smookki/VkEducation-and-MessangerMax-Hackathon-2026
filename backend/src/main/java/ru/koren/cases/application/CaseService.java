@@ -27,7 +27,13 @@ import ru.koren.cases.persistence.CaseRepository.ProcessedRow;
 import tools.jackson.databind.json.JsonMapper;
 import java.time.Instant;
 import java.time.Clock;
-
+import ru.koren.reports.persistence.ReportRepository;
+import ru.koren.reports.application.AnalysisView;
+import ru.koren.reports.application.CreateReportResponse;
+import ru.koren.reports.application.LinkView;
+import ru.koren.reports.application.WorkReportView;
+import java.util.Comparator;
+import ru.koren.reports.application.LinkInput;
 
 /**
  * S1 use cases for drafts and confirmation. actorId must come from server authentication, never a request body.
@@ -49,13 +55,16 @@ public class CaseService {
     private static final java.util.Set<String> QUEUE_STATES =
         java.util.Set.of("NEEDS_ACCEPTANCE", "NEEDS_ACTION", "AWAITING_AUTHOR", "ARCHIVED");
     private final CaseRepository repo;
+    private final ReportRepository reports;
     private final TransactionTemplate tx;
     private final TransactionTemplate readTx;
     private final Clock clock;
     private final JsonMapper json = JsonMapper.builder().build();
 
-    public CaseService(CaseRepository repo, PlatformTransactionManager transactions, Clock clock) {
+    public CaseService(CaseRepository repo, ReportRepository reports,
+                       PlatformTransactionManager transactions, Clock clock) {
         this.repo = repo;
+        this.reports = reports;
         this.clock = clock;
         tx = new TransactionTemplate(transactions);
         readTx = new TransactionTemplate(transactions);
@@ -70,7 +79,7 @@ public class CaseService {
         requireMembership(authorId, houseId);
         String hash = hash("create", houseId, orderedMap("houseId", houseId, "sourceText", sourceText));
         Runnable access = () -> requireMembership(authorId, houseId);
-        return runCommand(authorId, "create", idempotencyKey, hash, 201, access, () -> {
+        return runCommand(authorId, "create", idempotencyKey, hash, 201, access, CaseView.class, () -> {
             UUID caseId = UUID.randomUUID();
             repo.insertCase(caseId, houseId, authorId);
             repo.insertCaseRevision(caseId, 1, sourceText);
@@ -125,10 +134,10 @@ public class CaseService {
         String hash = hash("patch-source", caseId,
                 orderedMap("expectedCaseVersion", expectedCaseVersion, "sourceText", sourceText));
         Runnable access = () -> requireAuthor(actorId, caseId);
-        return runCommand(actorId, "patch-source", idempotencyKey, hash, 200, access, () -> {
+        return runCommand(actorId, "patch-source", idempotencyKey, hash, 200, access, CaseView.class, () -> {
             loadDraftForAuthor(actorId, caseId);
             if (repo.bumpDraftCaseVersion(caseId, expectedCaseVersion) == 0) {
-                return conflictOrReplay(actorId, "patch-source", idempotencyKey, hash, caseId, access, true);
+                return conflictOrReplay(actorId, "patch-source", idempotencyKey, hash, caseId, access, true, CaseView.class);
             }
             int revision = repo.findCase(caseId).orElseThrow().sourceRevision();
             int nextRevision = revision + 1;
@@ -149,10 +158,10 @@ public class CaseService {
         validateItemsInput(items);
         String hash = hash("patch-items", caseId, canonicalItemsBody(expectedCaseVersion, items));
         Runnable access = () -> requireAuthor(actorId, caseId);
-        return runCommand(actorId, "patch-items", idempotencyKey, hash, 200, access, () -> {
+        return runCommand(actorId, "patch-items", idempotencyKey, hash, 200, access, CaseView.class, () -> {
             loadDraftForAuthor(actorId, caseId);
             if (repo.bumpDraftCaseVersion(caseId, expectedCaseVersion) == 0) {
-                return conflictOrReplay(actorId, "patch-items", idempotencyKey, hash, caseId, access, true);
+                return conflictOrReplay(actorId, "patch-items", idempotencyKey, hash, caseId, access, true, CaseView.class);
             }
             applyItemReplacement(caseId, items);
             repo.insertAudit(caseId, actorId, "CASE_ITEMS_PATCHED",
@@ -171,10 +180,10 @@ public class CaseService {
         String hash = hash("confirm", caseId,
                 orderedMap("expectedCaseVersion", expectedCaseVersion, "sourceRevision", sourceRevision));
         Runnable access = () -> requireAuthor(actorId, caseId);
-        return runCommand(actorId, "confirm", idempotencyKey, hash, 200, access, () -> {
+        return runCommand(actorId, "confirm", idempotencyKey, hash, 200, access, CaseView.class, () -> {
             var row = loadDraftForAuthor(actorId, caseId);
             if (repo.bumpDraftCaseVersion(caseId, expectedCaseVersion) == 0) {
-                return conflictOrReplay(actorId, "confirm", idempotencyKey, hash, caseId, access, true);
+                return conflictOrReplay(actorId, "confirm", idempotencyKey, hash, caseId, access, true, CaseView.class);
             }
             // CAS success pins the row we read: the version is unchanged since our read.
             if (row.sourceRevision() != sourceRevision) throw CaseException.versionConflict();
@@ -234,38 +243,39 @@ public class CaseService {
         }
     }
 
-    private record TxOutcome(CaseView view, boolean replayed) {
-        static TxOutcome fresh(CaseView view) { return new TxOutcome(view, false); }
-        static TxOutcome replay(CaseView view) { return new TxOutcome(view, true); }
+    private record TxOutcome<T>(T value, boolean replayed) {
+        static <T> TxOutcome<T> fresh(T value) { return new TxOutcome<>(value, false); }
+        static <T> TxOutcome<T> replay(T value) { return new TxOutcome<>(value, true); }
     }
 
-    private CaseView runCommand(UUID actorId, String operation, String key, String hash, int successStatus,
-                                Runnable accessRecheck, Supplier<TxOutcome> work) {
+    private <T> T runCommand(UUID actorId, String operation, String key, String hash, int successStatus,
+                             Runnable accessRecheck, Class<T> type, Supplier<TxOutcome<T>> work) {
         try {
             return tx.execute(status -> {
                 var prior = repo.findProcessed(actorId, operation, key);
-                if (prior.isPresent()) return replay(prior.get(), hash, accessRecheck);
-                TxOutcome outcome = work.get();
+                if (prior.isPresent()) return replay(prior.get(), hash, accessRecheck, type);
+                TxOutcome<T> outcome = work.get();
                 if (!outcome.replayed()) {
                     repo.insertProcessed(actorId, operation, key, hash, successStatus,
-                            json.writeValueAsString(outcome.view()));
+                        json.writeValueAsString(outcome.value()));
                 }
-                return outcome.view();
+                return outcome.value();
             });
         } catch (DuplicateKeyException duplicate) {
             // Loser of a concurrent insert of the same idempotency record: this transaction is aborted.
             // Read the winner in a fresh transaction; a different unique violation is not a replay.
             var winner = repo.findProcessed(actorId, operation, key);
             if (winner.isEmpty()) throw duplicate;
-            return replay(winner.get(), hash, accessRecheck);
+            return replay(winner.get(), hash, accessRecheck, type);
         }
     }
 
     /** A lost CAS may be a concurrent identical retry that has just committed; check before reporting 409. */
-    private TxOutcome conflictOrReplay(UUID actorId, String operation, String key, String hash,
-                                       UUID caseId, Runnable accessRecheck, boolean draftOnly) {
+    private <T> TxOutcome<T> conflictOrReplay(UUID actorId, String operation, String key, String hash,
+                                              UUID caseId, Runnable accessRecheck, boolean draftOnly,
+                                              Class<T> type) {
         var prior = repo.findProcessed(actorId, operation, key);
-        if (prior.isPresent()) return TxOutcome.replay(replay(prior.get(), hash, accessRecheck));
+        if (prior.isPresent()) return TxOutcome.replay(replay(prior.get(), hash, accessRecheck, type));
         // The command's own access rule decides 404/403 here; a dispatcher is not the author.
         accessRecheck.run();
         var current = repo.findCase(caseId).orElseThrow(CaseException::notFound);
@@ -273,11 +283,11 @@ public class CaseService {
         throw CaseException.versionConflict();
     }
 
-    private CaseView replay(ProcessedRow row, String hash, Runnable accessRecheck) {
+    private <T> T replay(ProcessedRow row, String hash, Runnable accessRecheck, Class<T> type) {
         if (!row.requestHash().equals(hash)) throw CaseException.idempotencyKeyReused();
         // The stored response is released only if the actor still holds the required access.
         accessRecheck.run();
-        return json.readValue(row.responseBody(), CaseView.class);
+        return json.readValue(row.responseBody(), type);
     }
 
     private CaseRow loadVisible(UUID actorId, UUID caseId) {
@@ -441,7 +451,7 @@ public class CaseService {
         validateVersion(expectedCaseVersion);
         String hash = hash("accept", caseId, orderedMap("expectedCaseVersion", expectedCaseVersion));
         Runnable access = () -> requireDispatcherOfCase(actorId, caseId);
-        return runCommand(actorId, "accept", idempotencyKey, hash, 200, access, () -> {
+        return runCommand(actorId, "accept", idempotencyKey, hash, 200, access, CaseView.class, () -> {
             var row = loadVisible(actorId, caseId);
             requireDispatcherOfCase(actorId, caseId);
             if (!"CONFIRMED".equals(row.submissionStatus())) {
@@ -451,7 +461,7 @@ public class CaseService {
                 throw CaseException.invalidTransition("The case is already accepted");
             }
             if (repo.bumpConfirmedCaseVersion(caseId, expectedCaseVersion) == 0) {
-                return conflictOrReplay(actorId, "accept", idempotencyKey, hash, caseId, access, true);
+                return conflictOrReplay(actorId, "accept", idempotencyKey, hash, caseId, access, false, CaseView.class);
             }
             // Re-accepting is not an error, but it must not overwrite who accepted first.
             repo.acceptCase(caseId, actorId);
@@ -478,7 +488,7 @@ public class CaseService {
             "text", text, "ownerId", ownerId,
             "updateDueAt", updateDueAt == null ? null : updateDueAt.toString()));
         Runnable access = () -> requireDispatcherOfItem(actorId, itemId);
-        return runCommand(actorId, "next-action", idempotencyKey, hash, 200, access, () -> {
+        return runCommand(actorId, "next-action", idempotencyKey, hash, 200, access, CaseView.class, () -> {
             var ctx = requireDispatcherOfItem(actorId, itemId);
             if (ctx.isDraft()) {
                 throw CaseException.invalidTransition("A next action needs a confirmed case");
@@ -491,7 +501,7 @@ public class CaseService {
                 throw CaseException.invalidFields("ownerId must be an active dispatcher of this house");
             }
             if (repo.bumpConfirmedCaseVersion(ctx.caseId(), expectedCaseVersion) == 0) {
-                return conflictOrReplay(actorId, "next-action", idempotencyKey, hash, ctx.caseId(), access, false);
+                return conflictOrReplay(actorId, "next-action", idempotencyKey, hash, ctx.caseId(), access, false, CaseView.class);
             }
             if (repo.setNextAction(itemId, expectedItemVersion, text, ownerId,
                 updateDueAt == null ? null : Timestamp.from(updateDueAt)) == 0) {
@@ -520,5 +530,167 @@ public class CaseService {
 
     private static Instant instant(java.sql.Timestamp value) {
         return value == null ? null : value.toInstant();
+    }
+
+    private static void validateTargetItemIds(List<UUID> itemIds) {
+        if (itemIds == null || itemIds.isEmpty()) {
+            throw CaseException.invalidFields("targetItemIds must not be empty");
+        }
+        if (itemIds.contains(null)) {
+            throw CaseException.invalidFields("targetItemIds must not contain null");
+        }
+        if (itemIds.size() > MAX_ITEMS) {
+            throw CaseException.invalidFields("Too many targetItemIds");
+        }
+        if (new HashSet<>(itemIds).size() != itemIds.size()) {
+            throw CaseException.invalidFields("Duplicate targetItemIds");
+        }
+    }
+
+    public CreateReportResponse createReport(UUID actorId, UUID caseId, long expectedCaseVersion,
+                                             String reportText, List<UUID> targetItemIds,
+                                             String idempotencyKey) {
+        Objects.requireNonNull(actorId);
+        Objects.requireNonNull(caseId);
+        validateKey(idempotencyKey);
+        validateVersion(expectedCaseVersion);
+        validateText("reportText", reportText, MAX_SOURCE_CODE_POINTS);
+        validateTargetItemIds(targetItemIds);
+        String hash = hash("create-report", caseId, orderedMap(
+            "expectedCaseVersion", expectedCaseVersion, "reportText", reportText,
+            "targetItemIds", targetItemIds.stream().map(UUID::toString).sorted().toList()));
+        Runnable access = () -> requireDispatcherOfCase(actorId, caseId);
+        return runCommand(actorId, "create-report", idempotencyKey, hash, 201, access,
+            CreateReportResponse.class, () -> {
+                var row = loadVisible(actorId, caseId);
+                requireDispatcherOfCase(actorId, caseId);
+                if (row.isDraft()) {
+                    throw CaseException.invalidTransition("A report needs a confirmed case");
+                }
+                if (reports.countItemsInCase(caseId, targetItemIds) != targetItemIds.size()) {
+                    throw CaseException.invalidFields("targetItemIds must be items of this case");
+                }
+                if (repo.bumpConfirmedCaseVersion(caseId, expectedCaseVersion) == 0) {
+                    return conflictOrReplay(actorId, "create-report", idempotencyKey, hash, caseId, access,
+                        false, CreateReportResponse.class);
+                }
+                UUID reportId = UUID.randomUUID();
+                reports.insertReport(reportId, caseId, actorId, reportText);
+                reports.insertTargets(reportId, caseId, targetItemIds);
+                repo.insertAudit(caseId, actorId, "REPORT_SAVED", json.writeValueAsString(
+                    orderedMap("caseId", caseId, "reportId", reportId, "targetCount", targetItemIds.size())));
+                // Saving text changes no item: no round, no work status, no observation.
+                var stored = reports.findReport(reportId).orElseThrow();
+                var report = new WorkReportView(reportId, caseId, actorId, reportText, targetItemIds,
+                    stored.createdAt().toInstant(), List.of());
+                return TxOutcome.fresh(new CreateReportResponse(report,
+                    viewOf(repo.findCase(caseId).orElseThrow()),
+                    new AnalysisView("MANUAL_REQUIRED")));
+            });
+    }
+
+    public WorkReportView getReport(UUID actorId, UUID reportId) {
+        Objects.requireNonNull(actorId);
+        Objects.requireNonNull(reportId);
+        return readTx.execute(status -> {
+            var report = reports.findReport(reportId).orElseThrow(CaseException::notFound);
+            // Visibility of the report follows visibility of its case.
+            loadVisible(actorId, report.caseId());
+            return new WorkReportView(report.id(), report.caseId(), report.actorId(), report.reportText(),
+                reports.findTargets(reportId), report.createdAt().toInstant(),
+                reports.findLinks(reportId).stream()
+                    .map(link -> new LinkView(link.itemId(), link.contentVersion(), link.workRound(),
+                        link.workStatus(), link.confirmedBy(), link.createdAt().toInstant()))
+                    .toList());
+        });
+    }
+
+    private static final java.util.Set<String> LINK_WORK_STATUSES =
+        java.util.Set.of("PLANNED", "REPORTED_DONE");
+
+    private void requireDispatcherOfReport(UUID actorId, UUID reportId) {
+        var report = reports.findReport(reportId).orElseThrow(CaseException::notFound);
+        requireDispatcherOfCase(actorId, report.caseId());
+    }
+
+    private static void validateLinks(List<LinkInput> links) {
+        if (links == null || links.isEmpty()) throw CaseException.invalidFields("links must not be empty");
+        if (links.size() > MAX_ITEMS) throw CaseException.invalidFields("Too many links");
+        var seen = new HashSet<UUID>();
+        for (LinkInput link : links) {
+            if (link == null || link.itemId() == null) {
+                throw CaseException.invalidFields("Each link needs an itemId");
+            }
+            if (!seen.add(link.itemId())) throw CaseException.invalidFields("Duplicate itemId in links");
+            if (!LINK_WORK_STATUSES.contains(link.workStatus())) {
+                // NOT_ASSIGNED is the absence of news about work; a link is news, so it cannot mean that.
+                throw CaseException.invalidFields("workStatus must be PLANNED or REPORTED_DONE");
+            }
+            validateVersion(link.expectedItemVersion());
+            if (link.contentVersion() < 1) throw CaseException.invalidFields("Invalid contentVersion");
+            if (link.expectedWorkRound() < 0) throw CaseException.invalidFields("Invalid expectedWorkRound");
+        }
+    }
+
+    private static List<Map<String, Object>> canonicalLinks(List<LinkInput> links) {
+        return links.stream()
+            .sorted(Comparator.comparing(link -> link.itemId().toString()))
+            .map(link -> orderedMap("itemId", link.itemId().toString(),
+                "expectedItemVersion", link.expectedItemVersion(),
+                "contentVersion", link.contentVersion(),
+                "expectedWorkRound", link.expectedWorkRound(),
+                "workStatus", link.workStatus()))
+            .toList();
+    }
+
+    public CaseView confirmLinks(UUID actorId, UUID reportId, long expectedCaseVersion,
+                                 List<LinkInput> links, String idempotencyKey) {
+        Objects.requireNonNull(actorId);
+        Objects.requireNonNull(reportId);
+        validateKey(idempotencyKey);
+        validateVersion(expectedCaseVersion);
+        validateLinks(links);
+        String hash = hash("confirm-links", reportId, orderedMap(
+            "expectedCaseVersion", expectedCaseVersion, "links", canonicalLinks(links)));
+        Runnable access = () -> requireDispatcherOfReport(actorId, reportId);
+        return runCommand(actorId, "confirm-links", idempotencyKey, hash, 200, access, CaseView.class, () -> {
+            var report = reports.findReport(reportId).orElseThrow(CaseException::notFound);
+            requireDispatcherOfCase(actorId, report.caseId());
+            var targets = new HashSet<>(reports.findTargets(reportId));
+            // One CAS for the whole set: either every link lands, or the transaction rolls back.
+            if (repo.bumpConfirmedCaseVersion(report.caseId(), expectedCaseVersion) == 0) {
+                return conflictOrReplay(actorId, "confirm-links", idempotencyKey, hash, report.caseId(),
+                    access, false, CaseView.class);
+            }
+            for (LinkInput link : links) {
+                if (!targets.contains(link.itemId())) {
+                    // A fitting suggestion outside the report's scope still does not authorize a link.
+                    throw CaseException.invalidFields("An item outside targetItemIds cannot be linked");
+                }
+                if (reports.linkExists(reportId, link.itemId())) {
+                    throw CaseException.linkAlreadyExists();
+                }
+                var ctx = repo.findItemContext(link.itemId()).orElseThrow(CaseException::notFound);
+                if (!ctx.caseId().equals(report.caseId())) throw CaseException.notFound();
+                if (!"ACTIVE".equals(ctx.administrativeStatus())) {
+                    throw CaseException.invalidTransition("An inactive item takes no new round");
+                }
+                if (ctx.contentVersion() != link.contentVersion()
+                    || ctx.workRound() != link.expectedWorkRound()) {
+                    throw CaseException.staleContext();
+                }
+                if (repo.openRoundForLink(link.itemId(), link.expectedItemVersion(), link.contentVersion(),
+                    link.expectedWorkRound(), link.workStatus()) == 0) {
+                    throw CaseException.itemVersionConflict();
+                }
+                reports.insertLink(reportId, link.itemId(), report.caseId(), link.contentVersion(),
+                    link.expectedWorkRound() + 1, link.workStatus(), actorId);
+                repo.insertAudit(report.caseId(), actorId, "REPORT_LINK_CONFIRMED",
+                    json.writeValueAsString(orderedMap("caseId", report.caseId(), "reportId", reportId,
+                        "itemId", link.itemId(), "workRound", link.expectedWorkRound() + 1,
+                        "workStatus", link.workStatus())));
+            }
+            return TxOutcome.fresh(viewOf(repo.findCase(report.caseId()).orElseThrow()));
+        });
     }
 }
