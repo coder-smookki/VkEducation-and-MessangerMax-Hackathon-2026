@@ -159,6 +159,7 @@ def test_confirmed_context_schema_is_current():
         ("RecordObservation", "observation-request.json"),
         ("DecideItem", "decision-withdraw-request.json"),
         ("DecideItem", "decision-archive-request.json"),
+        ("HistoryPage", "history-page.json"),
     ],
 )
 def test_planned_java_review_examples_match_schema(name, example):
@@ -216,6 +217,15 @@ def test_author_review_does_not_confuse_confirmed_content_with_completed_work():
     assert after["progress"]["allConfirmed"] is False
     assert all(item["workRound"] == 0 and item["observation"] == "NOT_RECEIVED" for item in after["items"])
 
+
+def test_history_details_never_carry_free_text():
+    page = fixture("history-page.json")
+    times = [event["createdAt"] for event in page["items"]]
+    assert times == sorted(times), "history reads forward in time"
+    forbidden = {"caseId", "reason", "sourceText", "reportText", "symptom", "location", "text"}
+    for event in page["items"]:
+        leaked = forbidden & event["details"].keys()
+        assert not leaked, f"{event['eventType']} would leak {sorted(leaked)}"
 
 def test_chunked_oversized_body_is_rejected_before_json_parsing():
     def chunks():

@@ -1300,6 +1300,93 @@
           }
         }
       }
+    },
+    "/api/v1/cases/{caseId}/history": {
+      "get": {
+        "operationId": "caseHistory",
+        "summary": "история обращения для его автора и диспетчера дома",
+        "description": "Ascending by createdAt then eventId, cursor-paginated, at most 50 events per page. details carries allow-listed fields per event type and never raw payload, secrets or free text. The cursor is bound to its case and is not a credential: access is re-checked on every page.",
+        "x-implementation-status": "IMPLEMENTED",
+        "x-task": "S-05",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Одна восходящая страница истории",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нет сессии",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Обращение недоступно: чужой дом, отозванный доступ или чужой черновик неотличимы от отсутствия",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Недопустимый limit или курсор",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2272,6 +2359,71 @@
           "reason"
         ],
         "description": "Both decisions are final: the contract has no way back, a new problem is a new item. Neither reduces progress.total. WITHDRAW counts into progress.withdrawn; ARCHIVE does not and leaves the item in progress.remaining. Archiving keeps an observation the author already gave, never creates one, and keeps nextAction as a historical plan."
+      },
+      "HistoryEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "One audit event as the case's participants may see it. eventType today is one of CASE_CREATED, CASE_SOURCE_PATCHED, CASE_ITEMS_PATCHED, CASE_CONFIRMED, CASE_ACCEPTED, ITEM_NEXT_ACTION_SET, REPORT_SAVED, REPORT_LINK_CONFIRMED, OBSERVATION_RECORDED, ITEM_ADMINISTRATIVE_DECISION; an unrecognised type still appears, with empty details.",
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "actorId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "eventType": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Allow-listed fields for this event type only: identifiers, counts, versions, rounds and enum values. caseId is dropped because the path carries it. Report text, a source text and an administrative reason never appear here."
+          }
+        },
+        "required": [
+          "eventId",
+          "actorId",
+          "eventType",
+          "createdAt",
+          "details"
+        ]
+      },
+      "HistoryPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "One page of history. nextCursor is opaque, bound to the case it was issued for, and null on the last page.",
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "$ref": "#/components/schemas/HistoryEvent"
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
       }
     }
   }

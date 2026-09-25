@@ -304,6 +304,32 @@ public class CaseRepository {
                 UUID.randomUUID(), caseId, actorId, eventType, payloadJson);
     }
 
+    public record AuditRow(UUID id, UUID actorId, String eventType, Timestamp createdAt, String payload) {}
+
+    /** Ascending by (created_at, id): history is read forward, and the pair is unique and stable. */
+    public List<AuditRow> listAudit(UUID caseId, Timestamp afterCreatedAt, UUID afterId, int limit) {
+        var args = new java.util.ArrayList<Object>();
+        args.add(caseId);
+        String keyset = "";
+        if (afterCreatedAt != null) {
+            keyset = " AND (created_at, id) > (?, ?)";
+            args.add(afterCreatedAt);
+            args.add(afterId);
+        }
+        args.add(limit);
+        return jdbc.query("""
+                SELECT id, actor_id, event_type, created_at, payload::text AS payload
+                  FROM audit_event
+                 WHERE case_id = ?""" + keyset + """
+
+                 ORDER BY created_at, id
+                 LIMIT ?
+                """, (rs, row) -> new AuditRow(rs.getObject("id", UUID.class),
+                rs.getObject("actor_id", UUID.class), rs.getString("event_type"),
+                rs.getTimestamp("created_at"), rs.getString("payload")),
+            args.toArray());
+    }
+
     public Optional<ProcessedRow> findProcessed(UUID actorId, String operation, String idempotencyKey) {
         return jdbc.query("""
                 SELECT request_hash, response_status, response_body::text AS body

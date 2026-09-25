@@ -62,6 +62,21 @@ public class CaseService {
         java.util.Set.of("AFTER_REPORT", "INDEPENDENT");
     private static final java.util.Set<String> DECISION_ACTIONS =
         java.util.Set.of("ARCHIVE", "WITHDRAW");
+    /** History exposes these fields and nothing else; caseId is dropped because the path already carries it. */
+    private static final java.util.Map<String, java.util.List<String>> HISTORY_DETAIL_FIELDS =
+        java.util.Map.ofEntries(
+            java.util.Map.entry("CASE_CREATED", java.util.List.of("houseId", "sourceRevision")),
+            java.util.Map.entry("CASE_SOURCE_PATCHED", java.util.List.of("sourceRevision")),
+            java.util.Map.entry("CASE_ITEMS_PATCHED", java.util.List.of("itemCount")),
+            java.util.Map.entry("CASE_CONFIRMED", java.util.List.of("itemCount")),
+            java.util.Map.entry("CASE_ACCEPTED", java.util.List.of()),
+            java.util.Map.entry("ITEM_NEXT_ACTION_SET", java.util.List.of("itemId", "ownerId")),
+            java.util.Map.entry("REPORT_SAVED", java.util.List.of("reportId", "targetCount")),
+            java.util.Map.entry("REPORT_LINK_CONFIRMED",
+                java.util.List.of("reportId", "itemId", "workRound", "workStatus")),
+            java.util.Map.entry("OBSERVATION_RECORDED",
+                java.util.List.of("itemId", "workRound", "value", "source")),
+            java.util.Map.entry("ITEM_ADMINISTRATIVE_DECISION", java.util.List.of("itemId", "action")));
     private final CaseRepository repo;
     private final ReportRepository reports;
     private final ObservationRepository observations;
@@ -814,6 +829,65 @@ public class CaseService {
                 json.writeValueAsString(orderedMap("caseId", ctx.caseId(), "itemId", itemId, "action", action)));
             return TxOutcome.fresh(viewOf(repo.findCase(ctx.caseId()).orElseThrow()));
         });
+    }
+
+    public HistoryPage history(UUID actorId, UUID caseId, String cursor, Integer limit) {
+        Objects.requireNonNull(actorId);
+        Objects.requireNonNull(caseId);
+        int pageSize = limit == null ? DEFAULT_LIMIT : limit;
+        if (pageSize < 1 || pageSize > MAX_LIMIT) throw CaseException.invalidFields("Invalid limit");
+        Cursor after = decodeHistoryCursor(cursor, caseId);
+        return readTx.execute(status -> {
+            // Access is re-checked on every page; a cursor carries no rights of its own.
+            loadVisible(actorId, caseId);
+            var rows = repo.listAudit(caseId, after == null ? null : after.createdAt(),
+                after == null ? null : after.id(), pageSize + 1);
+            boolean more = rows.size() > pageSize;
+            var page = more ? rows.subList(0, pageSize) : rows;
+            String next = more ? encodeHistoryCursor(caseId, page.getLast()) : null;
+            return new HistoryPage(page.stream().map(this::historyEventOf).toList(), next);
+        });
+    }
+
+    /** An unknown event type still appears, with empty details: history must not silently lose events. */
+    private HistoryEvent historyEventOf(CaseRepository.AuditRow row) {
+        var allowed = HISTORY_DETAIL_FIELDS.getOrDefault(row.eventType(), java.util.List.of());
+        var details = new java.util.LinkedHashMap<String, Object>();
+        if (!allowed.isEmpty() && row.payload() != null) {
+            var payload = json.readTree(row.payload());
+            for (String field : allowed) {
+                var value = payload.get(field);
+                if (value != null && !value.isNull()) {
+                    details.put(field, json.treeToValue(value, Object.class));
+                }
+            }
+        }
+        return new HistoryEvent(row.id(), row.actorId(), row.eventType(),
+            row.createdAt().toInstant(), details);
+    }
+
+    private static Cursor decodeHistoryCursor(String cursor, UUID caseId) {
+        if (cursor == null) return null;
+        try {
+            String raw = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
+            String[] parts = raw.split("\\|", -1);
+            if (parts.length != 4 || !"h1".equals(parts[0])) throw CaseException.invalidFields("Invalid cursor");
+            if (!parts[1].equals(caseId.toString())) throw CaseException.invalidFields("Invalid cursor");
+            long micros = Long.parseLong(parts[2]);
+            long millis = Math.floorDiv(micros, 1000);
+            Timestamp createdAt = new Timestamp(millis);
+            createdAt.setNanos(createdAt.getNanos() + (int) Math.floorMod(micros, 1000) * 1000);
+            return new Cursor(createdAt, UUID.fromString(parts[3]));
+        } catch (IllegalArgumentException | IndexOutOfBoundsException e) {
+            throw CaseException.invalidFields("Invalid cursor");
+        }
+    }
+
+    private static String encodeHistoryCursor(UUID caseId, CaseRepository.AuditRow last) {
+        Timestamp ts = last.createdAt();
+        long micros = ts.getTime() * 1000 + (ts.getNanos() % 1_000_000) / 1000;
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(
+            ("h1|" + caseId + "|" + micros + "|" + last.id()).getBytes(StandardCharsets.UTF_8));
     }
 
     private CaseRepository.ItemContextRow requireAuthorOfItem(UUID actorId, UUID itemId) {
