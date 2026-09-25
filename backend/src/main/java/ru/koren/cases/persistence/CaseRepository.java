@@ -395,4 +395,13 @@ public class CaseRepository {
                  WHERE id = ? AND version = ? AND content_version = ? AND work_round = ?
                 """, value, itemId, expectedItemVersion, expectedContentVersion, expectedWorkRound);
     }
+
+    /** The ACTIVE guard lives in SQL as well: a second decision must never overwrite the first. */
+    public int applyDecision(UUID itemId, long expectedItemVersion, String decision, String reason) {
+        return jdbc.update("""
+                UPDATE case_item
+                   SET version = version + 1, administrative_status = ?, administrative_reason = ?
+                 WHERE id = ? AND version = ? AND administrative_status = 'ACTIVE'
+                """, decision, reason, itemId, expectedItemVersion);
+    }
 }

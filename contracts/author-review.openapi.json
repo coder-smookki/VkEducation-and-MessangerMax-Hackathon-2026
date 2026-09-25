@@ -363,7 +363,7 @@
             "required": false,
             "x-implementation-status": "IMPLEMENTED",
             "x-task": "S-03",
-            "description": "Dispatcher queue filter. Overlapping fact-based filters, not a new exclusive status. DISPATCHER only, inside an allowed houseId; a missing houseId or an unknown value is 422. The cursor is bound to houseId and queueState. NEEDS_ACCEPTANCE: CONFIRMED without acceptedAt. NEEDS_ACTION: accepted, has an ACTIVE item without RESTORED that has no current nextAction, or observation PERSISTS, or an expired updateDueAt. AWAITING_AUTHOR: has an ACTIVE REPORTED_DONE item with NOT_RECEIVED or CANNOT_CHECK. ARCHIVED: has an ARCHIVED item. AWAITING_AUTHOR stays empty until reports exist (S-04) and ARCHIVED until the archive command exists (S-05); the other two are live.",
+            "description": "Dispatcher queue filter. Overlapping fact-based filters, not a new exclusive status. DISPATCHER only, inside an allowed houseId; a missing houseId or an unknown value is 422. The cursor is bound to houseId and queueState. NEEDS_ACCEPTANCE: CONFIRMED without acceptedAt. NEEDS_ACTION: accepted, has an ACTIVE item without RESTORED that has no current nextAction, or observation PERSISTS, or an expired updateDueAt. AWAITING_AUTHOR: has an ACTIVE REPORTED_DONE item with NOT_RECEIVED or CANNOT_CHECK. ARCHIVED: has an ARCHIVED item. All four are live: reports exist since S-04 and the archive command since S-05.",
             "schema": {
               "enum": [
                 "NEEDS_ACCEPTANCE",
@@ -792,8 +792,8 @@
     "/api/v1/items/{itemId}/administrative-decisions": {
       "post": {
         "operationId": "decideItem",
-        "summary": "TARGET: архив диспетчером или отзыв автором ОДНОГО пункта, причина обязательна",
-        "x-implementation-status": "TARGET",
+        "summary": "архив диспетчером или отзыв автором ОДНОГО пункта, причина обязательна",
+        "x-implementation-status": "IMPLEMENTED",
         "x-task": "S-05",
         "security": [
           {
@@ -826,37 +826,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "expectedCaseVersion": {
-                    "type": "integer",
-                    "minimum": 0
-                  },
-                  "expectedItemVersion": {
-                    "type": "integer",
-                    "minimum": 0
-                  },
-                  "action": {
-                    "enum": [
-                      "ARCHIVE",
-                      "WITHDRAW"
-                    ]
-                  },
-                  "reason": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 1000,
-                    "pattern": "\\S"
-                  }
-                },
-                "required": [
-                  "expectedCaseVersion",
-                  "expectedItemVersion",
-                  "action",
-                  "reason"
-                ],
-                "description": "Archiving keeps observation and nextAction history, does not reduce progress.total and is never shown as a repair."
+                "$ref": "#/components/schemas/DecideItem"
               }
             }
           }
@@ -867,7 +837,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TargetCaseView"
+                  "$ref": "#/components/schemas/AuthorCaseView"
                 }
               }
             }
@@ -2269,6 +2239,39 @@
           "value",
           "source"
         ]
+      },
+      "DecideItem": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "expectedCaseVersion": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expectedItemVersion": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "action": {
+            "enum": [
+              "ARCHIVE",
+              "WITHDRAW"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000,
+            "pattern": "\\S"
+          }
+        },
+        "required": [
+          "expectedCaseVersion",
+          "expectedItemVersion",
+          "action",
+          "reason"
+        ],
+        "description": "Both decisions are final: the contract has no way back, a new problem is a new item. Neither reduces progress.total. WITHDRAW counts into progress.withdrawn; ARCHIVE does not and leaves the item in progress.remaining. Archiving keeps an observation the author already gave, never creates one, and keeps nextAction as a historical plan."
       }
     }
   }

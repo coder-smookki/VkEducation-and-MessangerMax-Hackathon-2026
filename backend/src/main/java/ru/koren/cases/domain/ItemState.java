@@ -50,6 +50,22 @@ public record ItemState(
         return new ItemState(itemId, authorId, contentVersion, workRound, workStatus, value, administrativeStatus);
     }
 
+    /** Final by contract: there is no route back from ARCHIVED or WITHDRAWN, only a new item. */
+    public ItemState decide(UUID actorId, AdministrativeStatus decision) {
+        Objects.requireNonNull(actorId);
+        Objects.requireNonNull(decision);
+        if (decision == AdministrativeStatus.ACTIVE) {
+            throw new IllegalArgumentException("An administrative decision must archive or withdraw");
+        }
+        if (administrativeStatus != AdministrativeStatus.ACTIVE) {
+            throw new IllegalStateException("The item already carries a final administrative decision");
+        }
+        if (decision == AdministrativeStatus.WITHDRAWN && !authorId.equals(actorId)) {
+            throw new SecurityException("Only the author may withdraw this item");
+        }
+        return new ItemState(itemId, authorId, contentVersion, workRound, workStatus, observation, decision);
+    }
+
     /** Called only after staff authorization, inside a transaction that also stores the report and audit. */
     public ItemState nextWorkRound(WorkStatus status) {
         Objects.requireNonNull(status);

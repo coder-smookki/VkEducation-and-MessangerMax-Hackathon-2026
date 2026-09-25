@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.RestController;
 import ru.koren.cases.application.CaseService;
 import ru.koren.cases.application.CaseView;
 import ru.koren.cases.application.NextActionRequest;
+import org.springframework.web.bind.annotation.PostMapping;
+import ru.koren.cases.application.DecisionRequest;
 
 /** Per-item commands; the case that owns the item decides who may run them. */
 @RestController
@@ -35,5 +37,13 @@ public class ItemController {
                                   @RequestHeader("Idempotency-Key") String idempotencyKey) {
         return service.setNextAction(actor(authentication), itemId, body.expectedCaseVersion(),
             body.expectedItemVersion(), body.text(), body.ownerId(), body.updateDueAt(), idempotencyKey);
+    }
+
+    @PostMapping("/{itemId}/administrative-decisions")
+    public CaseView decide(Authentication authentication, @PathVariable UUID itemId,
+                           @RequestBody DecisionRequest body,
+                           @RequestHeader("Idempotency-Key") String idempotencyKey) {
+        return service.decide(actor(authentication), itemId, body.expectedCaseVersion(),
+            body.expectedItemVersion(), body.action(), body.reason(), idempotencyKey);
     }
 }

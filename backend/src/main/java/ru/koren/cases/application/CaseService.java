@@ -48,6 +48,7 @@ public class CaseService {
     static final int MAX_NEXT_ACTION_CODE_POINTS = 1000;
     static final int MAX_LOCATION_CODE_POINTS = 300;
     static final int MAX_SYMPTOM_CODE_POINTS = 1000;
+    static final int MAX_DECISION_REASON_CODE_POINTS = 1000;
     static final int MAX_ITEMS = 20;
     static final int DEFAULT_LIMIT = 20;
     static final int MAX_LIMIT = 50;
@@ -59,6 +60,8 @@ public class CaseService {
         java.util.Set.of("RESTORED", "PERSISTS", "CANNOT_CHECK");
     private static final java.util.Set<String> OBSERVATION_SOURCES =
         java.util.Set.of("AFTER_REPORT", "INDEPENDENT");
+    private static final java.util.Set<String> DECISION_ACTIONS =
+        java.util.Set.of("ARCHIVE", "WITHDRAW");
     private final CaseRepository repo;
     private final ReportRepository reports;
     private final ObservationRepository observations;
@@ -759,6 +762,56 @@ public class CaseService {
             repo.insertAudit(ctx.caseId(), actorId, "OBSERVATION_RECORDED",
                 json.writeValueAsString(orderedMap("caseId", ctx.caseId(), "itemId", itemId,
                     "workRound", workRound, "value", value, "source", source)));
+            return TxOutcome.fresh(viewOf(repo.findCase(ctx.caseId()).orElseThrow()));
+        });
+    }
+
+    /** ARCHIVE is the dispatcher's, WITHDRAW is the author's; both are final and both keep total intact. */
+    public CaseView decide(UUID actorId, UUID itemId, long expectedCaseVersion, long expectedItemVersion,
+                           String action, String reason, String idempotencyKey) {
+        Objects.requireNonNull(actorId);
+        Objects.requireNonNull(itemId);
+        validateKey(idempotencyKey);
+        validateVersion(expectedCaseVersion);
+        validateVersion(expectedItemVersion);
+        if (action == null || !DECISION_ACTIONS.contains(action)) throw CaseException.invalidFields("Unknown action");
+        validateText("reason", reason, MAX_DECISION_REASON_CODE_POINTS);
+        boolean withdrawal = "WITHDRAW".equals(action);
+        var decision = withdrawal
+            ? ItemState.AdministrativeStatus.WITHDRAWN
+            : ItemState.AdministrativeStatus.ARCHIVED;
+        String hash = hash("administrative-decision", itemId, orderedMap(
+            "expectedCaseVersion", expectedCaseVersion, "expectedItemVersion", expectedItemVersion,
+            "action", action, "reason", reason));
+        Runnable access = withdrawal
+            ? () -> requireAuthorOfItem(actorId, itemId)
+            : () -> requireDispatcherOfItem(actorId, itemId);
+        return runCommand(actorId, "administrative-decision", idempotencyKey, hash, 200, access, CaseView.class, () -> {
+            var ctx = withdrawal ? requireAuthorOfItem(actorId, itemId) : requireDispatcherOfItem(actorId, itemId);
+            if (ctx.isDraft()) {
+                throw CaseException.invalidTransition("An administrative decision needs a confirmed case");
+            }
+            var owner = repo.findCase(ctx.caseId()).orElseThrow(CaseException::notFound);
+            var state = new ItemState(itemId, owner.authorId(), ctx.contentVersion(), ctx.workRound(),
+                ItemState.WorkStatus.valueOf(ctx.workStatus()),
+                ItemState.Observation.valueOf(ctx.observation()),
+                ItemState.AdministrativeStatus.valueOf(ctx.administrativeStatus()));
+            try {
+                state.decide(actorId, decision);
+            } catch (SecurityException denied) {
+                throw CaseException.forbidden();
+            } catch (IllegalStateException | IllegalArgumentException rejected) {
+                throw CaseException.invalidTransition(rejected.getMessage());
+            }
+            if (repo.bumpConfirmedCaseVersion(ctx.caseId(), expectedCaseVersion) == 0) {
+                return conflictOrReplay(actorId, "administrative-decision", idempotencyKey, hash,
+                    ctx.caseId(), access, false, CaseView.class);
+            }
+            if (repo.applyDecision(itemId, expectedItemVersion, decision.name(), reason) == 0) {
+                throw CaseException.itemVersionConflict();
+            }
+            repo.insertAudit(ctx.caseId(), actorId, "ITEM_ADMINISTRATIVE_DECISION",
+                json.writeValueAsString(orderedMap("caseId", ctx.caseId(), "itemId", itemId, "action", action)));
             return TxOutcome.fresh(viewOf(repo.findCase(ctx.caseId()).orElseThrow()));
         });
     }
