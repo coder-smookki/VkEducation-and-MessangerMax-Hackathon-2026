@@ -24,6 +24,9 @@ public class CaseException extends RuntimeException {
     public static CaseException versionConflict() {
         return new CaseException("CASE_VERSION_CONFLICT", 409, "Expected version does not match the current state");
     }
+    public static CaseException itemVersionConflict() {
+        return new CaseException("ITEM_VERSION_CONFLICT", 409, "Expected item version does not match the current state");
+    }
     public static CaseException alreadyConfirmed() {
         return new CaseException("CASE_ALREADY_CONFIRMED", 409, "Confirmed case content is frozen");
     }

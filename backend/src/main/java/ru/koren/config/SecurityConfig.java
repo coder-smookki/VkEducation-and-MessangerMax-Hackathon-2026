@@ -34,7 +34,7 @@ public class SecurityConfig {
         http.csrf(csrf -> csrf.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse()));
         http.exceptionHandling(handling -> handling.authenticationEntryPoint((request, response, e) -> {
             response.setStatus(HttpStatus.UNAUTHORIZED.value());
-            response.setContentType("application/problem+json");
+            response.setContentType("application/problem+json;charset=UTF-8");
             response.getWriter().write(
                 "{\"type\":\"about:blank\",\"title\":\"Нужен вход через MAX\","
                     + "\"status\":401,\"code\":\"AUTH_REQUIRED\"}");
@@ -49,6 +49,7 @@ public class SecurityConfig {
             auth.requestMatchers(HttpMethod.POST, "/api/v1/auth/max").permitAll();
             auth.requestMatchers(HttpMethod.GET, "/api/v1/me").authenticated();
             auth.requestMatchers("/api/v1/cases", "/api/v1/cases/**").authenticated();
+            auth.requestMatchers("/api/v1/items/**").authenticated();
             auth.requestMatchers(HttpMethod.POST, "/api/v1/auth/logout").authenticated();
             auth.requestMatchers(HttpMethod.POST, "/api/v1/memberships/claim").authenticated();
             // Case routes stay closed until object authorization is wired in the next step.

@@ -25,6 +25,9 @@ import ru.koren.cases.persistence.CaseRepository.CaseRow;
 import ru.koren.cases.persistence.CaseRepository.Cursor;
 import ru.koren.cases.persistence.CaseRepository.ProcessedRow;
 import tools.jackson.databind.json.JsonMapper;
+import java.time.Instant;
+import java.time.Clock;
+
 
 /**
  * S1 use cases for drafts and confirmation. actorId must come from server authentication, never a request body.
@@ -35,6 +38,7 @@ import tools.jackson.databind.json.JsonMapper;
 @Profile("!no-db")
 public class CaseService {
     static final int MAX_SOURCE_CODE_POINTS = 5000;
+    static final int MAX_NEXT_ACTION_CODE_POINTS = 1000;
     static final int MAX_LOCATION_CODE_POINTS = 300;
     static final int MAX_SYMPTOM_CODE_POINTS = 1000;
     static final int MAX_ITEMS = 20;
@@ -42,14 +46,17 @@ public class CaseService {
     static final int MAX_LIMIT = 50;
     private static final java.util.Set<String> CATEGORIES =
             java.util.Set.of("LIGHTING", "ENTRANCE_DOOR", "CLEANING", "OTHER");
-
+    private static final java.util.Set<String> QUEUE_STATES =
+        java.util.Set.of("NEEDS_ACCEPTANCE", "NEEDS_ACTION", "AWAITING_AUTHOR", "ARCHIVED");
     private final CaseRepository repo;
     private final TransactionTemplate tx;
     private final TransactionTemplate readTx;
+    private final Clock clock;
     private final JsonMapper json = JsonMapper.builder().build();
 
-    public CaseService(CaseRepository repo, PlatformTransactionManager transactions) {
+    public CaseService(CaseRepository repo, PlatformTransactionManager transactions, Clock clock) {
         this.repo = repo;
+        this.clock = clock;
         tx = new TransactionTemplate(transactions);
         readTx = new TransactionTemplate(transactions);
         readTx.setReadOnly(true);
@@ -79,19 +86,32 @@ public class CaseService {
         return readTx.execute(status -> viewOf(loadVisible(actorId, caseId)));
     }
 
-    public CasePage listCases(UUID actorId, UUID houseId, String cursor, Integer limit) {
+    public CasePage listCases(UUID actorId, UUID houseId, String queueState, String cursor, Integer limit) {
         Objects.requireNonNull(actorId);
         int pageSize = limit == null ? DEFAULT_LIMIT : limit;
         if (pageSize < 1 || pageSize > MAX_LIMIT) throw CaseException.invalidFields("Invalid limit");
-        Cursor after = decodeCursor(cursor, houseId);
+        if (queueState != null) {
+            if (!QUEUE_STATES.contains(queueState)) throw CaseException.invalidFields("Unknown queueState");
+            if (houseId == null) throw CaseException.invalidFields("queueState requires houseId");
+        }
+        Cursor after = decodeCursor(cursor, houseId, queueState);
+        Timestamp now = Timestamp.from(clock.instant());
         return readTx.execute(status -> {
             // Membership is re-checked on every page; a cursor is not a credential.
             if (houseId != null) requireMembership(actorId, houseId);
-            var rows = repo.listVisibleCases(actorId, houseId, after, pageSize + 1);
+            if (queueState != null) requireDispatcherOfHouse(actorId, houseId);
+            var rows = repo.listVisibleCases(actorId, houseId, queueState, now, after, pageSize + 1);
             boolean more = rows.size() > pageSize;
             var page = more ? rows.subList(0, pageSize) : rows;
-            String next = more ? encodeCursor(houseId, page.getLast()) : null;
-            return new CasePage(page.stream().map(this::viewOf).toList(), next);
+            String next = more ? encodeCursor(houseId, queueState, page.getLast()) : null;
+            var ids = page.stream().map(CaseRow::id).toList();
+            var itemsByCase = repo.findItemsByCase(ids);
+            var textByCase = repo.currentSourceTexts(ids);
+            var confirmedByCase = repo.confirmedAtByCase(ids);
+            return new CasePage(page.stream()
+                .map(r -> viewOf(r, itemsByCase.getOrDefault(r.id(), List.of()),
+                    textByCase.get(r.id()), confirmedByCase.get(r.id())))
+                .toList(), next);
         });
     }
 
@@ -108,7 +128,7 @@ public class CaseService {
         return runCommand(actorId, "patch-source", idempotencyKey, hash, 200, access, () -> {
             loadDraftForAuthor(actorId, caseId);
             if (repo.bumpDraftCaseVersion(caseId, expectedCaseVersion) == 0) {
-                return conflictOrReplay(actorId, "patch-source", idempotencyKey, hash, caseId, access);
+                return conflictOrReplay(actorId, "patch-source", idempotencyKey, hash, caseId, access, true);
             }
             int revision = repo.findCase(caseId).orElseThrow().sourceRevision();
             int nextRevision = revision + 1;
@@ -132,7 +152,7 @@ public class CaseService {
         return runCommand(actorId, "patch-items", idempotencyKey, hash, 200, access, () -> {
             loadDraftForAuthor(actorId, caseId);
             if (repo.bumpDraftCaseVersion(caseId, expectedCaseVersion) == 0) {
-                return conflictOrReplay(actorId, "patch-items", idempotencyKey, hash, caseId, access);
+                return conflictOrReplay(actorId, "patch-items", idempotencyKey, hash, caseId, access, true);
             }
             applyItemReplacement(caseId, items);
             repo.insertAudit(caseId, actorId, "CASE_ITEMS_PATCHED",
@@ -154,7 +174,7 @@ public class CaseService {
         return runCommand(actorId, "confirm", idempotencyKey, hash, 200, access, () -> {
             var row = loadDraftForAuthor(actorId, caseId);
             if (repo.bumpDraftCaseVersion(caseId, expectedCaseVersion) == 0) {
-                return conflictOrReplay(actorId, "confirm", idempotencyKey, hash, caseId, access);
+                return conflictOrReplay(actorId, "confirm", idempotencyKey, hash, caseId, access, true);
             }
             // CAS success pins the row we read: the version is unchanged since our read.
             if (row.sourceRevision() != sourceRevision) throw CaseException.versionConflict();
@@ -180,10 +200,12 @@ public class CaseService {
         var currentById = new java.util.HashMap<UUID, CaseRepository.ItemRow>();
         current.forEach(item -> currentById.put(item.id(), item));
         var kept = new HashSet<UUID>();
+        int position = 0;
         for (var input : items) {
+            position++;
             if (input.itemId() == null) {
                 UUID itemId = UUID.randomUUID();
-                repo.insertItem(itemId, caseId);
+                repo.insertItem(itemId, caseId, position);
                 repo.insertItemRevision(itemId, 1, input.category(), input.location(), input.symptom());
                 kept.add(itemId);
                 continue;
@@ -191,6 +213,7 @@ public class CaseService {
             var existing = currentById.get(input.itemId());
             if (existing == null) throw CaseException.notFound();
             kept.add(existing.id());
+            repo.updateItemPosition(existing.id(), position);
             boolean changed = !existing.category().equals(input.category())
                     || !existing.location().equals(input.location())
                     || !existing.symptom().equals(input.symptom());
@@ -240,12 +263,13 @@ public class CaseService {
 
     /** A lost CAS may be a concurrent identical retry that has just committed; check before reporting 409. */
     private TxOutcome conflictOrReplay(UUID actorId, String operation, String key, String hash,
-                                       UUID caseId, Runnable accessRecheck) {
+                                       UUID caseId, Runnable accessRecheck, boolean draftOnly) {
         var prior = repo.findProcessed(actorId, operation, key);
         if (prior.isPresent()) return TxOutcome.replay(replay(prior.get(), hash, accessRecheck));
-        var current = repo.findCase(caseId);
-        if (current.isEmpty() || !current.get().authorId().equals(actorId)) throw CaseException.notFound();
-        if (!current.get().isDraft()) throw CaseException.alreadyConfirmed();
+        // The command's own access rule decides 404/403 here; a dispatcher is not the author.
+        accessRecheck.run();
+        var current = repo.findCase(caseId).orElseThrow(CaseException::notFound);
+        if (draftOnly && !current.isDraft()) throw CaseException.alreadyConfirmed();
         throw CaseException.versionConflict();
     }
 
@@ -282,20 +306,33 @@ public class CaseService {
         if (repo.membershipRole(userId, houseId).isEmpty()) throw CaseException.forbidden();
     }
 
+    private void requireDispatcherOfHouse(UUID actorId, UUID houseId) {
+        var role = repo.membershipRole(actorId, houseId);
+        if (role.isEmpty() || !role.get().equals("DISPATCHER")) throw CaseException.forbidden();
+    }
+
     private CaseView viewOf(CaseRow row) {
-        var items = repo.findItems(row.id());
+        return viewOf(row, repo.findItems(row.id()),
+            repo.currentSourceText(row.id(), row.sourceRevision()), repo.confirmedAt(row.id()));
+    }
+
+    /** A page loads the three projections once for every case, not once per case. */
+    private CaseView viewOf(CaseRow row, List<CaseRepository.ItemRow> items,
+                            String sourceText, Instant confirmedAt) {
         var states = new ArrayList<ItemState>(items.size());
         var views = new ArrayList<CaseItemView>(items.size());
         for (var item : items) {
             states.add(new ItemState(item.id(), row.authorId(), item.contentVersion(), item.workRound(),
-                    ItemState.WorkStatus.valueOf(item.workStatus()),
-                    ItemState.Observation.valueOf(item.observation()),
-                    ItemState.AdministrativeStatus.valueOf(item.administrativeStatus())));
+                ItemState.WorkStatus.valueOf(item.workStatus()),
+                ItemState.Observation.valueOf(item.observation()),
+                ItemState.AdministrativeStatus.valueOf(item.administrativeStatus())));
             views.add(CaseItemView.of(item));
         }
         return new CaseView(row.id(), row.houseId(), row.authorId(), row.submissionStatus(), row.version(),
-                row.sourceRevision(), repo.currentSourceText(row.id(), row.sourceRevision()), "FULL",
-            views, CaseProgress.from(states), row.createdAt().toInstant());
+            row.sourceRevision(), sourceText,
+            "ДЕМО-" + row.displayNumber(),
+            new CaseReceipt(confirmedAt, instant(row.acceptedAt()), row.acceptedBy()),
+            "FULL", views, CaseProgress.from(states), row.createdAt().toInstant());
     }
 
     private Map<String, Object> canonicalItemsBody(long expectedCaseVersion, List<DraftItemInput> items) {
@@ -366,30 +403,122 @@ public class CaseService {
         }
     }
 
-    private static Cursor decodeCursor(String cursor, UUID houseId) {
+    private static Cursor decodeCursor(String cursor, UUID houseId, String queueState) {
         if (cursor == null) return null;
         try {
             String raw = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
             String[] parts = raw.split("\\|", -1);
+            if (parts.length != 5 || !"v2".equals(parts[0])) throw CaseException.invalidFields("Invalid cursor");
             String cursorHouse = "-".equals(parts[1]) ? null : parts[1];
-            if (parts.length != 4 || !"v1".equals(parts[0])
-                    || !Objects.equals(cursorHouse, houseId == null ? null : houseId.toString())) {
+            String cursorQueue = "-".equals(parts[2]) ? null : parts[2];
+            if (!Objects.equals(cursorHouse, houseId == null ? null : houseId.toString())
+                || !Objects.equals(cursorQueue, queueState)) {
                 throw CaseException.invalidFields("Invalid cursor");
             }
-            long micros = Long.parseLong(parts[2]);
+            long micros = Long.parseLong(parts[3]);
             long millis = Math.floorDiv(micros, 1000);
             Timestamp createdAt = new Timestamp(millis);
             createdAt.setNanos(createdAt.getNanos() + (int) Math.floorMod(micros, 1000) * 1000);
-            return new Cursor(createdAt, UUID.fromString(parts[3]));
+            return new Cursor(createdAt, UUID.fromString(parts[4]));
         } catch (IllegalArgumentException | IndexOutOfBoundsException e) {
             throw CaseException.invalidFields("Invalid cursor");
         }
     }
 
-    private static String encodeCursor(UUID houseId, CaseRow last) {
+    private static String encodeCursor(UUID houseId, String queueState, CaseRow last) {
         Timestamp ts = last.createdAt();
         long micros = ts.getTime() * 1000 + (ts.getNanos() % 1_000_000) / 1000;
-        String raw = "v1|" + (houseId == null ? "-" : houseId) + "|" + micros + "|" + last.id();
+        String raw = "v2|" + (houseId == null ? "-" : houseId) + "|" + (queueState == null ? "-" : queueState)
+            + "|" + micros + "|" + last.id();
         return Base64.getUrlEncoder().withoutPadding().encodeToString(raw.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** Acceptance is a separate fact: it never touches work status, round or observation. */
+    public CaseView accept(UUID actorId, UUID caseId, long expectedCaseVersion, String idempotencyKey) {
+        Objects.requireNonNull(actorId);
+        Objects.requireNonNull(caseId);
+        validateKey(idempotencyKey);
+        validateVersion(expectedCaseVersion);
+        String hash = hash("accept", caseId, orderedMap("expectedCaseVersion", expectedCaseVersion));
+        Runnable access = () -> requireDispatcherOfCase(actorId, caseId);
+        return runCommand(actorId, "accept", idempotencyKey, hash, 200, access, () -> {
+            var row = loadVisible(actorId, caseId);
+            requireDispatcherOfCase(actorId, caseId);
+            if (!"CONFIRMED".equals(row.submissionStatus())) {
+                throw CaseException.invalidTransition("Only a confirmed case can be accepted");
+            }
+            if (row.acceptedAt() != null) {
+                throw CaseException.invalidTransition("The case is already accepted");
+            }
+            if (repo.bumpConfirmedCaseVersion(caseId, expectedCaseVersion) == 0) {
+                return conflictOrReplay(actorId, "accept", idempotencyKey, hash, caseId, access, true);
+            }
+            // Re-accepting is not an error, but it must not overwrite who accepted first.
+            repo.acceptCase(caseId, actorId);
+            repo.insertAudit(caseId, actorId, "CASE_ACCEPTED",
+                json.writeValueAsString(orderedMap("caseId", caseId)));
+            return TxOutcome.fresh(viewOf(repo.findCase(caseId).orElseThrow()));
+        });
+    }
+
+    public CaseView setNextAction(UUID actorId, UUID itemId, long expectedCaseVersion, long expectedItemVersion,
+                                  String text, UUID ownerId, Instant updateDueAt, String idempotencyKey) {
+        Objects.requireNonNull(actorId);
+        Objects.requireNonNull(itemId);
+        validateKey(idempotencyKey);
+        validateVersion(expectedCaseVersion);
+        validateVersion(expectedItemVersion);
+        validateText("text", text, MAX_NEXT_ACTION_CODE_POINTS);
+        if (ownerId == null) throw CaseException.invalidFields("ownerId is required");
+        if (updateDueAt != null && updateDueAt.isBefore(clock.instant())) {
+            throw CaseException.invalidFields("updateDueAt must not be in the past");
+        }
+        String hash = hash("next-action", itemId, orderedMap(
+            "expectedCaseVersion", expectedCaseVersion, "expectedItemVersion", expectedItemVersion,
+            "text", text, "ownerId", ownerId,
+            "updateDueAt", updateDueAt == null ? null : updateDueAt.toString()));
+        Runnable access = () -> requireDispatcherOfItem(actorId, itemId);
+        return runCommand(actorId, "next-action", idempotencyKey, hash, 200, access, () -> {
+            var ctx = requireDispatcherOfItem(actorId, itemId);
+            if (ctx.isDraft()) {
+                throw CaseException.invalidTransition("A next action needs a confirmed case");
+            }
+            if (!"ACTIVE".equals(ctx.administrativeStatus())) {
+                throw CaseException.invalidTransition("A next action needs an active item");
+            }
+            var ownerRole = repo.membershipRole(ownerId, ctx.houseId());
+            if (ownerRole.isEmpty() || !"DISPATCHER".equals(ownerRole.get())) {
+                throw CaseException.invalidFields("ownerId must be an active dispatcher of this house");
+            }
+            if (repo.bumpConfirmedCaseVersion(ctx.caseId(), expectedCaseVersion) == 0) {
+                return conflictOrReplay(actorId, "next-action", idempotencyKey, hash, ctx.caseId(), access, false);
+            }
+            if (repo.setNextAction(itemId, expectedItemVersion, text, ownerId,
+                updateDueAt == null ? null : Timestamp.from(updateDueAt)) == 0) {
+                throw CaseException.itemVersionConflict();
+            }
+            repo.insertAudit(ctx.caseId(), actorId, "ITEM_NEXT_ACTION_SET",
+                json.writeValueAsString(orderedMap("caseId", ctx.caseId(), "itemId", itemId,
+                    "ownerId", ownerId)));
+            return TxOutcome.fresh(viewOf(repo.findCase(ctx.caseId()).orElseThrow()));
+        });
+    }
+
+    private void requireDispatcherOfCase(UUID actorId, UUID caseId) {
+        var row = repo.findCase(caseId).orElseThrow(CaseException::notFound);
+        var role = repo.membershipRole(actorId, row.houseId());
+        if (role.isEmpty() || !role.get().equals("DISPATCHER")) throw CaseException.forbidden();
+    }
+
+    /** A per-item command authorizes itself through the case that owns the item. */
+    private CaseRepository.ItemContextRow requireDispatcherOfItem(UUID actorId, UUID itemId) {
+        var ctx = repo.findItemContext(itemId).orElseThrow(CaseException::notFound);
+        loadVisible(actorId, ctx.caseId());
+        requireDispatcherOfCase(actorId, ctx.caseId());
+        return ctx;
+    }
+
+    private static Instant instant(java.sql.Timestamp value) {
+        return value == null ? null : value.toInstant();
     }
 }

@@ -29,10 +29,9 @@ Prefix `/api/v1`. UUID - строки, времена - UTC ISO 8601. Верси
 
 ## C1. Вход и черновик
 
-Реальный `CaseView` на исходном dev содержит caseId/houseId/authorId/submissionStatus/caseVersion/sourceRevision/sourceText/items/progress/createdAt. S-01: visibility (сейчас всегда FULL) и assignedExecutorId (сейчас всегда null, назначений нет) добавлены в Java-record; CaseViewContractTest проверяет, что review/confirm примеры проходят круговое чтение Java без потерь. Новые поля ниже (receipt, nextAction, allowedActions, displayNumber) - целевые расширения, которых в текущем record нет. `author-review.openapi.json` также SCHEMA_ONLY. На S-01 синхронизировать новые fixtures/схемы, на S-02 реализовать и проверить HTTP; не приводить UI к виду успешного ответа через подставленные константы.
+Реальный CaseView содержит caseId/houseId/authorId/submissionStatus/caseVersion/sourceRevision/sourceText/displayNumber/receipt/visibility/items/progress/createdAt; пункт дополнительно несёт assignedExecutorId и nextAction. assignedExecutorId всегда null: команды назначения исполнителя нет. Статус каждой операции указан в author-review.openapi.json полем x-implementation-status: IMPLEMENTED — маршрут работает на PostgreSQL за проверенной сессией и покрыт тестами, TARGET — запланирован. Не приводить UI к виду успешного ответа через подставленные константы.
 
-Правка/подтверждение списка дополнительно описаны машинно в [author-review.openapi.json](../contracts/author-review.openapi.json), статус SCHEMA_ONLY. [Контракт 03](../contracts/03-author-review.md) объясняет уровни NEEDS_DETAILS → READY_FOR_REVIEW → авторское CONFIRMED. Неполные proposals с null остаются в форме; PATCH принимает полные пункты. READY_FOR_REVIEW не означает готовые работы.
-
+Правка/подтверждение списка дополнительно описаны машинно в author-review.openapi.json; статус операций указан там полем x-implementation-status.
 | Метод и путь | Вход | Успешный результат | Владелец |
 |---|---|---|---|
 | GET `/csrf` | До/после входа, та же сессия | 200 `{headerName,token}`; Cache-Control: no-store | S-02 |
@@ -144,7 +143,7 @@ Java проверяет принадлежность, полноту, дубли
 
 ## Дополнение для макетов 22.09: обязательные недостающие команды
 
-Все пути ниже **TARGET / TODO**, не существующие endpoints. Вместе реализуются DTO, SQL, авторизация, тесты и UI. Команды используют общие CSRF/Idempotency-Key/expectedCaseVersion и возвращают актуальную CaseView.
+Все три пути ниже реализованы и покрыты тестами на PostgreSQL: claim в S-02, приём и следующий шаг в S-03. Команды используют общие CSRF/Idempotency-Key/expectedCaseVersion и возвращают актуальную CaseView.
 
 | Метод и путь относительно /api/v1 | Вход / права | Ответ / экран | Задача |
 |---|---|---|---|
@@ -203,3 +202,4 @@ Webhook имеет отдельный корневой путь `/max/webhook`, 
 4. Java читает неизвестные поля молча, без ошибки. Поэтому расхождение схемы и record не было заметно до кругового теста; по той же причине старые сохранённые ответы в `processed_command` останутся читаемыми после добавления полей.
 
 Новые машинные контракты: `MeView`, `Membership`, `CasePage` и пути `/me`, `/cases` со статусом SCHEMA_ONLY; `CaseReceipt`, `NextAction`, `TargetCaseView`, `TargetCaseItemView` и команды приёма, следующего шага, обмена приглашения и административного решения по одному пункту - со статусом TARGET. Примеры: me-response, me-no-access, case-list-response, case-list-empty, unauthorized-401, forbidden-403, not-found-404, invalid-fields-422, case-view-target.
+Обновление 25.09: /me, /cases, /memberships/claim, приём и следующий шаг реализованы и помечены в схеме как x-implementation-status: IMPLEMENTED. TargetCaseItemView удалён — его поля вошли в CaseItemView вместе с nextAction. Остаются TARGET: TargetCaseView (из-за allowedActions) и административное решение по одному пункту, задача S-05.
