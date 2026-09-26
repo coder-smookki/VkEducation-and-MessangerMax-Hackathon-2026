@@ -77,6 +77,7 @@ class AnalysisHttpTest {
         public Optional<Response> tryCompare(Request request) {
             calls.incrementAndGet();
             if ("DOWN".equals(behaviour)) return Optional.empty();
+            if ("THROW".equals(behaviour)) throw new IllegalStateException("unexpected");
             boolean stub = "STUB".equals(behaviour);
             var suggestions = new ArrayList<Suggestion>();
             for (int index = 0; index < request.items().size(); index++) {
@@ -264,6 +265,18 @@ class AnalysisHttpTest {
         JsonNode view = suggestions(dispatcherSession, reportId);
         assertEquals("STALE", view.get("status").asString(), "the light is in a new round now");
         assertTrue(view.get("result").isNull(), "a hint about a finished round is withheld");
+    }
+
+    @Test
+    void anUnexpectedFailureIsRetriedAndDoesNotAbortTheBatch() throws Exception {
+        inference.behaviour = "THROW";
+        String reportId = report(confirmedCase()).get("report").get("reportId").asString();
+
+        var drained = assertDoesNotThrow(() -> worker.drainOnce());
+        assertEquals(1, drained.retried());
+        assertEquals(Boolean.FALSE, jdbc.queryForObject(
+            "SELECT leased_by IS NOT NULL FROM report_analysis WHERE report_id = ?::uuid",
+            Boolean.class, reportId), "released for a later attempt, not held until the lease runs out");
     }
 
     @Test

@@ -35,6 +35,8 @@ public class AnalysisWorker {
 
     public record Drained(int ready, int manual, int retried) {}
 
+    private enum Outcome { READY, MANUAL, RETRIED, LOST }
+
     private final AnalysisRepository analyses;
     private final ReportRepository reports;
     private final CaseRepository cases;
@@ -61,47 +63,64 @@ public class AnalysisWorker {
         int manual = 0;
         int retried = 0;
         for (var row : claimed) {
-            Request request = tx.execute(status -> snapshot(row));
-            if (request == null) {
-                analyses.finish(row.id(), leaseToken, "MANUAL_REQUIRED", null);
-                manual++;
-                continue;
+            Outcome outcome;
+            try {
+                outcome = process(row, leaseToken);
+            } catch (RuntimeException failure) {
+                // One broken row must not abort the batch: every row claimed with it has already spent
+                // an attempt, and would lose it for nothing. Only the class is logged, never the text.
+                log.warn("Analysis {} failed on attempt {}: {}", row.id(), row.attempts(),
+                    failure.getClass().getSimpleName());
+                outcome = retryOrGiveUp(row, leaseToken);
             }
-            // Deliberately outside any transaction: an open transaction must not wait on Python.
-            Optional<Response> answer = inference.tryCompare(request);
-            if (answer.isEmpty()) {
-                if (row.attempts() >= MAX_ATTEMPTS) {
-                    analyses.finish(row.id(), leaseToken, "MANUAL_REQUIRED", null);
-                    manual++;
-                } else {
-                    analyses.release(row.id(), backoff(row.attempts()), leaseToken);
-                    retried++;
-                }
-                continue;
-            }
-            Response response = answer.get();
-            boolean substantive = response.mode() == Mode.RULES || response.mode() == Mode.NLI;
-            boolean kept = Boolean.TRUE.equals(tx.execute(status -> {
-                UUID suggestionId = UUID.randomUUID();
-                analyses.insertSuggestion(suggestionId, row.caseId(), row.reportId(), row.sourceRevision(),
-                    response.modelVersion(), json.writeValueAsString(response));
-                if (analyses.finish(row.id(), leaseToken, substantive ? "READY" : "MANUAL_REQUIRED",
-                    suggestionId) == 1) {
-                    return true;
-                }
-                // The lease expired while Python answered: leave no orphaned result behind.
-                status.setRollbackOnly();
-                return false;
-            }));
-            if (!kept) {
-                log.warn("Analysis {} finished after its lease expired; another worker owns it", row.id());
-            } else if (substantive) {
-                ready++;
-            } else {
-                manual++;
+            switch (outcome) {
+                case READY -> ready++;
+                case MANUAL -> manual++;
+                case RETRIED -> retried++;
+                case LOST -> { }
             }
         }
         return new Drained(ready, manual, retried);
+    }
+
+    private Outcome process(AnalysisRepository.ClaimedRow row, UUID leaseToken) {
+        Request request = tx.execute(status -> snapshot(row));
+        if (request == null) {
+            analyses.finish(row.id(), leaseToken, "MANUAL_REQUIRED", null);
+            return Outcome.MANUAL;
+        }
+        // Deliberately outside any transaction: an open transaction must not wait on Python.
+        Optional<Response> answer = inference.tryCompare(request);
+        if (answer.isEmpty()) return retryOrGiveUp(row, leaseToken);
+        Response response = answer.get();
+        boolean substantive = response.mode() == Mode.RULES || response.mode() == Mode.NLI;
+        boolean kept = Boolean.TRUE.equals(tx.execute(status -> {
+            UUID suggestionId = UUID.randomUUID();
+            analyses.insertSuggestion(suggestionId, row.caseId(), row.reportId(), row.sourceRevision(),
+                response.modelVersion(), json.writeValueAsString(response));
+            if (analyses.finish(row.id(), leaseToken, substantive ? "READY" : "MANUAL_REQUIRED",
+                suggestionId) == 1) {
+                return true;
+            }
+            // The lease expired while Python answered: leave no orphaned result behind.
+            status.setRollbackOnly();
+            return false;
+        }));
+        if (!kept) {
+            log.warn("Analysis {} finished after its lease expired; another worker owns it", row.id());
+            return Outcome.LOST;
+        }
+        return substantive ? Outcome.READY : Outcome.MANUAL;
+    }
+
+    /** The claim already counted this attempt: the last one admits manual work, earlier ones wait. */
+    private Outcome retryOrGiveUp(AnalysisRepository.ClaimedRow row, UUID leaseToken) {
+        if (row.attempts() >= MAX_ATTEMPTS) {
+            analyses.finish(row.id(), leaseToken, "MANUAL_REQUIRED", null);
+            return Outcome.MANUAL;
+        }
+        analyses.release(row.id(), backoff(row.attempts()), leaseToken);
+        return Outcome.RETRIED;
     }
 
     /**
