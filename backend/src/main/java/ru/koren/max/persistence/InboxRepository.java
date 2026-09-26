@@ -1,11 +1,14 @@
 package ru.koren.max.persistence;
 
-import java.sql.Timestamp;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-/** The inbox is the ACK boundary: MAX is answered only after this row is committed. */
+/**
+ * The inbox is the ACK boundary: MAX is answered only after this row is committed.
+ * All queue time comes from the database clock: a row stamped by one clock and claimed by another
+ * would sit invisible for exactly as long as the two disagree.
+ */
 public class InboxRepository {
 
     public record InboxRow(UUID id, String eventKey, String payload, int attempts) {}
@@ -30,17 +33,16 @@ public class InboxRepository {
      * worker take other rows instead of waiting, and the lease releases the row by itself if this
      * worker dies. The token is what lets a finishing worker prove the row is still its own.
      */
-    public List<InboxRow> claim(Timestamp now, int leaseSeconds, int maxAttempts, int limit,
-                                UUID leaseToken) {
+    public List<InboxRow> claim(int leaseSeconds, int maxAttempts, int limit, UUID leaseToken) {
         return jdbc.query("""
                 UPDATE inbox_event
-                   SET leased_until = ?::timestamptz + make_interval(secs => ?),
+                   SET leased_until = now() + make_interval(secs => ?),
                        leased_by = ?, attempts = attempts + 1
                  WHERE id IN (
                        SELECT id FROM inbox_event
                         WHERE processed_at IS NULL
-                          AND available_at <= ?
-                          AND (leased_until IS NULL OR leased_until <= ?)
+                          AND available_at <= now()
+                          AND (leased_until IS NULL OR leased_until <= now())
                           AND attempts < ?
                         ORDER BY available_at, id
                           FOR UPDATE SKIP LOCKED
@@ -48,7 +50,7 @@ public class InboxRepository {
              RETURNING id, event_key, payload::text AS payload, attempts
                 """, (rs, row) -> new InboxRow(rs.getObject("id", UUID.class),
                 rs.getString("event_key"), rs.getString("payload"), rs.getInt("attempts")),
-            now, leaseSeconds, leaseToken, now, now, maxAttempts, limit);
+            leaseSeconds, leaseToken, maxAttempts, limit);
     }
 
     /** Zero rows means the lease was lost while we worked: another worker owns this event now. */
@@ -60,10 +62,11 @@ public class InboxRepository {
     }
 
     /** Releases a failed event for a later attempt; attempts was already raised by the claim. */
-    public int release(UUID id, Timestamp availableAt, UUID leaseToken) {
+    public int release(UUID id, int delaySeconds, UUID leaseToken) {
         return jdbc.update("""
-                UPDATE inbox_event SET leased_until = NULL, leased_by = NULL, available_at = ?
+                UPDATE inbox_event SET leased_until = NULL, leased_by = NULL,
+                       available_at = now() + make_interval(secs => ?)
                  WHERE id = ? AND leased_by = ?
-                """, availableAt, id, leaseToken);
+                """, delaySeconds, id, leaseToken);
     }
 }

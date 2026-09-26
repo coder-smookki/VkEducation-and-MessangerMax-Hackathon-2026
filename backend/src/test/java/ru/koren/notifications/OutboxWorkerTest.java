@@ -17,7 +17,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 import ru.koren.max.application.MaxSender;
 import ru.koren.notifications.application.OutboxWorker;
 import ru.koren.notifications.persistence.OutboxRepository;
-import java.sql.Timestamp;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -114,7 +113,6 @@ class OutboxWorkerTest {
     void aQueuedNotificationIsSentOnceAndMarked() {
         queue(author);
         var drained = worker.drainOnce();
-
         assertEquals(1, drained.sent());
         assertEquals(List.of(author), sender.sent);
         assertTrue(isSent());
@@ -127,7 +125,6 @@ class OutboxWorkerTest {
         sender.refuse = true;
         queue(dispatcher);
         var drained = worker.drainOnce();
-
         assertEquals(0, drained.sent());
         assertEquals(1, drained.failed());
         assertFalse(isSent());
@@ -142,7 +139,6 @@ class OutboxWorkerTest {
         jdbc.update("UPDATE membership SET revoked_at = now() WHERE user_id = ? AND house_id = ?",
             dispatcher, house);
         var drained = worker.drainOnce();
-
         assertEquals(1, drained.cancelled());
         assertEquals(0, drained.sent());
         assertTrue(sender.sent.isEmpty(), "a revoked reader must never reach the transport at all");
@@ -167,7 +163,6 @@ class OutboxWorkerTest {
                 + " leased_until = NULL WHERE deduplication_key = ?", key);
             worker.drainOnce();
         }
-
         assertEquals(OutboxWorker.MAX_ATTEMPTS, attempts());
         assertFalse(isSent(), "an undeliverable notification stays queryable, never quietly closed");
     }
@@ -178,7 +173,6 @@ class OutboxWorkerTest {
         jdbc.update("UPDATE outbox_event SET leased_until = now() + interval '1 hour'"
             + " WHERE deduplication_key = ?", key);
         assertEquals(0, worker.drainOnce().sent(), "another worker holds this notification");
-
         jdbc.update("UPDATE outbox_event SET leased_until = now() - interval '1 hour'"
             + " WHERE deduplication_key = ?", key);
         assertEquals(1, worker.drainOnce().sent(), "a dead worker's lease must expire by itself");
@@ -187,14 +181,11 @@ class OutboxWorkerTest {
     void aWorkerThatLostItsLeaseCannotRecordTheDelivery() {
         queue(author);
         UUID myToken = UUID.randomUUID();
-        var claimed = outbox.claim(new Timestamp(System.currentTimeMillis()), 60,
-            OutboxWorker.MAX_ATTEMPTS, 10, myToken);
+        var claimed = outbox.claim(60, OutboxWorker.MAX_ATTEMPTS, 10, myToken);
         assertEquals(1, claimed.size());
-
         // Our lease expires and another worker takes the row while our send is still in flight.
         jdbc.update("UPDATE outbox_event SET leased_by = ?, leased_until = now() + interval '1 hour'"
             + " WHERE deduplication_key = ?", UUID.randomUUID(), key);
-
         assertEquals(0, outbox.markSent(claimed.getFirst().id(), myToken),
             "a lost lease must not let us record a clean delivery");
         assertFalse(isSent(), "the row belongs to the other worker now");

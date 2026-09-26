@@ -125,3 +125,62 @@ def test_stub_remains_the_default_and_rules_is_opt_in():
     assert rules.mode == "RULES"
     assert rules.modelVersion == RULES_MODEL_VERSION
     assert rules.suggestions[0].relation == Relation.REPORTED_DONE
+
+
+LIGHT = {
+    "itemId": ITEM_ID,
+    "contentVersion": 1,
+    "workRound": 1,
+    "category": "LIGHTING",
+    "location": "Подъезд 1, этаж 3",
+    "symptom": "Не горит свет",
+}
+DOOR = {
+    "itemId": DOOR_ID,
+    "contentVersion": 1,
+    "workRound": 1,
+    "category": "ENTRANCE_DOOR",
+    "location": "Подъезд 1, вход",
+    "symptom": "Дверь не закрывается",
+}
+
+# QA-A08: the first three are the constructions it names; the rest are the same class in other shapes.
+# "Всё ещё сломана" abstains rather than reporting persistence: "сломана" is in no marker list, and
+# adding it after seeing this phrase would be tuning to the test, not fixing the class.
+MIXED_SUBJECTS = [
+    ("Лампу заменили, дверь заменим завтра.", Relation.REPORTED_DONE, Relation.PLANNED),
+    ("Дверь заменим завтра, лампу заменили.", Relation.REPORTED_DONE, Relation.PLANNED),
+    ("Лампу заменили, дверь всё ещё сломана.", Relation.REPORTED_DONE, Relation.INSUFFICIENT_INFORMATION),
+    ("Лампу заменили, дверь не закрывается.", Relation.REPORTED_DONE, Relation.INSUFFICIENT_INFORMATION),
+    ("Лампу заменили и дверь починим.", Relation.REPORTED_DONE, Relation.PLANNED),
+    ("Освещение у двери восстановили.", Relation.INSUFFICIENT_INFORMATION, Relation.INSUFFICIENT_INFORMATION),
+]
+
+
+def _by_item(text):
+    return {str(s.itemId): s for s in analyze_rules(make_request(text, [LIGHT, DOOR])).suggestions}
+
+
+@pytest.mark.parametrize(("text", "light", "door"), MIXED_SUBJECTS)
+def test_a_predicate_never_travels_between_subjects(text, light, door):
+    suggestions = _by_item(text)
+    assert suggestions[ITEM_ID].relation == light
+    assert suggestions[DOOR_ID].relation == door
+
+
+@pytest.mark.parametrize("text", [case[0] for case in MIXED_SUBJECTS])
+def test_a_quote_never_carries_the_other_subject(text):
+    suggestions = _by_item(text)
+    light_evidence = suggestions[ITEM_ID].evidence
+    door_evidence = suggestions[DOOR_ID].evidence
+    if light_evidence is not None:
+        assert "двер" not in light_evidence.quote.lower()
+    if door_evidence is not None:
+        assert not any(marker in door_evidence.quote.lower() for marker in ("ламп", "свет", "освещ"))
+
+
+def test_same_subject_clauses_are_still_read_together():
+    # Splitting a sentence must not break "done, but the symptom stays" for one subject.
+    suggestion = _by_item("Лампу заменили, но свет так и не горит.")[ITEM_ID]
+    assert suggestion.relation == Relation.SYMPTOM_PERSISTS
+    assert suggestion.evidence.quote == "Лампу заменили, но свет так и не горит."

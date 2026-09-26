@@ -1,4 +1,9 @@
-"""Evaluate every available analyzer on development examples; never a held-out quality claim."""
+"""Evaluate every available analyzer, each split apart; development numbers are never a quality claim.
+
+development - the examples the rules were built on. regression - the mixed-subject constructions
+QA-A08 requires, known in advance, so a pass there proves the class is fixed and nothing more.
+holdout - written by someone who has not seen the rules; absent means no held-out claim at all.
+"""
 
 import json
 from collections.abc import Callable
@@ -10,6 +15,11 @@ from app.features.inference.schemas import CompareRequest, CompareResponse, Rela
 from app.features.inference.service import InferenceService
 
 DATA_PATH = Path("data/examples.jsonl")
+SPLIT_PATHS = {
+    "development": DATA_PATH,
+    "regression": Path("data/regression.jsonl"),
+    "holdout": Path("data/holdout.jsonl"),
+}
 RESULTS_DIR = Path("results")
 
 ANALYZERS: dict[str, Callable[[CompareRequest], CompareResponse]] = {
@@ -18,7 +28,10 @@ ANALYZERS: dict[str, Callable[[CompareRequest], CompareResponse]] = {
 }
 
 ACTIONABLE = {Relation.REPORTED_DONE.value, Relation.PLANNED.value}
-NOTE = "Development examples only; no held-out quality claim. Missing precision is not 100%."
+NOTE = (
+    "Top-level metrics are development only. Splits are reported apart; a null split was not provided "
+    "and is neither 0 nor 100%. Missing precision is not 100%."
+)
 
 
 def load_rows(path: Path = DATA_PATH) -> list[dict]:
@@ -112,6 +125,14 @@ def _metrics(records: list[dict]) -> dict:
     }
 
 
+def split_metrics(name: str, analyze: Callable[[CompareRequest], CompareResponse]) -> dict:
+    """Every split measured on its own: mixing them would let known phrases inflate the result."""
+    return {
+        split: _evaluate_analyzer(name, analyze, load_rows(path))["metrics"] if path.exists() else None
+        for split, path in SPLIT_PATHS.items()
+    }
+
+
 def main(results_dir: Path = RESULTS_DIR) -> list[Path]:
     rows = load_rows()
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -120,6 +141,7 @@ def main(results_dir: Path = RESULTS_DIR) -> list[Path]:
     summary = {"dataset": "synthetic-development-examples", "note": NOTE, "analyzers": {}}
     for name, analyze in ANALYZERS.items():
         outcome = _evaluate_analyzer(name, analyze, rows)
+        outcome["splits"] = split_metrics(name, analyze)
         version = "-".join(outcome["modelVersion"]) or "unknown"
         path = results_dir / f"eval-{name}-{version}-{today}.json"
         path.write_text(json.dumps(outcome, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -128,6 +150,7 @@ def main(results_dir: Path = RESULTS_DIR) -> list[Path]:
             "modes": outcome["modes"],
             "modelVersion": outcome["modelVersion"],
             "metrics": outcome["metrics"],
+            "splits": outcome["splits"],
         }
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return written

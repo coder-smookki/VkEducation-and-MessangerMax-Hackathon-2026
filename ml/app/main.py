@@ -4,10 +4,11 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.di import create_container, setup_container
 from app.features.indexing.consumer import CaseEventsConsumer
 from app.features.inference.api import router as inference_router
+from app.features.inference.service import active_mode
 from app.features.intake.api import router as intake_router
 from app.http_errors import RequestSizeLimit
 from app.shared.vector_store import ChromaVectorStore
@@ -44,10 +45,17 @@ async def invalid_request(request: Request, _exception: RequestValidationError):
     return JSONResponse(status_code=422, content={"detail": detail})
 
 
-@app.get("/healthz")
-def health() -> dict[str, str]:
+def health_payload(current: Settings) -> dict[str, str]:
+    """What compare actually does right now; never a constant that outlives a configuration change."""
+    mode, model_version = active_mode(current)
     return {
         "status": "ok",
-        "mode": "STUB",
-        "vectorStore": "chroma" if settings.chroma_enabled else "disabled",
+        "mode": mode.value,
+        "modelVersion": model_version,
+        "vectorStore": "chroma" if current.chroma_enabled else "disabled",
     }
+
+
+@app.get("/healthz")
+def health() -> dict[str, str]:
+    return health_payload(settings)

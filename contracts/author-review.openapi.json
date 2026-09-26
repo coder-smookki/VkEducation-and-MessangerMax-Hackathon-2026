@@ -1194,6 +1194,63 @@
         }
       }
     },
+    "/api/v1/reports/{reportId}/suggestions": {
+      "get": {
+        "operationId": "getReportSuggestions",
+        "summary": "подсказка сравнения отчёта с пунктами",
+        "description": "Только чтение. Подсказка никогда не меняет workStatus, раунд или наблюдение: связь подтверждает диспетчер через /links. result заполнен только при READY; при QUEUED, RUNNING, STALE и MANUAL_REQUIRED он null. STALE значит, что подсказка была получена, но пункт с тех пор сменил contentVersion или workRound, либо обращение сменило sourceRevision, - поэтому она не показывается. Ответ STUB хранится, но отдаётся как MANUAL_REQUIRED.",
+        "x-implementation-status": "IMPLEMENTED",
+        "x-task": "S-06",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "reportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ReportSuggestions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportSuggestions"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нет сессии",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Отчёт не существует или недоступен; 403 не отдаётся, чтобы не раскрыть существование чужого отчёта",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/items/{itemId}/observations": {
       "post": {
         "operationId": "recordObservation",
@@ -2151,7 +2208,7 @@
       "Analysis": {
         "type": "object",
         "additionalProperties": false,
-        "description": "A hint about the text, never a business status. MANUAL_REQUIRED is the honest answer while no analysis is wired; READY never means work happened.",
+        "description": "A hint about the text, never a business status. When analysis is disabled the answer is MANUAL_REQUIRED; when enabled a fresh report is QUEUED. RUNNING and STALE are derived at read time and never stored. READY never means work happened.",
         "properties": {
           "status": {
             "type": "string",
@@ -2167,6 +2224,198 @@
         "required": [
           "status"
         ]
+      },
+      "SuggestionEvidence": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Offsets are Unicode code points into reportText, start inclusive and end exclusive; quote equals that slice.",
+        "properties": {
+          "start": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "end": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "quote": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 5000
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "quote"
+        ]
+      },
+      "ItemSuggestion": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Mirrors inference Suggestion. evidence is null exactly when relation is INSUFFICIENT_INFORMATION without a quote.",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contentVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "workRound": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "relation": {
+            "type": "string",
+            "enum": [
+              "REPORTED_DONE",
+              "PLANNED",
+              "SYMPTOM_PERSISTS",
+              "INSUFFICIENT_INFORMATION",
+              "UNRELATED",
+              "CONFLICT"
+            ]
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SuggestionEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "MODEL_NOT_CONFIGURED",
+              "ANALYSIS_UNAVAILABLE",
+              "ANALYZED"
+            ]
+          }
+        },
+        "required": [
+          "itemId",
+          "contentVersion",
+          "workRound",
+          "relation",
+          "evidence",
+          "reason"
+        ]
+      },
+      "ComparisonResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "The validated inference answer as stored; one suggestion per target item of the report, including items the text never mentions.",
+        "properties": {
+          "caseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sourceRevision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "reportId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "modelVersion": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "RULES",
+              "NLI"
+            ]
+          },
+          "suggestions": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 20,
+            "items": {
+              "$ref": "#/components/schemas/ItemSuggestion"
+            }
+          }
+        },
+        "required": [
+          "caseId",
+          "sourceRevision",
+          "reportId",
+          "modelVersion",
+          "mode",
+          "suggestions"
+        ]
+      },
+      "ReportSuggestions": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Advisory only. analysisId is null when no analysis was ever queued for the report.",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "QUEUED",
+              "RUNNING",
+              "READY",
+              "STALE",
+              "MANUAL_REQUIRED"
+            ]
+          },
+          "analysisId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ComparisonResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "status",
+          "analysisId",
+          "result"
+        ],
+        "if": {
+          "properties": {
+            "status": {
+              "const": "READY"
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "result": {
+              "$ref": "#/components/schemas/ComparisonResult"
+            }
+          }
+        },
+        "else": {
+          "properties": {
+            "result": {
+              "type": "null"
+            }
+          }
+        }
       },
       "CreateReportResponse": {
         "type": "object",

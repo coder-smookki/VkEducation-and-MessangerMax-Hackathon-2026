@@ -1,6 +1,5 @@
 package ru.koren.notifications;
 
-import java.time.Clock;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -28,8 +27,8 @@ public class NotificationsConfig {
     @Bean
     @ConditionalOnExpression("'${koren.max.bot-token:}' != ''")
     OutboxWorker outboxWorker(OutboxRepository outbox, CaseService cases, MaxSender sender,
-                              PlatformTransactionManager transactions, Clock clock) {
-        return new OutboxWorker(outbox, cases, sender, transactions, clock);
+                              PlatformTransactionManager transactions) {
+        return new OutboxWorker(outbox, cases, sender, transactions);
     }
 
     @Configuration

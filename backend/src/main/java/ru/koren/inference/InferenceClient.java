@@ -27,18 +27,25 @@ public class InferenceClient {
         client = RestClient.builder().baseUrl(baseUrl).requestFactory(factory).build();
     }
 
-    public Response compare(Request request) {
+    /** Empty when Python is unreachable or answers something the validator rejects. */
+    public Optional<Response> tryCompare(Request request) {
         try {
             Response response = client.post().uri("/internal/v1/compare").body(request)
-                    .retrieve().body(Response.class);
-            return SuggestionValidator.validate(request, response);
+                .retrieve().body(Response.class);
+            return Optional.of(SuggestionValidator.validate(request, response));
         } catch (org.springframework.web.client.RestClientException | IllegalArgumentException exception) {
             // Log type only: exception messages may contain request or response texts.
             log.warn("Inference unavailable: {}", exception.getClass().getSimpleName());
-            return new Response(request.caseId(), request.sourceRevision(), request.reportId(), "unavailable", Mode.MANUAL,
-                    request.items().stream().map(item -> new Suggestion(item.itemId(), item.contentVersion(),
-                            item.workRound(), Relation.INSUFFICIENT_INFORMATION, null, Reason.ANALYSIS_UNAVAILABLE)).toList());
+            return Optional.empty();
         }
+    }
+
+    public Response compare(Request request) {
+        return tryCompare(request).orElseGet(() -> new Response(request.caseId(), request.sourceRevision(),
+            request.reportId(), "unavailable", Mode.MANUAL, request.items().stream()
+            .map(item -> new Suggestion(item.itemId(), item.contentVersion(), item.workRound(),
+                Relation.INSUFFICIENT_INFORMATION, null, Reason.ANALYSIS_UNAVAILABLE))
+            .toList()));
     }
 
     public ExtractResponse extract(ExtractRequest request) {

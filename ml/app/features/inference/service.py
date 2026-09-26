@@ -1,5 +1,5 @@
 from app.core.config import Settings
-from app.features.inference.rules_analyzer import analyze_rules
+from app.features.inference.rules_analyzer import RULES_MODEL_VERSION, analyze_rules
 from app.features.inference.schemas import (
     CompareRequest,
     CompareResponse,
@@ -10,11 +10,20 @@ from app.features.inference.schemas import (
 )
 from app.shared.vector_store import ChromaVectorStore
 
+STUB_MODEL_VERSION = "stub-v1"
+
+
+def active_mode(settings: Settings | None) -> tuple[Mode, str]:
+    """The mode compare really runs in. Health reports this, so the two can never disagree."""
+    if settings is not None and settings.compare_analyzer == "rules":
+        return Mode.RULES, RULES_MODEL_VERSION
+    return Mode.STUB, STUB_MODEL_VERSION
+
 
 class InferenceService:
     def __init__(self, vector_store: ChromaVectorStore, settings: Settings | None = None) -> None:
         self.vector_store = vector_store
-        self.compare_analyzer = settings.compare_analyzer if settings else "stub"
+        self.mode, _ = active_mode(settings)
 
     @staticmethod
     def analyze(request: CompareRequest) -> CompareResponse:
@@ -23,7 +32,7 @@ class InferenceService:
             caseId=request.caseId,
             sourceRevision=request.sourceRevision,
             reportId=request.reportId,
-            modelVersion="stub-v1",
+            modelVersion=STUB_MODEL_VERSION,
             mode=Mode.STUB,
             suggestions=[
                 Suggestion(
@@ -39,6 +48,6 @@ class InferenceService:
         )
 
     def compare(self, request: CompareRequest) -> CompareResponse:
-        if self.compare_analyzer == "rules":
+        if self.mode == Mode.RULES:
             return analyze_rules(request)
         return self.analyze(request)
