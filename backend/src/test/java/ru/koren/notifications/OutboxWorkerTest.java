@@ -1,5 +1,6 @@
 package ru.koren.notifications;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -14,6 +15,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import ru.koren.max.application.MaxDeliveryException;
 import ru.koren.max.application.MaxSender;
 import ru.koren.notifications.application.OutboxWorker;
 import ru.koren.notifications.persistence.OutboxRepository;
@@ -22,6 +24,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * S-05: delivery is durable, retried with backoff, and re-authorised immediately before each send.
+ * S-07 / QA-R05: MAX's answers are told apart - a refusal stops at once, a rate limit is waited out by
+ * the whole batch, the last failed attempt is recorded as failed. The sender is a controlled mock.
  * No fixed clock here on purpose: lease and backoff arithmetic must run against real time.
  */
 @SpringBootTest(properties = {
@@ -35,10 +39,13 @@ class OutboxWorkerTest {
     static class RecordingSender implements MaxSender {
         final List<UUID> sent = new CopyOnWriteArrayList<>();
         volatile boolean refuse = false;
+        /** What MAX answers instead of accepting, as a real sender would report it. */
+        volatile MaxDeliveryException answer = null;
 
         @Override
         public void send(UUID recipientId, String eventType, String payload) {
             sent.add(recipientId);
+            if (answer != null) throw answer;
             if (refuse) throw new IllegalStateException("transport refused");
         }
     }
@@ -68,13 +75,14 @@ class OutboxWorkerTest {
     void fixture() {
         sender.sent.clear();
         sender.refuse = false;
+        sender.answer = null;
         author = UUID.randomUUID();
         dispatcher = UUID.randomUUID();
         house = UUID.randomUUID();
         caseId = UUID.randomUUID();
         key = "test:" + UUID.randomUUID();
         // Park anything left by earlier tests so drainOnce counts only what this test queued.
-        jdbc.update("UPDATE outbox_event SET sent_at = now() WHERE sent_at IS NULL");
+        jdbc.update("UPDATE outbox_event SET sent_at = now() WHERE sent_at IS NULL AND failed_at IS NULL");
         new TransactionTemplate(transactions).executeWithoutResult(status -> {
             jdbc.update("INSERT INTO app_user(id, max_user_id) VALUES (?, ?), (?, ?)",
                 author, Math.abs(UUID.randomUUID().getMostSignificantBits() % 1_000_000_000L),
@@ -102,6 +110,15 @@ class OutboxWorkerTest {
     private String lastError() {
         return jdbc.queryForObject("SELECT last_error FROM outbox_event WHERE deduplication_key = ?",
             String.class, key);
+    }
+
+    private boolean isFailed(String dedupKey) {
+        return Boolean.TRUE.equals(jdbc.queryForObject(
+            "SELECT failed_at IS NOT NULL FROM outbox_event WHERE deduplication_key = ?", Boolean.class, dedupKey));
+    }
+
+    private static MaxDeliveryException http(int status, String retryAfter) {
+        return MaxDeliveryException.fromHttp(status, retryAfter, Instant.now()).orElseThrow();
     }
 
     private int attempts() {
@@ -165,6 +182,8 @@ class OutboxWorkerTest {
         }
         assertEquals(OutboxWorker.MAX_ATTEMPTS, attempts());
         assertFalse(isSent(), "an undeliverable notification stays queryable, never quietly closed");
+        assertTrue(isFailed(key), "the last attempt says in the row that nothing more will be tried");
+        assertEquals("IllegalStateException", lastError());
     }
 
     @Test
@@ -191,4 +210,49 @@ class OutboxWorkerTest {
         assertFalse(isSent(), "the row belongs to the other worker now");
     }
 
+    @Test
+    void aPermanentRefusalFailsAtOnceWithoutRetrying() {
+        sender.answer = http(403, null);
+        queue(author);
+        var drained = worker.drainOnce();
+        assertEquals(1, drained.failed());
+        assertTrue(isFailed(key), "a blocked bot will not unblock itself by being asked again");
+        assertEquals("REJECTED_403", lastError());
+        assertEquals(1, attempts());
+        jdbc.update("UPDATE outbox_event SET available_at = now() - interval '1 hour' WHERE deduplication_key = ?", key);
+        worker.drainOnce();
+        assertEquals(1, sender.sent.size(), "a failed notification is never claimed again");
+    }
+
+    @Test
+    void anUnavailableMaxIsRetriedLaterAndNotFailed() {
+        sender.answer = http(503, null);
+        queue(author);
+        assertEquals(1, worker.drainOnce().failed());
+        assertFalse(isFailed(key), "a server error is temporary; the row waits for another attempt");
+        assertEquals("UNAVAILABLE_503", lastError());
+        assertEquals(0, worker.drainOnce().failed(), "backoff holds it back");
+    }
+
+    @Test
+    void aRateLimitIsWaitedOutAndHoldsBackTheRestOfTheBatch() {
+        sender.answer = http(429, "120");
+        List<String> keys = List.of(key, "test:" + UUID.randomUUID(), "test:" + UUID.randomUUID());
+        for (String each : keys) {
+            assertTrue(outbox.enqueue(each, caseId, author, "CASE_ACCEPTED", "{\"caseId\":\"" + caseId + "\"}"));
+        }
+        var drained = worker.drainOnce();
+
+        assertEquals(1, sender.sent.size(), "after a 429 nothing else is sent into the same limit");
+        assertEquals(1, drained.failed());
+        assertEquals(2, drained.deferred());
+        for (String each : keys) {
+            assertEquals(Boolean.TRUE, jdbc.queryForObject("SELECT available_at > now() + interval '110 seconds'"
+                    + " AND failed_at IS NULL FROM outbox_event WHERE deduplication_key = ?", Boolean.class, each),
+                "every row waits at least as long as MAX asked");
+        }
+        assertEquals(List.of(0, 0, 1), jdbc.queryForList("SELECT attempts FROM outbox_event"
+                + " WHERE deduplication_key IN (?, ?, ?) ORDER BY attempts", Integer.class,
+            keys.get(0), keys.get(1), keys.get(2)), "only the message that met the limit spent an attempt");
+    }
 }

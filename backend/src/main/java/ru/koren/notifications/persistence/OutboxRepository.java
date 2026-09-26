@@ -47,7 +47,7 @@ public class OutboxRepository {
                        leased_by = ?, attempts = attempts + 1
                  WHERE id IN (
                        SELECT id FROM outbox_event
-                        WHERE sent_at IS NULL
+                        WHERE sent_at IS NULL AND failed_at IS NULL
                           AND available_at <= now()
                           AND (leased_until IS NULL OR leased_until <= now())
                           AND attempts < ?
@@ -82,6 +82,30 @@ public class OutboxRepository {
                  WHERE id = ? AND leased_by = ?
                 """, delaySeconds, error == null ? null
             : error.substring(0, Math.min(error.length(), 500)), id, leaseToken);
+    }
+
+    /**
+     * Stops trying: MAX refused for good, or the last attempt failed. The row stays, with its reason,
+     * so "not delivered" is one query and never a silent absence.
+     */
+    public int fail(UUID id, String reason, UUID leaseToken) {
+        return jdbc.update("""
+                UPDATE outbox_event SET failed_at = now(), leased_until = NULL, leased_by = NULL,
+                       last_error = ?
+                 WHERE id = ? AND leased_by = ?
+                """, reason, id, leaseToken);
+    }
+
+    /**
+     * Puts back a row this worker claimed but never tried to send, returning the attempt the claim
+     * counted: waiting out someone else's rate limit is not this message's failure.
+     */
+    public int defer(UUID id, int delaySeconds, UUID leaseToken) {
+        return jdbc.update("""
+                UPDATE outbox_event SET leased_until = NULL, leased_by = NULL,
+                       available_at = now() + make_interval(secs => ?), attempts = attempts - 1
+                 WHERE id = ? AND leased_by = ? AND attempts > 0
+                """, delaySeconds, id, leaseToken);
     }
 
     /** Drops a notification whose recipient may no longer read the case; the reason stays visible. */
