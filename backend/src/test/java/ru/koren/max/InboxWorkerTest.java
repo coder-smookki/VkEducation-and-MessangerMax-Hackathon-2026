@@ -32,8 +32,8 @@ class InboxWorkerTest {
         volatile boolean refuse = false;
 
         @Override
-        public void handle(String payload) {
-            seen.add(payload);
+        public void handle(String eventKey, String payload) {
+            seen.add(eventKey);
             if (refuse) throw new IllegalStateException("handler refused");
         }
     }
@@ -82,7 +82,7 @@ class InboxWorkerTest {
 
         assertEquals(1, drained.handled());
         assertEquals(0, drained.failed());
-        assertEquals(1, handler.seen.size());
+        assertEquals(List.of(key), handler.seen, "the worker must pass the event's own key");
         assertTrue(processed());
         assertEquals(0, worker.drainOnce().handled(), "a processed event is never claimed again");
     }

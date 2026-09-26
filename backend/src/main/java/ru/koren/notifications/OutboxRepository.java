@@ -27,6 +27,16 @@ public class OutboxRepository {
                 """, UUID.randomUUID(), caseId, recipientId, eventType, deduplicationKey, payloadJson) == 1;
     }
 
+    /** A reply to the person who just wrote to the bot: it belongs to them, not to a case. */
+    public boolean enqueueReply(String deduplicationKey, UUID recipientId, String eventType,
+                                String payloadJson) {
+        return jdbc.update("""
+                INSERT INTO outbox_event(id, case_id, recipient_id, event_type, deduplication_key, payload)
+                VALUES (?, NULL, ?, ?, ?, ?::jsonb)
+                ON CONFLICT (deduplication_key) DO NOTHING
+                """, UUID.randomUUID(), recipientId, eventType, deduplicationKey, payloadJson) == 1;
+    }
+
     public List<OutboxRow> claim(Timestamp now, int leaseSeconds, int maxAttempts, int limit) {
         return jdbc.query("""
                 UPDATE outbox_event

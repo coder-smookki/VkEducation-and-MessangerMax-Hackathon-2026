@@ -14,13 +14,18 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import ru.koren.max.application.InboxWorker;
-import ru.koren.max.application.NoRouteUpdateHandler;
 import ru.koren.max.application.UpdateHandler;
+import ru.koren.max.persistence.DialogRepository;
+import ru.koren.cases.application.CaseService;
+import ru.koren.identity.persistence.MaxUserProvisioner;
+import ru.koren.max.application.BotDialog;
+import ru.koren.notifications.persistence.OutboxRepository;
+
 
 /** Without a configured secret the webhook does not exist at all: an open one is worse than none. */
 @Configuration
 @Profile("!no-db")
-@ConditionalOnExpression("'${koren.max.webhook-secret:}' != ''")
+@ConditionalOnExpression("'${koren.max.webhook-secret:}' != '' and '${koren.max.bot-token:}' != ''")
 public class MaxConfig {
 
     @Bean
@@ -35,8 +40,9 @@ public class MaxConfig {
     }
 
     @Bean
-    UpdateHandler updateHandler() {
-        return new NoRouteUpdateHandler();
+    UpdateHandler updateHandler(CaseService cases, MaxUserProvisioner users,
+                                DialogRepository dialogs, OutboxRepository outbox) {
+        return new BotDialog(cases, users, dialogs, outbox);
     }
 
     @Bean
@@ -64,5 +70,10 @@ public class MaxConfig {
         void drainInbox() {
             worker.drainOnce();
         }
+    }
+
+    @Bean
+    DialogRepository dialogRepository(JdbcTemplate jdbc) {
+        return new DialogRepository(jdbc);
     }
 }

@@ -44,7 +44,7 @@ public class InboxWorker {
             try {
                 // Handling and marking share one transaction: a crash between them would repeat the work.
                 tx.executeWithoutResult(status -> {
-                    handler.handle(row.payload());
+                    handler.handle(row.eventKey(), row.payload());
                     inbox.markProcessed(row.id());
                 });
                 handled++;

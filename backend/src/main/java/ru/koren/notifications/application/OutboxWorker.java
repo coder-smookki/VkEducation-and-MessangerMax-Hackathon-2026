@@ -47,7 +47,8 @@ public class OutboxWorker {
         int cancelled = 0;
         for (var row : claimed) {
             // Access is re-checked here, not at enqueue time: it may have been revoked since.
-            if (!cases.mayRead(row.recipientId(), row.caseId())) {
+            // A reply with no case carries no case data, so there is no case-level right to check.
+            if (row.caseId() != null && !cases.mayRead(row.recipientId(), row.caseId())) {
                 outbox.cancel(row.id(), "Recipient may no longer read this case");
                 cancelled++;
                 continue;
