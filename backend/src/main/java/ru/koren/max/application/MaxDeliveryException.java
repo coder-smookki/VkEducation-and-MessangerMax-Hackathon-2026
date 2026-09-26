@@ -55,6 +55,14 @@ public final class MaxDeliveryException extends RuntimeException {
         return new MaxDeliveryException(Kind.UNAVAILABLE, "TIMEOUT", 0);
     }
 
+    /**
+     * The recipient has no MAX account on record, e.g. a dispatcher who never opened the bot.
+     * Nothing will change on the next try, so the row stops here with a reason anyone can read.
+     */
+    public static MaxDeliveryException noRecipient() {
+        return new MaxDeliveryException(Kind.REJECTED, "NO_MAX_USER", 0);
+    }
+
     /** What an HTTP answer of the MAX Bot API means for delivery; empty means it was accepted. */
     public static Optional<MaxDeliveryException> fromHttp(int status, String retryAfterHeader, Instant now) {
         if (status >= 200 && status < 300) return Optional.empty();

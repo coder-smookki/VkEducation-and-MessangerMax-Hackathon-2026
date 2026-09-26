@@ -62,6 +62,10 @@ koren:
     # Empty means the webhook route does not exist at all.
     webhook-secret: ${MAX_WEBHOOK_SECRET:}
     workers-enabled: ${MAX_WORKERS_ENABLED:false}
+    # platform-api2 is the current host; MAX retires platform-api.
+    api-url: ${MAX_API_URL:https://platform-api2.max.ru}
+    # Public bot name for the «Открыть обращение» button; empty sends news without it.
+    bot-name: ${MAX_BOT_NAME:t109_hakaton_max_bot}
   # Empty: case numbers are plain ("124"). A synthetic stand may label them: CASE_NUMBER_PREFIX=ДЕМО-
   case-number-prefix: ${CASE_NUMBER_PREFIX:}
 logging:
