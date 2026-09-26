@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import ru.koren.cases.application.CaseException;
 import ru.koren.cases.application.CaseService;
@@ -26,6 +27,14 @@ import tools.jackson.databind.json.JsonMapper;
 public class BotDialog implements UpdateHandler {
 
     static final String REPLY_EVENT = "BOT_REPLY";
+    /** «Начать» in MAX: no text, the person is in update.user. Answered like /start. */
+    static final String BOT_STARTED = "bot_started";
+    /**
+     * The only update types the bot acts on; the subscription asks for exactly these. Anything else
+     * (bot_stopped, dialog_removed, message_edited...) is settled without an answer: replying to
+     * someone who just stopped the bot would only be refused by MAX.
+     */
+    private static final Set<String> ANSWERED = Set.of("message_created", BOT_STARTED);
     private static final int PENDING_LOOKAHEAD = 20;
 
     private static final String HELP = """
@@ -74,8 +83,11 @@ public class BotDialog implements UpdateHandler {
     @Override
     public void handle(String eventKey, String payload) {
         JsonNode update = json.readTree(payload);
+        // An envelope without update_type is still read as a message: that is how tests write it.
+        String type = string(update.get("update_type"));
+        if (!type.isEmpty() && !ANSWERED.contains(type)) return;
         long maxUserId = senderId(update);
-        String text = text(update).trim();
+        String text = BOT_STARTED.equals(type) ? "/start" : text(update).trim();
         UUID actor = users.findOrCreate(maxUserId);
         var dialog = dialogs.find(actor);
         String state = dialog.map(DialogRepository.DialogRow::state).orElse("IDLE");
@@ -221,9 +233,10 @@ public class BotDialog implements UpdateHandler {
     }
 
     /**
-     * MAX's real update envelope is not confirmed against a live bot yet, so several shapes are
-     * accepted and an unrecognised one is refused rather than guessed: the event then stays in the
-     * inbox, visible, instead of being answered with nonsense. Confirm the paths on real traffic.
+     * Per MAX's Update docs: message_created carries message.sender.user_id and message.body.text,
+     * bot_started carries user.user_id. Not yet seen on live traffic, so the older shapes stay
+     * accepted, and an unrecognised one is refused rather than guessed: the event then stays in the
+     * inbox, visible, instead of being answered with nonsense.
      */
     private static long senderId(JsonNode update) {
         long[] found = {0};
@@ -231,6 +244,7 @@ public class BotDialog implements UpdateHandler {
             || pick(update, found, "message", "from", "id")
             || pick(update, found, "sender", "user_id")
             || pick(update, found, "from", "id")
+            || pick(update, found, "user", "user_id")
             || pick(update, found, "user_id")) {
             return found[0];
         }
@@ -246,6 +260,10 @@ public class BotDialog implements UpdateHandler {
         if (current == null || !current.isNumber()) return false;
         out[0] = current.asLong();
         return true;
+    }
+
+    private static String string(JsonNode node) {
+        return node != null && node.isString() ? node.asString() : "";
     }
 
     private static String text(JsonNode update) {
