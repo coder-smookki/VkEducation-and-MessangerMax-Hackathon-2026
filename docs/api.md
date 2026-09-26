@@ -1,205 +1,128 @@
 # Контракты и статус API
 
-Обновлено: 22.09.2026. Раздел «Сейчас» и внутренний inference API описывают код; рабочий Java REST - **согласуемый контракт будущего MVP** для параллельной реализации. Новые рабочие endpoints ещё закрыты. REST-примеры Java не являются результатами HTTP-вызовов. Подробности: [пять контрактов](../contracts/README.md).
+Обновлено 26.09.2026 (S-08). Всё, что ниже названо работающим, отвечает на PostgreSQL за настоящей сессией и покрыто тестами. Машинная схема - [author-review.openapi.json](../contracts/author-review.openapi.json): у каждой операции поле `x-implementation-status`. `ContractRoutesTest` при каждом прогоне сверяет её с маршрутами, которые реально регистрирует Spring, в обе стороны: маршрут без описания и описание без маршрута роняют сборку. Остальные контракты - [contracts/README](../contracts/README.md).
 
-## Сейчас
+## Что работает
 
-| Метод | Адрес | Доступ | Результат |
+| Метод и путь | Вход | Ответ | Задача |
 |---|---|---|---|
-| GET | Java `/actuator/health` | Health | При готовности 200, без внутренних деталей |
-| GET | Java `/api/v1/demo/case` | Только demo/local | Фиксированный synthetic пример |
-| GET | Java `/api/v1/demo/compare` | Только demo/local | Реальный вызов Python, STUB либо MANUAL |
-| GET | Python `/healthz` | Внутренняя сеть | Процесс и состояние Chroma |
-| POST | Python `/internal/v1/compare` | Внутренняя сеть | Строгий контракт подсказок |
-| POST | Python `/internal/v1/extract-items` | Внутренняя сеть | STUB предложения пунктов; фактическое извлечение не подключено |
-| POST | Python `/internal/v1/clarify-items` | Внутренняя сеть | RULES: недостающие поля, вопросы только автору |
-| POST | Python `/internal/v1/similar-cases` | Внутренняя сеть | Сходство отдельных пунктов: query/candidates/limit из проверенной Java-выборки |
+| GET `/actuator/health` | - | 200 без внутренних деталей | - |
+| GET `/api/v1/csrf` | без сессии | 200 `{headerName,parameterName,token}` | S-02 |
+| POST `/api/v1/auth/max` | `{initData}`, CSRF | 200 MeView, новая серверная сессия | S-02 |
+| POST `/api/v1/auth/logout` | CSRF | 204, сессия уничтожена | S-02 |
+| GET `/api/v1/me` | сессия | 200 MeView | S-02 |
+| POST `/api/v1/memberships/claim` | `{invitationCode}` | 200 MeView | S-02 |
+| POST `/api/v1/cases` | `{houseId,sourceText}` | 201 CaseView (черновик) | S-02 |
+| GET `/api/v1/cases?houseId=&queueState=&cursor=&limit=` | сессия | 200 `{items,nextCursor}` | S-02, S-03 |
+| GET `/api/v1/cases/{caseId}` | сессия | 200 CaseView | S-02 |
+| PATCH `/api/v1/cases/{caseId}/source` | `{expectedCaseVersion,sourceText}` | 200 CaseView, новая sourceRevision | S-02 |
+| PATCH `/api/v1/cases/{caseId}/items` | `{expectedCaseVersion,items:[{itemId?,category,location,symptom}]}` | 200 CaseView | S-02 |
+| POST `/api/v1/cases/{caseId}/confirm` | `{expectedCaseVersion,sourceRevision}` | 200 CaseView, CONFIRMED | S-02 |
+| POST `/api/v1/cases/{caseId}/acceptance` | `{expectedCaseVersion}` | 200 CaseView с receipt | S-03 |
+| PUT `/api/v1/items/{itemId}/next-action` | `{expectedCaseVersion,expectedItemVersion,text,ownerId,updateDueAt}` | 200 CaseView | S-03 |
+| POST `/api/v1/cases/{caseId}/reports` | `{expectedCaseVersion,reportText,targetItemIds}` | 201 `{report,case,analysis:{status}}` | S-04 |
+| GET `/api/v1/reports/{reportId}` | сессия | 200 WorkReportView | S-04 |
+| POST `/api/v1/reports/{reportId}/links` | `{expectedCaseVersion,links:[{itemId,expectedItemVersion,contentVersion,expectedWorkRound,workStatus}]}` | 200 CaseView | S-04 |
+| GET `/api/v1/reports/{reportId}/suggestions` | сессия | 200 `{status,analysisId,result}` | S-06 |
+| POST `/api/v1/items/{itemId}/observations` | `{expectedCaseVersion,expectedItemVersion,contentVersion,workRound,value,source}` | 200 CaseView | S-05 |
+| POST `/api/v1/items/{itemId}/administrative-decisions` | `{expectedCaseVersion,expectedItemVersion,action,reason}` | 200 CaseView | S-05 |
+| GET `/api/v1/cases/{caseId}/history?cursor=&limit=` | сессия | 200 `{items,nextCursor}` | S-05 |
+| POST `/max/webhook` | update MAX и секрет в заголовке | 200 после записи во входящий ящик | S-05 |
 
-`DemoCase` и `Comparison` из `frontend/src/api/client.ts` - типы примера, не готовые DTO авторизованного приложения. Не расширять `/demo/**` рабочими командами.
+Только в профиле `demo`: GET `/api/v1/demo/case` и `/api/v1/demo/compare`. Это учебный пример, не часть рабочего API; вне demo они закрыты. `DemoCase` и `Comparison` из `frontend/src/api/client.ts` - типы примера, не DTO приложения.
 
-## Общие правила целевого REST
+## Чего нет
 
-Prefix `/api/v1`. UUID - строки, времена - UTC ISO 8601. Версии - строгие целые положительные числа, workRound допускает 0. Backend выдаёт `caseVersion` из `service_case.version`, `itemVersion` из `case_item.version`. Клиент не увеличивает их самостоятельно.
+Не реализовано и в схеме не описано; UI не должен на это рассчитывать:
 
-Любая команда предметной области требует `Idempotency-Key` длиной 1-200 ASCII-символов без пробелов/управляющих символов. Для UI достаточно UUID. Область уникальности - actor + operation + key; target и каноническое тело входят в request_hash. Повтор передаёт прежние версии/тело; тот же key для другого target в той же operation даёт конфликт. Actor и роль берутся сервером. Обработка конкуренции и replay - [implementation.md](implementation.md).
+- назначение исполнителя: `GET /houses/{houseId}/executors`, `POST /items/{itemId}/assignment`. Отчёт в MVP сохраняет только диспетчер; `assignedExecutorId` всегда null, `visibility` всегда FULL;
+- настройки уведомлений `GET/PUT /me/notification-settings`;
+- возврат из архива или отзыва, массовый архив обращения;
+- заголовок `Location` в ответах 201;
+- ограничение частоты запросов к API.
 
-`/auth/max`, `/auth/logout` и webhook не используют `processed_command` бизнес-операций: у них собственный протокол входа/выхода или event key. Cookie-команды, включая вход/выход, защищены CSRF; webhook использует отдельную проверку секрета.
+Настоящая отправка сообщений в MAX тоже не сделана: уведомления и ответы бота копятся в очереди, отправитель - заглушка, которая отказывает. Формат update и callback живым ботом не подтверждён.
 
-Все команды обращения, кроме create, принимают `expectedCaseVersion`. Прямая команда пункта также принимает `expectedItemVersion`. ContentVersion и workRound проверяются отдельно для links/observations. Термин `expectedVersion` без указания сущности в новых DTO не использовать.
+## Общие правила
 
-## C1. Вход и черновик
+Префикс `/api/v1`. UUID - строки, время - UTC ISO 8601. `caseVersion` и `itemVersion` выдаёт сервер, клиент их не увеличивает. Все команды обращения, кроме create, принимают `expectedCaseVersion`; команда пункта - ещё и `expectedItemVersion`. contentVersion и workRound проверяются отдельно в links и observations.
 
-Реальный CaseView содержит caseId/houseId/authorId/submissionStatus/caseVersion/sourceRevision/sourceText/displayNumber/receipt/visibility/items/progress/createdAt; пункт дополнительно несёт assignedExecutorId и nextAction. assignedExecutorId всегда null: команды назначения исполнителя нет. Статус каждой операции указан в author-review.openapi.json полем x-implementation-status: IMPLEMENTED — маршрут работает на PostgreSQL за проверенной сессией и покрыт тестами, TARGET — запланирован. Не приводить UI к виду успешного ответа через подставленные константы.
+Каждая команда предметной области требует `Idempotency-Key` (1-200 печатных ASCII без пробелов; UUID подходит). Уникальность - actor + operation + key; повтор с тем же телом возвращает сохранённый ответ, тот же key с другим телом - 409 `IDEMPOTENCY_KEY_REUSED`. Повтор сначала проверяет права: потерявший доступ сохранённый ответ не получает. Actor и роль берутся из сессии, не из тела.
 
-Правка/подтверждение списка дополнительно описаны машинно в author-review.openapi.json; статус операций указан там полем x-implementation-status.
-| Метод и путь | Вход | Успешный результат | Владелец |
-|---|---|---|---|
-| GET `/csrf` | До/после входа, та же сессия | 200 `{headerName,token}`; Cache-Control: no-store | S-02 |
-| POST `/auth/max` | `{initData}`, CSRF | 200 MeView + серверная cookie; после входа обновить CSRF | S-02 |
-| POST `/auth/logout` | CSRF | 204, сессия недействительна | S-02 |
-| GET `/me` | Сессия | 200 MeView | S-02 |
-| POST `/cases` | `{houseId,sourceText}` | 201 CaseView, Location карточки | S-02 |
-| GET `/cases?houseId=&cursor=&limit=` | Сессия, необязательный фильтр дома | 200 `{items,nextCursor}` | S-02 |
-| GET `/cases/{caseId}` | Сессия | 200 CaseView в доступной проекции | S-02 |
-| PATCH `/cases/{caseId}/source` | `{expectedCaseVersion,sourceText}` | 200 CaseView с новой sourceRevision, только DRAFT | S-02 |
-| PATCH `/cases/{caseId}/items` | `{expectedCaseVersion,items:[{itemId?,category,location,symptom}]}` | 200 CaseView, полная замена draft-списка | S-02 |
-| POST `/cases/{caseId}/confirm` | `{expectedCaseVersion,sourceRevision}` | 200 CaseView, CONFIRMED | S-02 |
+Вход, выход и все cookie-команды защищены CSRF. Клиент берёт `token` из тела ответа GET `/csrf` и шлёт его в заголовке `headerName`; сырое значение из cookie `XSRF-TOKEN` не подходит. Вход токен не меняет: полученный до входа токен действует и после. Проверка CSRF идёт раньше проверки сессии, поэтому команда без сессии и без токена получает 403 `CSRF_TOKEN_INVALID`, а не 401. Webhook вместо CSRF проверяет секрет.
 
-MeView: `{userId,displayName,memberships:[{houseId,address,role}]}`. displayName может быть null. Роль относится к конкретному Membership и не является разрешением действовать во всех домах. Пустой memberships - проверенный аккаунт без доступа, а не автоматическая роль RESIDENT.
+Каждый ответ, включая ошибки, несёт `X-Request-Id`. Свой id клиента из 8-64 символов `A-Z a-z 0-9 -` сохраняется, иначе выдаётся новый. Тот же id стоит в каждой строке лога этого запроса.
 
-CaseView: `{caseId,houseId,authorId,submissionStatus,caseVersion,sourceRevision,sourceText,visibility,items,progress,createdAt}`. Item: `{itemId,itemVersion,contentVersion,category,location,symptom,workRound,workStatus,observation,administrativeStatus,administrativeReason,assignedExecutorId}`. Nullable: причина для ACTIVE и отсутствие назначения. Четыре факта/enum определены в [domain.md](domain.md).
+## Проекции
 
-`visibility=FULL` для автора и диспетчера, которому доступно подтверждённое обращение. Исполнитель видит `ASSIGNED_ITEMS`: только назначенные ему пункты, sourceText=null, progress=null, без общей истории/полного текста чужих отчётов. Если пользователь сам автор, он получает FULL независимо от основной роли. Не вычислять «выполнено всё обращение» по урезанному списку исполнителя.
+MeView: `{userId,displayName,memberships:[{houseId,address,role}]}`. displayName пока всегда null: колонки имени нет. Пустой memberships - проверенный аккаунт без доступа, не роль RESIDENT по умолчанию. Роль относится к одному дому.
 
-DRAFT видит только автор; CONFIRMED - автор, диспетчер дома, исполнитель в пределах назначения. Создать своё обращение может участник разрешённого дома независимо от основной роли; это не разрешает создавать от чужого лица.
+CaseView: `{caseId,houseId,authorId,submissionStatus,caseVersion,sourceRevision,sourceText,displayNumber,receipt,visibility,items,progress,createdAt}`. Пункт (в порядке ввода автора): `{itemId,itemVersion,contentVersion,category,location,symptom,workRound,workStatus,observation,administrativeStatus,administrativeReason,assignedExecutorId,nextAction}`. receipt: `{confirmedAt,acceptedAt,acceptedBy}`. nextAction: `{text,ownerId,ownerDisplayName,updateDueAt,updatedAt}` или null; ownerDisplayName пока null. progress: `{total,confirmed,withdrawn,remaining,allConfirmed}`. Точные поля и nullable - в схеме.
 
-PATCH items содержит полный draft-список: неизвестный/чужой itemId отклоняется, item без ID создаётся, пропущенный draft-item убирается только до confirm. Новая содержательная редакция увеличивает contentVersion, смена sourceText - sourceRevision. Confirm требует хотя бы один пункт. После CONFIRMED source/items отвечают 409 `CASE_ALREADY_CONFIRMED`; сложный пересмотр не входит в обязательный MVP.
+DRAFT видит только автор; CONFIRMED - автор и диспетчер дома. Недоступное и несуществующее одинаково отвечают 404: иначе ответ выдал бы факт существования чужого обращения. Действие над видимым объектом, на которое нет права, - 403 `ACTION_FORBIDDEN`.
 
-Список сортируется стабильно по createdAt DESC, id DESC; limit по умолчанию 20, максимум 50. Cursor opaque, проверяется сервером и привязан к фильтру. Повторная Membership-проверка обязательна на каждой странице; cursor не является полномочием. Изменения между страницами не обещают snapshot-consistency.
+WorkReportView: `{reportId,caseId,actorId,reportText,targetItemIds,createdAt,links}`; link: `{itemId,contentVersion,workRound,workStatus,confirmedBy,createdAt}`.
 
-## C2. Работы и наблюдения
+History: `{items:[{eventId,actorId,eventType,createdAt,details}],nextCursor}`, по возрастанию `createdAt,id`, не больше 50 событий. details - белый список полей каждого типа события, не сырой payload.
 
-Назначения EXECUTOR (`executors`/`assignment`) - Should, не условие основного выпуска. В Must отчёт ведёт диспетчер. Урезанную проекцию исполнителя реализовать и проверить до включения его кабинета; enum в БД недостаточно.
+## Правила состояния
 
-| Метод и путь | Вход | Результат | Владелец |
-|---|---|---|---|
-| GET `/houses/{houseId}/executors` | Диспетчер дома | 200 `{items:[{userId,displayName}]}` | S-04 |
-| POST `/items/{itemId}/assignment` | `{expectedCaseVersion,expectedItemVersion,executorId}`; null снимает назначение | 200 CaseView | S-04 |
-| POST `/cases/{caseId}/reports` | `{expectedCaseVersion,reportText,targetItemIds}` | 201 `{report,case,analysis:{status}}`, Location отчёта | S-04 |
-| GET `/reports/{reportId}` | Автор/диспетчер либо допустимый собственный отчёт исполнителя | 200 WorkReportView | S-04 |
-| POST `/reports/{reportId}/links` | `{expectedCaseVersion,links:[{itemId,expectedItemVersion,contentVersion,expectedWorkRound,workStatus}]}` | 200 CaseView | S-04 |
-| POST `/items/{itemId}/observations` | `{expectedCaseVersion,expectedItemVersion,contentVersion,workRound,value,source}` | 200 CaseView | S-05 |
-| POST `/items/{itemId}/administrative-decisions` | `{expectedCaseVersion,expectedItemVersion,action,reason}` | 200 CaseView | S-05 |
-| GET `/cases/{caseId}/history?cursor=&limit=` | Автор/диспетчер | 200 `{items,nextCursor}` | S-05 |
+PATCH items заменяет весь draft-список: пункт без itemId создаётся, неизвестный или чужой itemId отклоняется. Смысловая правка пункта увеличивает contentVersion, правка текста - sourceRevision. Confirm требует хотя бы один пункт; после CONFIRMED правка source и items - 409 `CASE_ALREADY_CONFIRMED`.
 
-WorkReportView: `{reportId,caseId,actorId,reportText,targetItemIds,createdAt,links}`. Link: `{itemId,contentVersion,workRound,workStatus,confirmedBy,createdAt}`. Время и подтверждающий всегда серверные.
+Сохранение отчёта не меняет ни одного пункта. Раунд открывает только связь, подтверждённая диспетчером, и только у своего пункта; пункт должен быть в targetItemIds отчёта. workStatus связи - PLANNED или REPORTED_DONE. Набор связей применяется целиком или не применяется вовсе. Повтор пары отчёт-пункт - 409 `LINK_ALREADY_EXISTS`; новые сведения - новым отчётом.
 
-Назначение и новый отчёт допускаются для CONFIRMED. Отчёт может сохранить DISPATCHER дома либо EXECUTOR с назначением на все перечисленные targetItemIds. Target - область допустимой будущей связи, не сама связь и не сообщение о выполнении. После снятия назначения исполнитель не получает новые права из того, что когда-то был автором отчёта.
+Наблюдение: value RESTORED, PERSISTS или CANNOT_CHECK; source AFTER_REPORT (нужен REPORTED_DONE в этом раунде) или INDEPENDENT. Только автор, только текущие contentVersion и workRound. NOT_RECEIVED - отсутствие ответа, а не команда.
 
-Сохранение отчёта не меняет workStatus/наблюдение. `links` подтверждает только DISPATCHER; item должен входить в targetItemIds и то же case. WorkStatus здесь только PLANNED или REPORTED_DONE. Пустой набор/дубли отклоняются. Повтор report/item с новым key - 409 LINK_ALREADY_EXISTS; новые сведения добавляются новым отчётом. Весь набор links применяется атомарно.
+Административное решение по одному пункту: ARCHIVE - диспетчер, WITHDRAW - автор; причина обязательна, оба необратимы. Отзыв идёт в progress.withdrawn, архив остаётся в progress.remaining; total не меняется, allConfirmed не становится true.
 
-Наблюдение: value RESTORED/PERSISTS/CANNOT_CHECK; source AFTER_REPORT/INDEPENDENT. Сервер проверяет автора и версии. NOT_RECEIVED - отсутствие ответа, не команда. Administrative action: ARCHIVE или WITHDRAW; причина обязательна. Возврат из архива/отзыва не входит в текущий контракт.
+Список: сортировка createdAt DESC, id DESC; limit по умолчанию 20, допустимо 1-50, иначе 422 - страница никогда не урезается молча. queueState (только диспетчер дома): NEEDS_ACCEPTANCE, NEEDS_ACTION, AWAITING_AUTHOR, ARCHIVED - пересекающиеся фильтры по фактам. Cursor непрозрачен и привязан к фильтру; права проверяются на каждой странице.
 
-Наблюдения и административные решения относятся к CONFIRMED. До подтверждения автор исправляет draft-список. В рабочем UI назначение исполнителя показывается отдельно от WorkStatus; исходное NOT_ASSIGNED не является источником истины о поле assignedExecutorId.
+## Подсказки анализа
 
-History item: `{eventId,actorId,eventType,createdAt,details}`. Details - разрешённые поля события с версиями/раундом и ссылкой на report/item, без cookies, секретов, сырого initData и внутренних логов. Сортировка createdAt ASC, id ASC; пагинация обязательна, максимум 50 событий. Исполнитель не получает полную историю чужих пунктов.
-
-## C3. Задача анализа в Java
-
-GET `/reports/{reportId}/suggestions` доступен автору/диспетчеру этого обращения, возвращает `{status,analysisId,result}`. Status: QUEUED, RUNNING, READY, STALE, MANUAL_REQUIRED. analysisId может быть null, если анализ не подключён; result присутствует только для актуального READY, иначе null. READY означает валидное предложение, а не выполненные работы.
-
-Result соответствует Python CompareResponse ниже. В MVP GET не ставит новые задачи. Анализ создаётся после сохранения отчёта атомарно с ним в S-06; до S-06 состояние явно MANUAL_REQUIRED. STUB не выдаётся за содержательный анализ даже при корректной форме ответа. Фактический mode всегда виден UI.
-
-Python получает полный проверенный snapshot пунктов обращения, включённых Java в сравнение; пропуск внутри этого набора недопустим. UI всегда сохраняет общий разрешённый список и проверяет допустимость links через targetItemIds. Даже подходящая подсказка по пункту вне области отчёта не разрешает связать его.
-
-## Настройки уведомлений и C4
-
-GET `/me/notification-settings` возвращает `{version,enabled}`. PUT того же пути принимает `{expectedSettingsVersion,enabled}` и Idempotency-Key, возвращает новое состояние. Это собственная версия настроек, не caseVersion. Отсутствующая настройка означает enabled=true, version=1 по согласованной политике тестового MVP; opt-out должен быть доступен до рассылки. Реализация - S-05/S-07/K-04.
-
-POST `/max/webhook` принимает ограниченный официальный Update и `X-Max-Bot-Api-Secret`, возвращает 200 только после durable inbox commit. Контекст callback, dedup и обработка несовпадения hash - [implementation.md](implementation.md). Не предполагать универсальный update_id: точный ключ выводится в K-07a из реально поддержанного типа события.
+Сохранение отчёта ставит анализ в очередь той же транзакцией, если на сервере `ANALYSIS_ENABLED=true`; по умолчанию выключено, и ответ сохранения и GET suggestions - MANUAL_REQUIRED. Статусы GET `/reports/{reportId}/suggestions`: QUEUED, RUNNING, READY, STALE, MANUAL_REQUIRED. result есть только у READY. STALE - подсказка получена, но пункт с тех пор сменил contentVersion или workRound (или обращение - sourceRevision): она не отдаётся. Ответ STUB отдаётся как MANUAL_REQUIRED. Недоступный Python - повтор через 15 и 60 с, после трёх попыток MANUAL_REQUIRED. Подсказка никогда не создаёт связь: READY не значит, что работа сделана. Отзыв и архив пункта подсказку не устаревают - UI не показывает подсказку у пункта, который уже не ACTIVE.
 
 ## Лимиты и ошибки
 
-SourceText/reportText 1-5000 Unicode code points; category - enum; location 1-300, symptom 1-1000, reason 1-1000; непробельный символ обязателен. Draft допускает 0-20 items, confirm и inference - 1-20. TargetItemIds/links непусты, без дублей, максимум 20. JSON-тело ограничивается до разбора, см. [implementation.md](implementation.md).
+Тело `/api` больше 256 КиБ отклоняется до чтения (413), тело без Content-Length (chunked) - 411. sourceText и reportText 1-5000 символов, location 1-300, symptom 1-1000, reason 1-1000; длина считается в Unicode code points (в UI - `Array.from(text)`). Draft - 0-20 пунктов, confirm - 1-20; targetItemIds и links непусты, без дублей, не больше 20.
 
-Java-валидация должна считать code points, UI - Array.from(text). Проверить ровно граничное число emoji и следующий символ, чтобы UTF-16 длина не создавала другой лимит. Python получает тот же исходный текст без дополнительной нормализации.
+Любая ошибка - `application/problem+json` с `{type,title,status,code}`; у 500 ещё `requestId`. Ни текста исключения, ни класса, ни введённых значений в ответе нет.
 
-Проектный формат ошибки: `application/problem+json` с `{type,title,status,code,requestId}`. Допустимы безопасные fieldErrors без отражения введённых значений. В версии/конфликте можно вернуть currentCaseVersion/currentItemVersion только после проверки доступа. Не возвращать чужой объект в details ошибки.
-
-| HTTP | Code / ситуация | Реакция UI |
-|---|---|---|
-| 400 | INVALID_JSON, отсутствует/неверен Idempotency-Key, UUID/cursor | Исправить запрос, не повторять автоматически |
-| 401 | AUTH_REQUIRED / INVALID_MAX_INIT_DATA | Новый вход; сохранить незавершённый ввод |
-| 403 | ACTION_FORBIDDEN / CSRF_INVALID | Показать запрет либо обновить CSRF; не подменять пользователя |
-| 404 | RESOURCE_NOT_FOUND для отсутствующего/недоступного ресурса | Не раскрывать существование чужого объекта |
-| 409 | CASE_VERSION_CONFLICT / ITEM_VERSION_CONFLICT / STALE_CONTEXT | Перечитать карточку, сохранить локальный ввод, получить новое решение пользователя |
-| 409 | IDEMPOTENCY_KEY_REUSED / LINK_ALREADY_EXISTS / CASE_ALREADY_CONFIRMED | Не повторять с новым key ради обхода правила |
-| 413 | BODY_TOO_LARGE | Сократить ввод |
-| 422 | INVALID_FIELDS / INVALID_TRANSITION | Показать конкретную допустимую коррекцию |
-| 429 | RATE_LIMITED | Ограниченный retry чтения с учётом Retry-After |
-| 503 | Обязательная БД/сервис недоступен | Сохранение не подтверждено; повтор той же команды с тем же key |
-
-Ошибка optional ML не превращает успешное сохранение в 503. Для cookie POST без сессии и CSRF фильтры могут отклонить CSRF раньше проверки входа; S-02 фиксирует фактический приоритет и тестирует его. Для нового login клиент сначала получает `/csrf`, для текущего состояния входа использует GET `/me`.
-
-## Java → Python: существующий контракт
-
-Общий каталог [01-05](../contracts/README.md) добавляет извлечение, уточнение у автора и сравнение похожих обращений. Типы новых операций находятся в `ml/app/features/intake/contracts.py` и Java `IntakeContract`, runtime - в `ml/app/features/intake/service.py` и `InferenceClient`. Контекст после подтверждения экспортируется в [confirmed-context.schema.json](../contracts/confirmed-context.schema.json). Формат `/compare` ниже сохранён.
-
-POST-тела Python ограничены 512 KiB до JSON-разбора, включая chunked. Ошибка 413 - `{detail:"REQUEST_TOO_LARGE"}`. Новые операции при неверном входе возвращают 422 `{detail:"INVALID_INTAKE_REQUEST"}`; `/compare` сохраняет `{detail:"INVALID_COMPARE_REQUEST"}`. OpenAPI описывает эти фактические ответы, тест проверяет их соответствие схеме.
-
-Истина схемы inference - `ml/app/features/inference/schemas/`, а intake-контрактов - `ml/app/features/intake/contracts.py`; OpenAPI генерируется из `ml/` командой `uv run python -m scripts.export_openapi`. Менять вместе Python, Java-контракты, общий JSON и потребителей. Сохранённый OpenAPI проверяется тестом против `app.openapi()`.
-
-Примеры: [запрос](../contracts/examples/compare-request.json), [STUB-ответ](../contracts/examples/compare-response.json). В запросе caseId/sourceRevision/reportId/reportText/items; item содержит itemId/contentVersion/workRound/category/location/symptom. Лишние поля, bool вместо версии, неверная длина и повтор itemId отклоняются с 422 без отражения текста.
-
-В ответе те же IDs/версии, modelVersion, mode и ровно одна suggestion на каждый входной item. Relation: REPORTED_DONE, PLANNED, SYMPTOM_PERSISTS, INSUFFICIENT_INFORMATION, UNRELATED, CONFLICT. Mode: STUB, RULES, NLI, MANUAL. Reason: MODEL_NOT_CONFIGURED, ANALYSIS_UNAVAILABLE, ANALYZED. Mode/reason не являются бизнес-статусами.
-
-Evidence `{start,end,quote}` - диапазон `[start,end)` исходного reportText в Unicode code points. Java применяет offsetByCodePoints, JavaScript - Array.from(text). Нельзя нормализовать текст после расчёта offsets. Содержательная relation требует точной цитаты; INSUFFICIENT_INFORMATION может иметь null. STUB/MANUAL возвращают только отказ без evidence.
-
-Java проверяет принадлежность, полноту, дубли, версии и цитату. Проверка актуальности БД выполняется отдельно в S-06. Сегодня connect timeout 1 с, read timeout 3 с; fallback MANUAL для всех пунктов, без retry внутри demo-запроса. Надёжные задачи/ограничения ответа - будущий S-06, безопасность анализатора и независимая оценка - S-06/Q-06.
-
-## Проверенные источники MAX
-
-На 12.09.2026 [валидация MAX](https://dev.max.ru/docs/webapps/validation) описывает исходный initData и HMAC; [подписки](https://dev.max.ru/docs-api/methods/POST/subscriptions) указывают platform-api2.max.ru, HTTPS 443 и secret header. Перед реальной интеграцией сверить актуальность и TLS. Не отключать проверку сертификата и не использовать старые параметры PDF как действующую конфигурацию.
-
-## Дополнение для макетов 22.09: обязательные недостающие команды
-
-Все три пути ниже реализованы и покрыты тестами на PostgreSQL: claim в S-02, приём и следующий шаг в S-03. Команды используют общие CSRF/Idempotency-Key/expectedCaseVersion и возвращают актуальную CaseView.
-
-| Метод и путь относительно /api/v1 | Вход / права | Ответ / экран | Задача |
+| HTTP | code | Когда | Реакция UI |
 |---|---|---|---|
-| POST `/memberships/claim` | `{invitationCode}`; проверенная сессия; лимит попыток | 200 MeView; M03 → M04/список | S-02/K-02 |
-| POST `/cases/{caseId}/acceptance` | `{expectedCaseVersion}`; диспетчер дома, CONFIRMED | 200 CaseView, receipt.acceptedAt/acceptedBy; D03/A10 | S-03 |
-| PUT `/items/{itemId}/next-action` | `{expectedCaseVersion,expectedItemVersion,text,ownerId,updateDueAt}`; диспетчер дома | 200 CaseView; D04/A14 | S-03 |
+| 400 | BAD_REQUEST | нечитаемый JSON, неверный UUID или параметр, нет Idempotency-Key | исправить запрос, не повторять автоматически |
+| 401 | AUTH_REQUIRED | нет сессии | войти заново, сохранить незавершённый ввод |
+| 401 | INVALID_MAX_INIT_DATA | подпись initData не подтверждена | войти заново из MAX |
+| 403 | CSRF_TOKEN_INVALID | нет или неверен CSRF-токен | взять токен из GET `/csrf` и повторить с тем же Idempotency-Key |
+| 403 | ACTION_FORBIDDEN | объект виден, действие не разрешено | показать запрет |
+| 404 | RESOURCE_NOT_FOUND | объект не существует или недоступен | не намекать на существование чужого |
+| 404 | NOT_FOUND | такого маршрута нет (с сессией) | ошибка клиента |
+| 409 | CASE_VERSION_CONFLICT, STALE_CONTEXT | версия или раунд устарели | перечитать карточку, сохранить ввод, спросить пользователя |
+| 409 | IDEMPOTENCY_KEY_REUSED, LINK_ALREADY_EXISTS, CASE_ALREADY_CONFIRMED | правило, а не гонка | не обходить новым ключом |
+| 411 | LENGTH_REQUIRED | тело без Content-Length | слать обычное тело |
+| 413 | PAYLOAD_TOO_LARGE | тело больше 256 КиБ | сократить ввод |
+| 422 | INVALID_FIELDS | поля, размер страницы или переход недопустимы | показать допустимую правку |
+| 500 | INTERNAL_ERROR | сбой сервера, в том числе недоступная БД | показать requestId; сохранение не подтверждено, повтор той же команды с тем же ключом безопасен |
 
-`invitationCode` не содержит назначаемые клиентом роль/дом. В БД хранится hash одноразового высокоэнтропийного кода, срок и разрешённое назначение RESIDENT, потребление атомарно. Повтор с тем же Idempotency-Key допускает безопасное восстановление результата после проверки прав. Тот же код с другим actor не переиспользуется. Повышенные роли задаёт технический оператор согласованной серверной операцией, не этот endpoint. Не раскрывать чужое членство в тексте ошибки. Лимит длины кода и публичные error codes закрепить в машинной схеме до UI-интеграции.
+Коды 409 и 422 приходят из команд `CaseService`; список кодов шире не расширять без схемы. Ошибка анализа никогда не превращает успешное сохранение в ошибку.
 
-### Поля для единой экранной модели
+## Java → Python
 
-- `displayNumber` - серверный человекочитаемый номер, не UUID и не полномочие; до реализации UI показывает короткую безопасную подпись существующего ID, не постоянное №124.
-- `receipt: {confirmedAt, acceptedAt, acceptedBy}`: confirmedAt после авторского подтверждения; acceptedAt/acceptedBy nullable до приёма. Приём не меняет workStatus/observation. Имя сотрудника в проекции доступно только разрешённому читателю.
-- `items[].nextAction: {text,ownerId,ownerDisplayName,updateDueAt,updatedAt} | null`. text 1..1000 Unicode code points. ownerId - активный диспетчер этого дома. updateDueAt - UTC timestamp; UI показывает местную дату и зону. При записи дата не в прошлом; просроченный существующий план отображается честно до обновления. Нет искусственного переноса срока вперёд.
-- `allowedActions` - серверный список допустимых действий для текущего actor/состояния, удобство интерфейса; сервер повторно проверяет команду. Не источник полномочий из клиента.
-- Очередь строит Java: непринятые CONFIRMED; активные пункты без положительного наблюдения; ожидание ответа; архивные пункты отдельным фильтром. Фильтры/курсор проверяются сервером. Обращение может содержать активные и архивные пункты одновременно.
+Каталог [01-05](../contracts/README.md): извлечение пунктов, уточнение у автора, сравнение отчёта, похожие обращения. Python доступен только во внутренней сети. Истина схем - `ml/app/features/inference/schemas/` и `ml/app/features/intake/contracts.py`; OpenAPI экспортируется `uv run python -m scripts.export_openapi` и сверяется тестом с `app.openapi()`. Менять вместе Python, Java-контракты, общий JSON и потребителей.
 
-После архива nextAction сохраняется как исторический план и так подписывается. Текущий архив относится к **одному itemId**. Нет команды массового архива всего обращения в Must. D09/D10 адаптированы под этот контракт. Архив не меняет observed result, не удаляет исходный пункт и не уменьшает progress.total.
+| Метод и путь Python | Режим сейчас |
+|---|---|
+| GET `/healthz` | действующий режим и modelVersion |
+| POST `/internal/v1/compare` | STUB по умолчанию, RULES `rules-baseline-v2`, если включён переменной `COMPARE_ANALYZER` (Compose передаёт её как `KOREN_COMPARE_ANALYZER`) |
+| POST `/internal/v1/extract-items` | STUB: разбор свободной фразы не подключён |
+| POST `/internal/v1/clarify-items` | RULES: вопросы автору о недостающих полях |
+| POST `/internal/v1/similar-cases` | сходство отдельных пунктов по проверенной Java-выборке |
 
-### Переход бот → Mini App
+Тела Python ограничены 512 КиБ до разбора, включая chunked: 413 `{detail:"REQUEST_TOO_LARGE"}`. Неверный вход - 422 `INVALID_COMPARE_REQUEST` или `INVALID_INTAKE_REQUEST` без эха текста. Ответ compare: те же ID и версии, modelVersion, mode (STUB, RULES, NLI, MANUAL) и ровно одна подсказка на каждый пункт; relation - REPORTED_DONE, PLANNED, SYMPTOM_PERSISTS, INSUFFICIENT_INFORMATION, UNRELATED, CONFLICT. Evidence `{start,end,quote}` - `[start,end)` исходного reportText в code points; содержательная relation требует точной цитаты. Java проверяет принадлежность, полноту, дубли, версии и цитату (`SuggestionValidator`) и ходит в Python только вне транзакции: connect 1 с, read 3 с.
 
-Публичный origin https://hackathon.lumnex.ru/. Формат MAX открытия - ссылка бота с `startapp`; конкретное имя бота берётся из конфигурации. Payload задаёт адресуемый caseId или непрозрачный серверный ключ, но не даёт прав. После входа GET карточки повторно проверяет доступ. `?appeal=124` из первоначального макета не переносить в рабочий протокол. [MAX Bridge](https://dev.max.ru/docs/webapps/bridge).
+## Бот и MAX
 
-Webhook имеет отдельный корневой путь `/max/webhook`, собственную проверку секрета/размера тела/dedup. Все ответы бота об изменении состояния строятся из результата тех же Java application-команд, что обслуживают Mini App.
+Webhook - отдельный корневой путь `/max/webhook`: секрет в заголовке сравнивается за постоянное время, тело до 64 КиБ, дедупликация по ключу события, строка во входящем ящике записывается до ответа 200. Без `MAX_WEBHOOK_SECRET` маршрута нет. Бот зовёт те же команды `CaseService`, что и Mini App. Mini App открывается ссылкой бота со `startapp`; payload адресует обращение, но не даёт прав: доступ проверяет GET карточки после входа. [Валидация initData](https://dev.max.ru/docs/webapps/validation), [подписки](https://dev.max.ru/docs-api/methods/POST/subscriptions), [MAX Bridge](https://dev.max.ru/docs/webapps/bridge) сверены 12.09.2026; перед подключением живого бота сверить снова.
 
-### Согласование перед включением
+## Как это проверяется
 
-Семён обновляет машинную REST-схему/Java DTO и валидируемые примеры, Кирилл - типы/формы, София - HTTP и доступ. До этого новые строки имеют статус TARGET. Таблица [screens.md](screens.md) связывает каждый экран с контрактом, задачей и проверкой. Python-схема не описывает REST-команды Java.
-
-### Фильтр диспетчерской очереди (TARGET)
-
-На GET `/cases` необязательный `queueState`: NEEDS_ACCEPTANCE, NEEDS_ACTION, AWAITING_AUTHOR, ARCHIVED. Только DISPATCHER в разрешённом houseId; неизвестное значение 422. NEEDS_ACCEPTANCE: CONFIRMED и нет acceptedAt. NEEDS_ACTION: принят и есть ACTIVE пункт без RESTORED, для которого нет актуального nextAction либо наблюдение PERSISTS/истёк срок обновления. AWAITING_AUTHOR: есть ACTIVE REPORTED_DONE с NOT_RECEIVED/CANNOT_CHECK. ARCHIVED: есть ARCHIVED пункт. Категории могут пересекаться, это фильтры по фактам, а не новый взаимоисключающий статус. Cursor привязан к houseId/queueState. Без фильтра серверный список не раскрывает DRAFT другого автора. Схему параметра и fixtures закрепить на S-01/S-03.
-
-
-## S-01, 23.09: сверка полей и несовместимости
-
-Проверено на реальном коде (`CaseView`, `CaseItemView`, `CasePage`, `CaseException`), а не по макетам.
-
-| Поле экрана | В БД | В Java | Решение |
-|---|---|---|---|
-| `visibility` | не нужно | **добавлено** (всегда FULL) | S-01 |
-| `assignedExecutorId` | нет | **добавлено** (всегда null) | назначения - S-04 |
-| `receipt.confirmedAt` | **есть**: `item_revision.confirmed_at` | нет | вывести в S-02, миграция не нужна |
-| `receipt.acceptedAt/acceptedBy` | нет | нет | миграция S-03 |
-| `items[].nextAction` | нет | нет | миграция S-03 |
-| `displayNumber` | нет | нет | миграция S-03 |
-| порядок пунктов | нет | сортировка по случайному UUID | миграция S-03 |
-| `allowedActions` | не нужно | нет | вычисляется в Java, S-02 |
-| `queueState` | - | - | параметр фильтра, S-03 |
-
-Найденные несовместимости и что сделано:
-
-1. Схема требовала `visibility`, примеры содержали `visibility` и `assignedExecutorId`, Java их не отдавала. Python сверял пример со схемой, Java - ни с чем. Поля добавлены в record; `CaseViewContractTest` читает общие примеры через `CaseView`/`CasePage` и сравнивает круговой прогон.
-2. Коды ошибок Java расходились с этим документом: `NOT_FOUND`, `FORBIDDEN`, `VERSION_CONFLICT`. Выровнены на `RESOURCE_NOT_FOUND`, `ACTION_FORBIDDEN`, `CASE_VERSION_CONFLICT`. Фронтенд их ещё не использовал.
-3. Пункты возвращаются в порядке случайного UUID: `ORDER BY i.id`. Из-за этого `patchItemsReplacesDraftListWithoutFictitiousRevisions` падал примерно в половине запусков; тест исправлен на поиск по категории. Сам дефект остаётся: автор видит пункты не в том порядке, в котором вводил. Severity P2, чинится колонкой позиции в S-03.
-4. Java читает неизвестные поля молча, без ошибки. Поэтому расхождение схемы и record не было заметно до кругового теста; по той же причине старые сохранённые ответы в `processed_command` останутся читаемыми после добавления полей.
-
-Новые машинные контракты: `MeView`, `Membership`, `CasePage` и пути `/me`, `/cases` со статусом SCHEMA_ONLY; `CaseReceipt`, `NextAction`, `TargetCaseView`, `TargetCaseItemView` и команды приёма, следующего шага, обмена приглашения и административного решения по одному пункту - со статусом TARGET. Примеры: me-response, me-no-access, case-list-response, case-list-empty, unauthorized-401, forbidden-403, not-found-404, invalid-fields-422, case-view-target.
-Обновление 25.09: /me, /cases, /memberships/claim, приём и следующий шаг реализованы и помечены в схеме как x-implementation-status: IMPLEMENTED. TargetCaseItemView удалён — его поля вошли в CaseItemView вместе с nextAction. Остаются TARGET: TargetCaseView (из-за allowedActions) и административное решение по одному пункту, задача S-05.
+`ContractRoutesTest` - схема и маршруты совпадают. `CaseViewContractTest` - общие примеры проходят через Java DTO без потерь. Python `test_intake_contracts.py` - примеры соответствуют схеме, операция IMPLEMENTED не отвечает схемой TARGET. `ErrorResponsesHttpTest` - коды ошибок, CSRF-рукопожатие, requestId и лимиты через настоящий порт: MockMvc не пересылает на `/error` и не маскирует CSRF. История решений до 26.09 - в Git.
