@@ -207,4 +207,42 @@ class ErrorResponsesHttpTest {
         // Only a forward after a failure may reach /error; asking for it is asking for a missing route.
         assertProblem(browser.send("GET", "/error", null), 404, "NOT_FOUND");
     }
+
+    @Test
+    void anOversizedBodyIsRefusedBeforeItIsRead() throws Exception {
+        var browser = new Browser();
+        browser.login();
+        String huge = "{\"houseId\":\"" + java.util.UUID.randomUUID() + "\",\"sourceText\":\""
+            + "я".repeat(200_000) + "\"}";
+        var answer = browser.send("POST", "/api/v1/cases", huge,
+            Map.of("Idempotency-Key", java.util.UUID.randomUUID().toString()));
+        assertProblem(answer, 413, "PAYLOAD_TOO_LARGE");
+        assertNotNull(answer.requestId(), "a refusal still carries its request id");
+    }
+
+    @Test
+    void aBodyOfUnknownLengthIsRefused() throws Exception {
+        var browser = new Browser();
+        browser.login();
+        // ofInputStream has no length, so the client sends it chunked.
+        var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1/cases"))
+            .POST(HttpRequest.BodyPublishers.ofInputStream(
+                () -> new java.io.ByteArrayInputStream("{}".getBytes(java.nio.charset.StandardCharsets.UTF_8))))
+            .header("Content-Type", "application/json")
+            .header(browser.csrfHeader, browser.csrfToken)
+            .build();
+        var response = browser.client.send(request, HttpResponse.BodyHandlers.ofString());
+        assertEquals(411, response.statusCode(), response.body());
+        assertEquals("LENGTH_REQUIRED", json.readTree(response.body()).get("code").asString());
+    }
+
+    @Test
+    void aPageSizeOutsideTheLimitIsRefusedNotTruncated() throws Exception {
+        var browser = new Browser();
+        browser.login();
+        assertEquals(422, browser.send("GET", "/api/v1/cases?limit=10000", null).status(),
+            "a huge page is refused outright, never silently cut");
+        assertEquals(422, browser.send("GET", "/api/v1/cases?limit=0", null).status());
+        assertProblem(browser.send("GET", "/api/v1/cases?limit=abc", null), 400, "BAD_REQUEST");
+    }
 }
