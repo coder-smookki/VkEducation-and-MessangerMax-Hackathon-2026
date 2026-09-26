@@ -1,0 +1,65 @@
+{
+  "items": [
+    {
+      "eventId": "00000000-0000-0000-0000-0000000000a1",
+      "actorId": "00000000-0000-0000-0000-000000000001",
+      "eventType": "CASE_CREATED",
+      "createdAt": "2027-01-15T08:00:00Z",
+      "details": {
+        "houseId": "00000000-0000-0000-0000-000000000002",
+        "sourceRevision": 1
+      }
+    },
+    {
+      "eventId": "00000000-0000-0000-0000-0000000000a2",
+      "actorId": "00000000-0000-0000-0000-000000000001",
+      "eventType": "CASE_CONFIRMED",
+      "createdAt": "2027-01-15T08:01:00Z",
+      "details": {
+        "itemCount": 2
+      }
+    },
+    {
+      "eventId": "00000000-0000-0000-0000-0000000000a3",
+      "actorId": "00000000-0000-0000-0000-000000000003",
+      "eventType": "CASE_ACCEPTED",
+      "createdAt": "2027-01-15T08:05:00Z",
+      "details": {}
+    },
+    {
+      "eventId": "00000000-0000-0000-0000-0000000000a4",
+      "actorId": "00000000-0000-0000-0000-000000000003",
+      "eventType": "REPORT_LINK_CONFIRMED",
+      "createdAt": "2027-01-15T09:30:00Z",
+      "details": {
+        "reportId": "00000000-0000-0000-0000-000000000005",
+        "itemId": "00000000-0000-0000-0000-000000000004",
+        "workRound": 1,
+        "workStatus": "REPORTED_DONE"
+      }
+    },
+    {
+      "eventId": "00000000-0000-0000-0000-0000000000a5",
+      "actorId": "00000000-0000-0000-0000-000000000001",
+      "eventType": "OBSERVATION_RECORDED",
+      "createdAt": "2027-01-15T10:00:00Z",
+      "details": {
+        "itemId": "00000000-0000-0000-0000-000000000004",
+        "workRound": 1,
+        "value": "RESTORED",
+        "source": "AFTER_REPORT"
+      }
+    },
+    {
+      "eventId": "00000000-0000-0000-0000-0000000000a6",
+      "actorId": "00000000-0000-0000-0000-000000000001",
+      "eventType": "ITEM_ADMINISTRATIVE_DECISION",
+      "createdAt": "2027-01-15T10:05:00Z",
+      "details": {
+        "itemId": "00000000-0000-0000-0000-000000000006",
+        "action": "WITHDRAW"
+      }
+    }
+  ],
+  "nextCursor": null
+}

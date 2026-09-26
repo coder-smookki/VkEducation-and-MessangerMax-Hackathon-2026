@@ -65,6 +65,50 @@ public class CaseRepository {
             (rs, rowNum) -> rs.getString(1), userId, houseId).stream().findFirst();
     }
 
+    /** Active dispatchers of a house, in a stable order so a dedup key stays reproducible. */
+    public List<UUID> activeDispatchers(UUID houseId) {
+        return jdbc.query("""
+                SELECT user_id FROM membership
+                 WHERE house_id = ? AND role = 'DISPATCHER' AND revoked_at IS NULL
+                 ORDER BY user_id
+                """, (rs, row) -> rs.getObject("user_id", UUID.class), houseId);
+    }
+
+    /** Houses where this person still has access, in a stable order. */
+    public List<UUID> activeHouses(UUID userId) {
+        return jdbc.query("""
+                SELECT house_id FROM membership
+                 WHERE user_id = ? AND revoked_at IS NULL
+                 ORDER BY house_id
+                """, (rs, row) -> rs.getObject("house_id", UUID.class), userId);
+    }
+
+    public record PendingObservationRow(UUID itemId, UUID caseId, int contentVersion, int workRound,
+                                        String category, String location, String symptom) {}
+
+    /**
+     * Active items of this author's confirmed cases that report finished work and still await an
+     * answer. Oldest first, so the bot can walk them one at a time without numbering anything.
+     */
+    public List<PendingObservationRow> awaitingObservation(UUID authorId, int limit) {
+        return jdbc.query("""
+                SELECT i.id, i.case_id, i.content_version, i.work_round,
+                       r.category, r.location, r.symptom
+                  FROM case_item i
+                  JOIN service_case c ON c.id = i.case_id
+                  JOIN item_revision r ON r.item_id = i.id AND r.content_version = i.content_version
+                 WHERE c.author_id = ? AND c.submission_status = 'CONFIRMED'
+                   AND i.administrative_status = 'ACTIVE'
+                   AND i.work_status = 'REPORTED_DONE'
+                   AND i.observation = 'NOT_RECEIVED'
+                 ORDER BY c.created_at, i.position, i.id
+                 LIMIT ?
+                """, (rs, row) -> new PendingObservationRow(rs.getObject("id", UUID.class),
+            rs.getObject("case_id", UUID.class), rs.getInt("content_version"),
+            rs.getInt("work_round"), rs.getString("category"), rs.getString("location"),
+            rs.getString("symptom")), authorId, limit);
+    }
+
     public Optional<CaseRow> findCase(UUID caseId) {
         return jdbc.query("""
                 SELECT id, house_id, author_id, source_revision, version, submission_status, created_at,
@@ -136,23 +180,24 @@ public class CaseRepository {
 
     /** Everything a per-item command needs to authorize itself and check its context, in one round trip. */
     public record ItemContextRow(UUID itemId, long itemVersion, int contentVersion, int workRound,
-                                 String administrativeStatus, UUID caseId, UUID houseId,
-                                 long caseVersion, String submissionStatus) {
+                                 String workStatus, String observation, String administrativeStatus,
+                                 UUID caseId, UUID houseId, long caseVersion, String submissionStatus) {
         public boolean isDraft() { return "DRAFT".equals(submissionStatus); }
     }
 
     public Optional<ItemContextRow> findItemContext(UUID itemId) {
         return jdbc.query("""
-                SELECT i.id, i.version, i.content_version, i.work_round, i.administrative_status,
+                SELECT i.id, i.version, i.content_version, i.work_round, i.work_status, i.observation,
+                       i.administrative_status,
                        c.id AS case_id, c.house_id, c.version AS case_version, c.submission_status
                 FROM case_item i
                 JOIN service_case c ON c.id = i.case_id
                 WHERE i.id = ?
                 """, (rs, row) -> new ItemContextRow(rs.getObject("id", UUID.class), rs.getLong("version"),
-            rs.getInt("content_version"), rs.getInt("work_round"),
-            rs.getString("administrative_status"), rs.getObject("case_id", UUID.class),
-            rs.getObject("house_id", UUID.class), rs.getLong("case_version"),
-            rs.getString("submission_status")), itemId).stream().findFirst();
+            rs.getInt("content_version"), rs.getInt("work_round"), rs.getString("work_status"),
+            rs.getString("observation"), rs.getString("administrative_status"),
+            rs.getObject("case_id", UUID.class), rs.getObject("house_id", UUID.class),
+            rs.getLong("case_version"), rs.getString("submission_status")), itemId).stream().findFirst();
     }
 
     /** Optimistic lock on the item row: zero rows means the caller held a stale itemVersion. */
@@ -303,6 +348,32 @@ public class CaseRepository {
                 UUID.randomUUID(), caseId, actorId, eventType, payloadJson);
     }
 
+    public record AuditRow(UUID id, UUID actorId, String eventType, Timestamp createdAt, String payload) {}
+
+    /** Ascending by (created_at, id): history is read forward, and the pair is unique and stable. */
+    public List<AuditRow> listAudit(UUID caseId, Timestamp afterCreatedAt, UUID afterId, int limit) {
+        var args = new java.util.ArrayList<Object>();
+        args.add(caseId);
+        String keyset = "";
+        if (afterCreatedAt != null) {
+            keyset = " AND (created_at, id) > (?, ?)";
+            args.add(afterCreatedAt);
+            args.add(afterId);
+        }
+        args.add(limit);
+        return jdbc.query("""
+                SELECT id, actor_id, event_type, created_at, payload::text AS payload
+                  FROM audit_event
+                 WHERE case_id = ?""" + keyset + """
+
+                 ORDER BY created_at, id
+                 LIMIT ?
+                """, (rs, row) -> new AuditRow(rs.getObject("id", UUID.class),
+                rs.getObject("actor_id", UUID.class), rs.getString("event_type"),
+                rs.getTimestamp("created_at"), rs.getString("payload")),
+            args.toArray());
+    }
+
     public Optional<ProcessedRow> findProcessed(UUID actorId, String operation, String idempotencyKey) {
         return jdbc.query("""
                 SELECT request_hash, response_status, response_body::text AS body
@@ -380,5 +451,27 @@ public class CaseRepository {
                                              work_status, confirmed_by)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """, reportId, itemId, caseId, contentVersion, workRound, workStatus, confirmedBy);
+    }
+
+    /**
+     * The author's answer for this exact round and content. Four guards: an answer to an old round
+     * must not land on a new one.
+     */
+    public int applyObservation(UUID itemId, long expectedItemVersion, int expectedContentVersion,
+                                int expectedWorkRound, String value) {
+        return jdbc.update("""
+                UPDATE case_item
+                   SET version = version + 1, observation = ?
+                 WHERE id = ? AND version = ? AND content_version = ? AND work_round = ?
+                """, value, itemId, expectedItemVersion, expectedContentVersion, expectedWorkRound);
+    }
+
+    /** The ACTIVE guard lives in SQL as well: a second decision must never overwrite the first. */
+    public int applyDecision(UUID itemId, long expectedItemVersion, String decision, String reason) {
+        return jdbc.update("""
+                UPDATE case_item
+                   SET version = version + 1, administrative_status = ?, administrative_reason = ?
+                 WHERE id = ? AND version = ? AND administrative_status = 'ACTIVE'
+                """, decision, reason, itemId, expectedItemVersion);
     }
 }

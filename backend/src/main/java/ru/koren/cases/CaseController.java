@@ -22,6 +22,7 @@ import ru.koren.cases.application.CreateCaseRequest;
 import ru.koren.cases.application.PatchItemsRequest;
 import ru.koren.cases.application.PatchSourceRequest;
 import ru.koren.cases.application.AcceptRequest;
+import ru.koren.cases.application.HistoryPage;
 
 
 /** Thin HTTP layer: the actor comes from the session, every rule stays in CaseService. */
@@ -58,6 +59,13 @@ public class CaseController {
                          @RequestParam(required = false) String cursor,
                          @RequestParam(required = false) Integer limit) {
         return service.listCases(actor(authentication), houseId, queueState, cursor, limit);
+    }
+
+    @GetMapping("/{caseId}/history")
+    public HistoryPage history(Authentication authentication, @PathVariable UUID caseId,
+                               @RequestParam(required = false) String cursor,
+                               @RequestParam(required = false) Integer limit) {
+        return service.history(actor(authentication), caseId, cursor, limit);
     }
 
     @PatchMapping("/{caseId}/source")

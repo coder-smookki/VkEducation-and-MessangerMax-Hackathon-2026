@@ -156,6 +156,10 @@ def test_confirmed_context_schema_is_current():
         ("ConfirmReportLinks", "report-links-request.json"),
         ("CreateReportResponse", "report-create-response.json"),
         ("WorkReportView", "report-view.json"),
+        ("RecordObservation", "observation-request.json"),
+        ("DecideItem", "decision-withdraw-request.json"),
+        ("DecideItem", "decision-archive-request.json"),
+        ("HistoryPage", "history-page.json"),
     ],
 )
 def test_planned_java_review_examples_match_schema(name, example):
@@ -163,6 +167,46 @@ def test_planned_java_review_examples_match_schema(name, example):
     for schema in api["components"]["schemas"].values():
         Draft202012Validator.check_schema(schema)
     validate_schema(api, name, fixture(example))
+
+
+def test_implemented_operations_never_answer_with_a_target_schema():
+    """The S-04 review found an IMPLEMENTED route answering with a schema Java does not return."""
+    api = json.loads((ROOT / "author-review.openapi.json").read_text())
+    schemas = api["components"]["schemas"]
+    target_only = {
+        name for name, schema in schemas.items() if str(schema.get("description", "")).startswith("TARGET")
+    }
+    assert target_only, "no schema is marked TARGET any more, so this test guards nothing"
+
+    def direct_refs(node):
+        if isinstance(node, dict):
+            if "$ref" in node:
+                yield node["$ref"].rsplit("/", 1)[-1]
+            for value in node.values():
+                yield from direct_refs(value)
+        elif isinstance(node, list):
+            for value in node:
+                yield from direct_refs(value)
+
+    def reachable(node):
+        """A TARGET schema nested inside a returned one is just as wrong as a direct answer."""
+        found, queue = set(), list(direct_refs(node))
+        while queue:
+            name = queue.pop()
+            if name in found or name not in schemas:
+                continue
+            found.add(name)
+            queue.extend(direct_refs(schemas[name]))
+        return found
+
+    for path, methods in api["paths"].items():
+        for method, operation in methods.items():
+            status = operation["x-implementation-status"]
+            assert status in {"IMPLEMENTED", "TARGET", "SCHEMA_ONLY"}, (path, method, status)
+            if status != "IMPLEMENTED":
+                continue
+            leaked = reachable(operation["responses"]) & target_only
+            assert not leaked, f"{method.upper()} {path} answers with {sorted(leaked)}"
 
 
 def test_author_review_does_not_confuse_confirmed_content_with_completed_work():
@@ -173,6 +217,16 @@ def test_author_review_does_not_confuse_confirmed_content_with_completed_work():
     assert after["progress"] == before["progress"]
     assert after["progress"]["allConfirmed"] is False
     assert all(item["workRound"] == 0 and item["observation"] == "NOT_RECEIVED" for item in after["items"])
+
+
+def test_history_details_never_carry_free_text():
+    page = fixture("history-page.json")
+    times = [event["createdAt"] for event in page["items"]]
+    assert times == sorted(times), "history reads forward in time"
+    forbidden = {"caseId", "reason", "sourceText", "reportText", "symptom", "location", "text"}
+    for event in page["items"]:
+        leaked = forbidden & event["details"].keys()
+        assert not leaked, f"{event['eventType']} would leak {sorted(leaked)}"
 
 
 def test_chunked_oversized_body_is_rejected_before_json_parsing():

@@ -34,6 +34,8 @@ import ru.koren.reports.application.LinkView;
 import ru.koren.reports.application.WorkReportView;
 import java.util.Comparator;
 import ru.koren.reports.application.LinkInput;
+import ru.koren.observations.persistence.ObservationRepository;
+import ru.koren.notifications.persistence.OutboxRepository;
 
 /**
  * S1 use cases for drafts and confirmation. actorId must come from server authentication, never a request body.
@@ -47,28 +49,54 @@ public class CaseService {
     static final int MAX_NEXT_ACTION_CODE_POINTS = 1000;
     static final int MAX_LOCATION_CODE_POINTS = 300;
     static final int MAX_SYMPTOM_CODE_POINTS = 1000;
+    static final int MAX_DECISION_REASON_CODE_POINTS = 1000;
     static final int MAX_ITEMS = 20;
     static final int DEFAULT_LIMIT = 20;
     static final int MAX_LIMIT = 50;
     private static final java.util.Set<String> CATEGORIES =
-            java.util.Set.of("LIGHTING", "ENTRANCE_DOOR", "CLEANING", "OTHER");
+        java.util.Set.of("LIGHTING", "ENTRANCE_DOOR", "CLEANING", "OTHER");
     private static final java.util.Set<String> QUEUE_STATES =
         java.util.Set.of("NEEDS_ACCEPTANCE", "NEEDS_ACTION", "AWAITING_AUTHOR", "ARCHIVED");
+    private static final java.util.Set<String> OBSERVATION_VALUES =
+        java.util.Set.of("RESTORED", "PERSISTS", "CANNOT_CHECK");
+    private static final java.util.Set<String> OBSERVATION_SOURCES =
+        java.util.Set.of("AFTER_REPORT", "INDEPENDENT");
+    private static final java.util.Set<String> DECISION_ACTIONS =
+        java.util.Set.of("ARCHIVE", "WITHDRAW");
+    /** History exposes these fields and nothing else; caseId is dropped because the path already carries it. */
+    private static final java.util.Map<String, java.util.List<String>> HISTORY_DETAIL_FIELDS =
+        java.util.Map.ofEntries(
+            java.util.Map.entry("CASE_CREATED", java.util.List.of("houseId", "sourceRevision")),
+            java.util.Map.entry("CASE_SOURCE_PATCHED", java.util.List.of("sourceRevision")),
+            java.util.Map.entry("CASE_ITEMS_PATCHED", java.util.List.of("itemCount")),
+            java.util.Map.entry("CASE_CONFIRMED", java.util.List.of("itemCount")),
+            java.util.Map.entry("CASE_ACCEPTED", java.util.List.of()),
+            java.util.Map.entry("ITEM_NEXT_ACTION_SET", java.util.List.of("itemId", "ownerId")),
+            java.util.Map.entry("REPORT_SAVED", java.util.List.of("reportId", "targetCount")),
+            java.util.Map.entry("REPORT_LINK_CONFIRMED",
+                java.util.List.of("reportId", "itemId", "workRound", "workStatus")),
+            java.util.Map.entry("OBSERVATION_RECORDED",
+                java.util.List.of("itemId", "workRound", "value", "source")),
+            java.util.Map.entry("ITEM_ADMINISTRATIVE_DECISION", java.util.List.of("itemId", "action")));
     private final CaseRepository repo;
     private final ReportRepository reports;
+    private final ObservationRepository observations;
     private final TransactionTemplate tx;
     private final TransactionTemplate readTx;
     private final Clock clock;
     private final JsonMapper json = JsonMapper.builder().build();
+    private final OutboxRepository outbox;
 
-    public CaseService(CaseRepository repo, ReportRepository reports,
-                       PlatformTransactionManager transactions, Clock clock) {
+    public CaseService(CaseRepository repo, ReportRepository reports, ObservationRepository observations,
+                       OutboxRepository outbox, PlatformTransactionManager transactions, Clock clock) {
         this.repo = repo;
         this.reports = reports;
-        this.clock = clock;
+        this.observations = observations;
+        this.outbox = outbox;
         tx = new TransactionTemplate(transactions);
         readTx = new TransactionTemplate(transactions);
         readTx.setReadOnly(true);
+        this.clock = clock;
     }
 
     public CaseView create(UUID authorId, UUID houseId, String sourceText, String idempotencyKey) {
@@ -84,7 +112,7 @@ public class CaseService {
             repo.insertCase(caseId, houseId, authorId);
             repo.insertCaseRevision(caseId, 1, sourceText);
             repo.insertAudit(caseId, authorId, "CASE_CREATED",
-                    json.writeValueAsString(orderedMap("caseId", caseId, "houseId", houseId, "sourceRevision", 1)));
+                json.writeValueAsString(orderedMap("caseId", caseId, "houseId", houseId, "sourceRevision", 1)));
             return TxOutcome.fresh(viewOf(repo.findCase(caseId).orElseThrow()));
         });
     }
@@ -93,6 +121,23 @@ public class CaseService {
         Objects.requireNonNull(actorId);
         Objects.requireNonNull(caseId);
         return readTx.execute(status -> viewOf(loadVisible(actorId, caseId)));
+    }
+
+    /**
+     * Asked again immediately before delivery: access may have been revoked after the notification
+     * was queued. One rule, one place - this reuses the same check the read path uses.
+     */
+    public boolean mayRead(UUID actorId, UUID caseId) {
+        Objects.requireNonNull(actorId);
+        Objects.requireNonNull(caseId);
+        return Boolean.TRUE.equals(readTx.execute(status -> {
+            try {
+                loadVisible(actorId, caseId);
+                return true;
+            } catch (CaseException denied) {
+                return false;
+            }
+        }));
     }
 
     public CasePage listCases(UUID actorId, UUID houseId, String queueState, String cursor, Integer limit) {
@@ -132,7 +177,7 @@ public class CaseService {
         validateVersion(expectedCaseVersion);
         validateText("sourceText", sourceText, MAX_SOURCE_CODE_POINTS);
         String hash = hash("patch-source", caseId,
-                orderedMap("expectedCaseVersion", expectedCaseVersion, "sourceText", sourceText));
+            orderedMap("expectedCaseVersion", expectedCaseVersion, "sourceText", sourceText));
         Runnable access = () -> requireAuthor(actorId, caseId);
         return runCommand(actorId, "patch-source", idempotencyKey, hash, 200, access, CaseView.class, () -> {
             loadDraftForAuthor(actorId, caseId);
@@ -144,7 +189,7 @@ public class CaseService {
             repo.insertCaseRevision(caseId, nextRevision, sourceText);
             repo.updateSourceRevision(caseId, nextRevision);
             repo.insertAudit(caseId, actorId, "CASE_SOURCE_PATCHED",
-                    json.writeValueAsString(orderedMap("caseId", caseId, "sourceRevision", nextRevision)));
+                json.writeValueAsString(orderedMap("caseId", caseId, "sourceRevision", nextRevision)));
             return TxOutcome.fresh(viewOf(repo.findCase(caseId).orElseThrow()));
         });
     }
@@ -165,7 +210,7 @@ public class CaseService {
             }
             applyItemReplacement(caseId, items);
             repo.insertAudit(caseId, actorId, "CASE_ITEMS_PATCHED",
-                    json.writeValueAsString(orderedMap("caseId", caseId, "itemCount", items.size())));
+                json.writeValueAsString(orderedMap("caseId", caseId, "itemCount", items.size())));
             return TxOutcome.fresh(viewOf(repo.findCase(caseId).orElseThrow()));
         });
     }
@@ -178,7 +223,7 @@ public class CaseService {
         validateVersion(expectedCaseVersion);
         if (sourceRevision < 1) throw CaseException.invalidFields("Invalid sourceRevision");
         String hash = hash("confirm", caseId,
-                orderedMap("expectedCaseVersion", expectedCaseVersion, "sourceRevision", sourceRevision));
+            orderedMap("expectedCaseVersion", expectedCaseVersion, "sourceRevision", sourceRevision));
         Runnable access = () -> requireAuthor(actorId, caseId);
         return runCommand(actorId, "confirm", idempotencyKey, hash, 200, access, CaseView.class, () -> {
             var row = loadDraftForAuthor(actorId, caseId);
@@ -198,7 +243,8 @@ public class CaseService {
             }
             repo.markCaseConfirmed(caseId);
             repo.insertAudit(caseId, actorId, "CASE_CONFIRMED",
-                    json.writeValueAsString(orderedMap("caseId", caseId, "itemCount", items.size())));
+                json.writeValueAsString(orderedMap("caseId", caseId, "itemCount", items.size())));
+            notifyDispatchers("CASE_CONFIRMED", caseId, actorId, "", orderedMap("caseId", caseId));
             return TxOutcome.fresh(viewOf(repo.findCase(caseId).orElseThrow()));
         });
     }
@@ -224,13 +270,13 @@ public class CaseService {
             kept.add(existing.id());
             repo.updateItemPosition(existing.id(), position);
             boolean changed = !existing.category().equals(input.category())
-                    || !existing.location().equals(input.location())
-                    || !existing.symptom().equals(input.symptom());
+                || !existing.location().equals(input.location())
+                || !existing.symptom().equals(input.symptom());
             if (changed) {
                 int nextVersion = existing.contentVersion() + 1;
                 repo.updateItemContent(existing.id(), nextVersion);
                 repo.insertItemRevision(existing.id(), nextVersion,
-                        input.category(), input.location(), input.symptom());
+                    input.category(), input.location(), input.symptom());
             }
         }
         for (var item : current) {
@@ -284,9 +330,9 @@ public class CaseService {
     }
 
     private <T> T replay(ProcessedRow row, String hash, Runnable accessRecheck, Class<T> type) {
-        if (!row.requestHash().equals(hash)) throw CaseException.idempotencyKeyReused();
-        // The stored response is released only if the actor still holds the required access.
+        // Access first, always: a revoked actor must not learn anything about a stored command.
         accessRecheck.run();
+        if (!row.requestHash().equals(hash)) throw CaseException.idempotencyKeyReused();
         return json.readValue(row.responseBody(), type);
     }
 
@@ -349,7 +395,7 @@ public class CaseService {
         var itemMaps = new ArrayList<Map<String, Object>>(items.size());
         for (var item : items) {
             itemMaps.add(orderedMap("itemId", item.itemId(), "category", item.category(),
-                    "location", item.location(), "symptom", item.symptom()));
+                "location", item.location(), "symptom", item.symptom()));
         }
         return orderedMap("expectedCaseVersion", expectedCaseVersion, "items", itemMaps);
     }
@@ -378,7 +424,7 @@ public class CaseService {
 
     private static void validateKey(String key) {
         if (key == null || key.isEmpty() || key.length() > 200
-                || key.chars().anyMatch(c -> c < 0x21 || c > 0x7E)) {
+            || key.chars().anyMatch(c -> c < 0x21 || c > 0x7E)) {
             throw CaseException.invalidFields("Invalid Idempotency-Key");
         }
     }
@@ -408,7 +454,7 @@ public class CaseService {
     /** Limits count Unicode code points, not UTF-16 units. */
     private static void validateText(String field, String value, int maxCodePoints) {
         if (value == null || value.codePointCount(0, value.length()) > maxCodePoints
-                || value.codePoints().noneMatch(c -> !Character.isWhitespace(c) && !Character.isSpaceChar(c))) {
+            || value.codePoints().noneMatch(c -> !Character.isWhitespace(c) && !Character.isSpaceChar(c))) {
             throw CaseException.invalidFields("Invalid " + field);
         }
     }
@@ -467,6 +513,7 @@ public class CaseService {
             repo.acceptCase(caseId, actorId);
             repo.insertAudit(caseId, actorId, "CASE_ACCEPTED",
                 json.writeValueAsString(orderedMap("caseId", caseId)));
+            notifyAuthor("CASE_ACCEPTED", caseId, actorId, "", orderedMap("caseId", caseId));
             return TxOutcome.fresh(viewOf(repo.findCase(caseId).orElseThrow()));
         });
     }
@@ -510,6 +557,8 @@ public class CaseService {
             repo.insertAudit(ctx.caseId(), actorId, "ITEM_NEXT_ACTION_SET",
                 json.writeValueAsString(orderedMap("caseId", ctx.caseId(), "itemId", itemId,
                     "ownerId", ownerId)));
+            notifyAuthor("ITEM_NEXT_ACTION_SET", ctx.caseId(), actorId, itemId.toString(),
+                orderedMap("caseId", ctx.caseId(), "itemId", itemId));
             return TxOutcome.fresh(viewOf(repo.findCase(ctx.caseId()).orElseThrow()));
         });
     }
@@ -689,8 +738,229 @@ public class CaseService {
                     json.writeValueAsString(orderedMap("caseId", report.caseId(), "reportId", reportId,
                         "itemId", link.itemId(), "workRound", link.expectedWorkRound() + 1,
                         "workStatus", link.workStatus())));
+                // Per item, so the dedup key differs: one case version covers the whole set.
+                notifyAuthor("REPORT_LINK_CONFIRMED", report.caseId(), actorId, link.itemId().toString(),
+                    orderedMap("caseId", report.caseId(), "itemId", link.itemId()));
             }
             return TxOutcome.fresh(viewOf(repo.findCase(report.caseId()).orElseThrow()));
         });
+    }
+
+    public CaseView observe(UUID actorId, UUID itemId, long expectedCaseVersion, long expectedItemVersion,
+                            int contentVersion, int workRound, String value, String source,
+                            String idempotencyKey) {
+        Objects.requireNonNull(actorId);
+        Objects.requireNonNull(itemId);
+        validateKey(idempotencyKey);
+        validateVersion(expectedCaseVersion);
+        validateVersion(expectedItemVersion);
+        if (contentVersion < 1) throw CaseException.invalidFields("Invalid contentVersion");
+        if (workRound < 0) throw CaseException.invalidFields("Invalid workRound");
+        if (!OBSERVATION_VALUES.contains(value)) {
+            // NOT_RECEIVED is the absence of an answer, so it is not a value the author can send.
+            throw CaseException.invalidFields("value must be RESTORED, PERSISTS or CANNOT_CHECK");
+        }
+        if (!OBSERVATION_SOURCES.contains(source)) {
+            throw CaseException.invalidFields("source must be AFTER_REPORT or INDEPENDENT");
+        }
+        String hash = hash("observe", itemId, orderedMap(
+            "expectedCaseVersion", expectedCaseVersion, "expectedItemVersion", expectedItemVersion,
+            "contentVersion", contentVersion, "workRound", workRound,
+            "value", value, "source", source));
+        Runnable access = () -> requireAuthorOfItem(actorId, itemId);
+        return runCommand(actorId, "observe", idempotencyKey, hash, 200, access, CaseView.class, () -> {
+            var ctx = requireAuthorOfItem(actorId, itemId);
+            if (ctx.isDraft()) {
+                throw CaseException.invalidTransition("An observation needs a confirmed case");
+            }
+            // A stale answer deserves its own code: the round moved on, the author must look again.
+            if (ctx.contentVersion() != contentVersion || ctx.workRound() != workRound) {
+                throw CaseException.staleContext();
+            }
+            var state = new ItemState(itemId, actorId, ctx.contentVersion(), ctx.workRound(),
+                ItemState.WorkStatus.valueOf(ctx.workStatus()),
+                ItemState.Observation.valueOf(ctx.observation()),
+                ItemState.AdministrativeStatus.valueOf(ctx.administrativeStatus()));
+            ItemState observed;
+            try {
+                // The domain rules live in ItemState and are covered by ItemStateTest; this only translates.
+                observed = state.observe(actorId, ItemState.Observation.valueOf(value),
+                    ItemState.ObservationSource.valueOf(source), contentVersion, workRound);
+            } catch (SecurityException denied) {
+                throw CaseException.forbidden();
+            } catch (IllegalStateException | IllegalArgumentException rejected) {
+                throw CaseException.invalidTransition(rejected.getMessage());
+            }
+            if (repo.bumpConfirmedCaseVersion(ctx.caseId(), expectedCaseVersion) == 0) {
+                return conflictOrReplay(actorId, "observe", idempotencyKey, hash, ctx.caseId(), access,
+                    false, CaseView.class);
+            }
+            if (repo.applyObservation(itemId, expectedItemVersion, contentVersion, workRound,
+                observed.observation().name()) == 0) {
+                throw CaseException.itemVersionConflict();
+            }
+            observations.insertObservation(UUID.randomUUID(), itemId, ctx.caseId(), actorId,
+                contentVersion, workRound, value, source);
+            repo.insertAudit(ctx.caseId(), actorId, "OBSERVATION_RECORDED",
+                json.writeValueAsString(orderedMap("caseId", ctx.caseId(), "itemId", itemId,
+                    "workRound", workRound, "value", value, "source", source)));
+            notifyDispatchers("OBSERVATION_RECORDED", ctx.caseId(), actorId, itemId.toString(),
+                orderedMap("caseId", ctx.caseId(), "itemId", itemId));
+            return TxOutcome.fresh(viewOf(repo.findCase(ctx.caseId()).orElseThrow()));
+        });
+    }
+
+    /** ARCHIVE is the dispatcher's, WITHDRAW is the author's; both are final and both keep total intact. */
+    public CaseView decide(UUID actorId, UUID itemId, long expectedCaseVersion, long expectedItemVersion,
+                           String action, String reason, String idempotencyKey) {
+        Objects.requireNonNull(actorId);
+        Objects.requireNonNull(itemId);
+        validateKey(idempotencyKey);
+        validateVersion(expectedCaseVersion);
+        validateVersion(expectedItemVersion);
+        if (action == null || !DECISION_ACTIONS.contains(action)) throw CaseException.invalidFields("Unknown action");
+        validateText("reason", reason, MAX_DECISION_REASON_CODE_POINTS);
+        boolean withdrawal = "WITHDRAW".equals(action);
+        var decision = withdrawal
+            ? ItemState.AdministrativeStatus.WITHDRAWN
+            : ItemState.AdministrativeStatus.ARCHIVED;
+        String hash = hash("administrative-decision", itemId, orderedMap(
+            "expectedCaseVersion", expectedCaseVersion, "expectedItemVersion", expectedItemVersion,
+            "action", action, "reason", reason));
+        Runnable access = withdrawal
+            ? () -> requireAuthorOfItem(actorId, itemId)
+            : () -> requireDispatcherOfItem(actorId, itemId);
+        return runCommand(actorId, "administrative-decision", idempotencyKey, hash, 200, access, CaseView.class, () -> {
+            var ctx = withdrawal ? requireAuthorOfItem(actorId, itemId) : requireDispatcherOfItem(actorId, itemId);
+            if (ctx.isDraft()) {
+                throw CaseException.invalidTransition("An administrative decision needs a confirmed case");
+            }
+            var owner = repo.findCase(ctx.caseId()).orElseThrow(CaseException::notFound);
+            var state = new ItemState(itemId, owner.authorId(), ctx.contentVersion(), ctx.workRound(),
+                ItemState.WorkStatus.valueOf(ctx.workStatus()),
+                ItemState.Observation.valueOf(ctx.observation()),
+                ItemState.AdministrativeStatus.valueOf(ctx.administrativeStatus()));
+            try {
+                state.decide(actorId, decision);
+            } catch (SecurityException denied) {
+                throw CaseException.forbidden();
+            } catch (IllegalStateException | IllegalArgumentException rejected) {
+                throw CaseException.invalidTransition(rejected.getMessage());
+            }
+            if (repo.bumpConfirmedCaseVersion(ctx.caseId(), expectedCaseVersion) == 0) {
+                return conflictOrReplay(actorId, "administrative-decision", idempotencyKey, hash,
+                    ctx.caseId(), access, false, CaseView.class);
+            }
+            if (repo.applyDecision(itemId, expectedItemVersion, decision.name(), reason) == 0) {
+                throw CaseException.itemVersionConflict();
+            }
+            repo.insertAudit(ctx.caseId(), actorId, "ITEM_ADMINISTRATIVE_DECISION",
+                json.writeValueAsString(orderedMap("caseId", ctx.caseId(), "itemId", itemId, "action", action)));
+            // The author withdraws, so the dispatchers hear it; the dispatcher archives, so the author does.
+            if (withdrawal) {
+                notifyDispatchers("ITEM_WITHDRAWN", ctx.caseId(), actorId, itemId.toString(),
+                    orderedMap("caseId", ctx.caseId(), "itemId", itemId));
+            } else {
+                notifyAuthor("ITEM_ARCHIVED", ctx.caseId(), actorId, itemId.toString(),
+                    orderedMap("caseId", ctx.caseId(), "itemId", itemId));
+            }
+            return TxOutcome.fresh(viewOf(repo.findCase(ctx.caseId()).orElseThrow()));
+        });
+    }
+
+    public HistoryPage history(UUID actorId, UUID caseId, String cursor, Integer limit) {
+        Objects.requireNonNull(actorId);
+        Objects.requireNonNull(caseId);
+        int pageSize = limit == null ? DEFAULT_LIMIT : limit;
+        if (pageSize < 1 || pageSize > MAX_LIMIT) throw CaseException.invalidFields("Invalid limit");
+        Cursor after = decodeHistoryCursor(cursor, caseId);
+        return readTx.execute(status -> {
+            // Access is re-checked on every page; a cursor carries no rights of its own.
+            loadVisible(actorId, caseId);
+            var rows = repo.listAudit(caseId, after == null ? null : after.createdAt(),
+                after == null ? null : after.id(), pageSize + 1);
+            boolean more = rows.size() > pageSize;
+            var page = more ? rows.subList(0, pageSize) : rows;
+            String next = more ? encodeHistoryCursor(caseId, page.getLast()) : null;
+            return new HistoryPage(page.stream().map(this::historyEventOf).toList(), next);
+        });
+    }
+
+    /** An unknown event type still appears, with empty details: history must not silently lose events. */
+    private HistoryEvent historyEventOf(CaseRepository.AuditRow row) {
+        var allowed = HISTORY_DETAIL_FIELDS.getOrDefault(row.eventType(), java.util.List.of());
+        var details = new java.util.LinkedHashMap<String, Object>();
+        if (!allowed.isEmpty() && row.payload() != null) {
+            var payload = json.readTree(row.payload());
+            for (String field : allowed) {
+                var value = payload.get(field);
+                if (value != null && !value.isNull()) {
+                    details.put(field, json.treeToValue(value, Object.class));
+                }
+            }
+        }
+        return new HistoryEvent(row.id(), row.actorId(), row.eventType(),
+            row.createdAt().toInstant(), details);
+    }
+
+    /**
+     * Queues notifications inside the caller's transaction. The state change and its announcement
+     * commit together: MAX failing later must not undo the acceptance, and the acceptance must not
+     * lose the notification. The actor is skipped - nobody needs news of their own command.
+     */
+    private void queueNotifications(String eventType, UUID caseId, long caseVersion, UUID actorId,
+                                    String keyPart, List<UUID> recipients, Map<String, Object> details) {
+        String payload = json.writeValueAsString(details);
+        for (UUID recipient : recipients) {
+            if (recipient.equals(actorId)) continue;
+            outbox.enqueue(eventType + ":" + caseId + ":" + caseVersion + ":" + keyPart + ":" + recipient,
+                caseId, recipient, eventType, payload);
+        }
+    }
+
+    /** The version in the dedup key is the one this command produced, so a repeat is the same news. */
+    private void notifyAuthor(String eventType, UUID caseId, UUID actorId, String keyPart,
+                              Map<String, Object> details) {
+        var row = repo.findCase(caseId).orElseThrow();
+        queueNotifications(eventType, caseId, row.version(), actorId, keyPart,
+            List.of(row.authorId()), details);
+    }
+
+    private void notifyDispatchers(String eventType, UUID caseId, UUID actorId, String keyPart,
+                                   Map<String, Object> details) {
+        var row = repo.findCase(caseId).orElseThrow();
+        queueNotifications(eventType, caseId, row.version(), actorId, keyPart,
+            repo.activeDispatchers(row.houseId()), details);
+    }
+
+    private static Cursor decodeHistoryCursor(String cursor, UUID caseId) {
+        if (cursor == null) return null;
+        try {
+            String raw = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
+            String[] parts = raw.split("\\|", -1);
+            if (parts.length != 4 || !"h1".equals(parts[0])) throw CaseException.invalidFields("Invalid cursor");
+            if (!parts[1].equals(caseId.toString())) throw CaseException.invalidFields("Invalid cursor");
+            long micros = Long.parseLong(parts[2]);
+            long millis = Math.floorDiv(micros, 1000);
+            Timestamp createdAt = new Timestamp(millis);
+            createdAt.setNanos(createdAt.getNanos() + (int) Math.floorMod(micros, 1000) * 1000);
+            return new Cursor(createdAt, UUID.fromString(parts[3]));
+        } catch (IllegalArgumentException | IndexOutOfBoundsException e) {
+            throw CaseException.invalidFields("Invalid cursor");
+        }
+    }
+
+    private static String encodeHistoryCursor(UUID caseId, CaseRepository.AuditRow last) {
+        Timestamp ts = last.createdAt();
+        long micros = ts.getTime() * 1000 + (ts.getNanos() % 1_000_000) / 1000;
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(
+            ("h1|" + caseId + "|" + micros + "|" + last.id()).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private CaseRepository.ItemContextRow requireAuthorOfItem(UUID actorId, UUID itemId) {
+        var ctx = repo.findItemContext(itemId).orElseThrow(CaseException::notFound);
+        var row = loadVisible(actorId, ctx.caseId());
+        if (!row.authorId().equals(actorId)) throw CaseException.forbidden();
+        return ctx;
     }
 }

@@ -363,7 +363,7 @@
             "required": false,
             "x-implementation-status": "IMPLEMENTED",
             "x-task": "S-03",
-            "description": "Dispatcher queue filter. Overlapping fact-based filters, not a new exclusive status. DISPATCHER only, inside an allowed houseId; a missing houseId or an unknown value is 422. The cursor is bound to houseId and queueState. NEEDS_ACCEPTANCE: CONFIRMED without acceptedAt. NEEDS_ACTION: accepted, has an ACTIVE item without RESTORED that has no current nextAction, or observation PERSISTS, or an expired updateDueAt. AWAITING_AUTHOR: has an ACTIVE REPORTED_DONE item with NOT_RECEIVED or CANNOT_CHECK. ARCHIVED: has an ARCHIVED item. AWAITING_AUTHOR stays empty until reports exist (S-04) and ARCHIVED until the archive command exists (S-05); the other two are live.",
+            "description": "Dispatcher queue filter. Overlapping fact-based filters, not a new exclusive status. DISPATCHER only, inside an allowed houseId; a missing houseId or an unknown value is 422. The cursor is bound to houseId and queueState. NEEDS_ACCEPTANCE: CONFIRMED without acceptedAt. NEEDS_ACTION: accepted, has an ACTIVE item without RESTORED that has no current nextAction, or observation PERSISTS, or an expired updateDueAt. AWAITING_AUTHOR: has an ACTIVE REPORTED_DONE item with NOT_RECEIVED or CANNOT_CHECK. ARCHIVED: has an ARCHIVED item. All four are live: reports exist since S-04 and the archive command since S-05.",
             "schema": {
               "enum": [
                 "NEEDS_ACCEPTANCE",
@@ -792,8 +792,8 @@
     "/api/v1/items/{itemId}/administrative-decisions": {
       "post": {
         "operationId": "decideItem",
-        "summary": "TARGET: архив диспетчером или отзыв автором ОДНОГО пункта, причина обязательна",
-        "x-implementation-status": "TARGET",
+        "summary": "архив диспетчером или отзыв автором ОДНОГО пункта, причина обязательна",
+        "x-implementation-status": "IMPLEMENTED",
         "x-task": "S-05",
         "security": [
           {
@@ -826,37 +826,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "expectedCaseVersion": {
-                    "type": "integer",
-                    "minimum": 0
-                  },
-                  "expectedItemVersion": {
-                    "type": "integer",
-                    "minimum": 0
-                  },
-                  "action": {
-                    "enum": [
-                      "ARCHIVE",
-                      "WITHDRAW"
-                    ]
-                  },
-                  "reason": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 1000,
-                    "pattern": "\\S"
-                  }
-                },
-                "required": [
-                  "expectedCaseVersion",
-                  "expectedItemVersion",
-                  "action",
-                  "reason"
-                ],
-                "description": "Archiving keeps observation and nextAction history, does not reduce progress.total and is never shown as a repair."
+                "$ref": "#/components/schemas/DecideItem"
               }
             }
           }
@@ -867,7 +837,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TargetCaseView"
+                  "$ref": "#/components/schemas/AuthorCaseView"
                 }
               }
             }
@@ -1213,6 +1183,200 @@
           },
           "422": {
             "description": "Недопустимые поля или переход",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/items/{itemId}/observations": {
+      "post": {
+        "operationId": "recordObservation",
+        "summary": "автор сообщает, что он наблюдает по пункту",
+        "description": "Only the author, and only for the current content version and round. A positive answer is what counts as confirmed in progress; a staff report never does. The answer does not change workStatus and does not open a round.",
+        "x-implementation-status": "IMPLEMENTED",
+        "x-task": "S-05",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "itemId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordObservation"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "CaseView после записи наблюдения",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorCaseView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нет сессии",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Нет активного членства или роли",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ресурс недоступен",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Версия устарела или ключ идемпотентности переиспользован",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Недопустимые поля или переход",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cases/{caseId}/history": {
+      "get": {
+        "operationId": "caseHistory",
+        "summary": "история обращения для его автора и диспетчера дома",
+        "description": "Ascending by createdAt then eventId, cursor-paginated, at most 50 events per page. details carries allow-listed fields per event type and never raw payload, secrets or free text. The cursor is bound to its case and is not a credential: access is re-checked on every page.",
+        "x-implementation-status": "IMPLEMENTED",
+        "x-task": "S-05",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Одна восходящая страница истории",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нет сессии",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Обращение недоступно: чужой дом, отозванный доступ или чужой черновик неотличимы от отсутствия",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Недопустимый limit или курсор",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -2115,6 +2279,150 @@
         "required": [
           "expectedCaseVersion",
           "links"
+        ]
+      },
+      "RecordObservation": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "The author's answer for one item, for this exact content version and round. NOT_RECEIVED is the absence of an answer and is never sent. AFTER_REPORT requires workStatus REPORTED_DONE in this round; INDEPENDENT does not and changes no work status.",
+        "properties": {
+          "expectedCaseVersion": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expectedItemVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "contentVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "workRound": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "value": {
+            "type": "string",
+            "enum": [
+              "RESTORED",
+              "PERSISTS",
+              "CANNOT_CHECK"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "AFTER_REPORT",
+              "INDEPENDENT"
+            ]
+          }
+        },
+        "required": [
+          "expectedCaseVersion",
+          "expectedItemVersion",
+          "contentVersion",
+          "workRound",
+          "value",
+          "source"
+        ]
+      },
+      "DecideItem": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "expectedCaseVersion": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expectedItemVersion": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "action": {
+            "enum": [
+              "ARCHIVE",
+              "WITHDRAW"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000,
+            "pattern": "\\S"
+          }
+        },
+        "required": [
+          "expectedCaseVersion",
+          "expectedItemVersion",
+          "action",
+          "reason"
+        ],
+        "description": "Both decisions are final: the contract has no way back, a new problem is a new item. Neither reduces progress.total. WITHDRAW counts into progress.withdrawn; ARCHIVE does not and leaves the item in progress.remaining. Archiving keeps an observation the author already gave, never creates one, and keeps nextAction as a historical plan."
+      },
+      "HistoryEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "One audit event as the case's participants may see it. eventType today is one of CASE_CREATED, CASE_SOURCE_PATCHED, CASE_ITEMS_PATCHED, CASE_CONFIRMED, CASE_ACCEPTED, ITEM_NEXT_ACTION_SET, REPORT_SAVED, REPORT_LINK_CONFIRMED, OBSERVATION_RECORDED, ITEM_ADMINISTRATIVE_DECISION; an unrecognised type still appears, with empty details.",
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "actorId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "eventType": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Allow-listed fields for this event type only: identifiers, counts, versions, rounds and enum values. caseId is dropped because the path carries it. Report text, a source text and an administrative reason never appear here."
+          }
+        },
+        "required": [
+          "eventId",
+          "actorId",
+          "eventType",
+          "createdAt",
+          "details"
+        ]
+      },
+      "HistoryPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "One page of history. nextCursor is opaque, bound to the case it was issued for, and null on the last page.",
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "$ref": "#/components/schemas/HistoryEvent"
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
         ]
       }
     }
