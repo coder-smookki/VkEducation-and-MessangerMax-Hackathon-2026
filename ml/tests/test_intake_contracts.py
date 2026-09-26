@@ -168,13 +168,13 @@ def test_planned_java_review_examples_match_schema(name, example):
         Draft202012Validator.check_schema(schema)
     validate_schema(api, name, fixture(example))
 
+
 def test_implemented_operations_never_answer_with_a_target_schema():
     """The S-04 review found an IMPLEMENTED route answering with a schema Java does not return."""
     api = json.loads((ROOT / "author-review.openapi.json").read_text())
     schemas = api["components"]["schemas"]
     target_only = {
-        name for name, schema in schemas.items()
-        if str(schema.get("description", "")).startswith("TARGET")
+        name for name, schema in schemas.items() if str(schema.get("description", "")).startswith("TARGET")
     }
     assert target_only, "no schema is marked TARGET any more, so this test guards nothing"
 
@@ -208,6 +208,7 @@ def test_implemented_operations_never_answer_with_a_target_schema():
             leaked = reachable(operation["responses"]) & target_only
             assert not leaked, f"{method.upper()} {path} answers with {sorted(leaked)}"
 
+
 def test_author_review_does_not_confuse_confirmed_content_with_completed_work():
     before, after = fixture("review-items-response.json"), fixture("confirm-items-response.json")
     assert before["submissionStatus"] == "DRAFT" and after["submissionStatus"] == "CONFIRMED"
@@ -226,6 +227,7 @@ def test_history_details_never_carry_free_text():
     for event in page["items"]:
         leaked = forbidden & event["details"].keys()
         assert not leaked, f"{event['eventType']} would leak {sorted(leaked)}"
+
 
 def test_chunked_oversized_body_is_rejected_before_json_parsing():
     def chunks():
