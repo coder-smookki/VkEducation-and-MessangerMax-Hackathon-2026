@@ -330,9 +330,9 @@ public class CaseService {
     }
 
     private <T> T replay(ProcessedRow row, String hash, Runnable accessRecheck, Class<T> type) {
-        if (!row.requestHash().equals(hash)) throw CaseException.idempotencyKeyReused();
-        // The stored response is released only if the actor still holds the required access.
+        // Access first, always: a revoked actor must not learn anything about a stored command.
         accessRecheck.run();
+        if (!row.requestHash().equals(hash)) throw CaseException.idempotencyKeyReused();
         return json.readValue(row.responseBody(), type);
     }
 

@@ -3,6 +3,7 @@ package ru.koren.notifications.application;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.util.List;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -40,8 +41,10 @@ public class OutboxWorker {
 
     public Drained drainOnce() {
         Timestamp now = Timestamp.from(clock.instant());
+        // A fresh token per batch, so finishing a row proves we still hold the lease we took.
+        UUID leaseToken = UUID.randomUUID();
         List<OutboxRepository.OutboxRow> claimed =
-            tx.execute(status -> outbox.claim(now, LEASE_SECONDS, MAX_ATTEMPTS, BATCH));
+            tx.execute(status -> outbox.claim(now, LEASE_SECONDS, MAX_ATTEMPTS, BATCH, leaseToken));
         int sent = 0;
         int failed = 0;
         int cancelled = 0;
@@ -49,14 +52,18 @@ public class OutboxWorker {
             // Access is re-checked here, not at enqueue time: it may have been revoked since.
             // A reply with no case carries no case data, so there is no case-level right to check.
             if (row.caseId() != null && !cases.mayRead(row.recipientId(), row.caseId())) {
-                outbox.cancel(row.id(), "Recipient may no longer read this case");
+                outbox.cancel(row.id(), "Recipient may no longer read this case", leaseToken);
                 cancelled++;
                 continue;
             }
             try {
                 // Deliberately outside any transaction: an open transaction must not wait on HTTP.
                 sender.send(row.recipientId(), row.eventType(), row.payload());
-                outbox.markSent(row.id());
+                if (outbox.markSent(row.id(), leaseToken) == 0) {
+                    // The lease expired mid-send; another worker owns the row and may have sent it too.
+                    log.warn("Outbox event {} completed after its lease expired; delivery may be doubled",
+                        row.id());
+                }
                 sent++;
             } catch (RuntimeException failure) {
                 // Only the failure class is stored and logged; the payload carries user text.
@@ -64,7 +71,7 @@ public class OutboxWorker {
                     failure.getClass().getSimpleName());
                 outbox.release(row.id(),
                     Timestamp.from(clock.instant().plusSeconds(backoff(row.attempts()))),
-                    failure.getClass().getSimpleName());
+                    failure.getClass().getSimpleName(), leaseToken);
                 failed++;
             }
         }

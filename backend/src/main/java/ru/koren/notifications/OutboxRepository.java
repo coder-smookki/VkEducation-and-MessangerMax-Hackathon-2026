@@ -37,10 +37,13 @@ public class OutboxRepository {
                 """, UUID.randomUUID(), recipientId, eventType, deduplicationKey, payloadJson) == 1;
     }
 
-    public List<OutboxRow> claim(Timestamp now, int leaseSeconds, int maxAttempts, int limit) {
+    /** Claims under a lease owned by leaseToken; only that owner may later finish the row. */
+    public List<OutboxRow> claim(Timestamp now, int leaseSeconds, int maxAttempts, int limit,
+                                 UUID leaseToken) {
         return jdbc.query("""
                 UPDATE outbox_event
-                   SET leased_until = ?::timestamptz + make_interval(secs => ?), attempts = attempts + 1
+                   SET leased_until = ?::timestamptz + make_interval(secs => ?),
+                       leased_by = ?, attempts = attempts + 1
                  WHERE id IN (
                        SELECT id FROM outbox_event
                         WHERE sent_at IS NULL
@@ -54,24 +57,38 @@ public class OutboxRepository {
                 """, (rs, row) -> new OutboxRow(rs.getObject("id", UUID.class),
                 rs.getObject("case_id", UUID.class), rs.getObject("recipient_id", UUID.class),
                 rs.getString("event_type"), rs.getString("payload"), rs.getInt("attempts")),
-            now, leaseSeconds, now, now, maxAttempts, limit);
+            now, leaseSeconds, leaseToken, now, now, maxAttempts, limit);
     }
 
-    public void markSent(UUID id) {
-        jdbc.update("UPDATE outbox_event SET sent_at = now(), leased_until = NULL, last_error = NULL"
-            + " WHERE id = ?", id);
+    /**
+     * Zero rows means the lease expired while the send was in flight and another worker took the
+     * row. The send may have happened twice; what must not happen is this worker recording a clean
+     * single delivery over someone else's state.
+     */
+    public int markSent(UUID id, UUID leaseToken) {
+        return jdbc.update("""
+                UPDATE outbox_event SET sent_at = now(), leased_until = NULL, leased_by = NULL,
+                       last_error = NULL
+                 WHERE id = ? AND leased_by = ?
+                """, id, leaseToken);
     }
 
     /** Keeps the reason next to the row: a parked notification must explain itself without logs. */
-    public void release(UUID id, Timestamp availableAt, String error) {
-        jdbc.update("UPDATE outbox_event SET leased_until = NULL, available_at = ?, last_error = ?"
-            + " WHERE id = ?", availableAt, error == null ? null
-            : error.substring(0, Math.min(error.length(), 500)), id);
+    public int release(UUID id, Timestamp availableAt, String error, UUID leaseToken) {
+        return jdbc.update("""
+                UPDATE outbox_event SET leased_until = NULL, leased_by = NULL, available_at = ?,
+                       last_error = ?
+                 WHERE id = ? AND leased_by = ?
+                """, availableAt, error == null ? null
+            : error.substring(0, Math.min(error.length(), 500)), id, leaseToken);
     }
 
     /** Drops a notification whose recipient may no longer read the case; the reason stays visible. */
-    public void cancel(UUID id, String reason) {
-        jdbc.update("UPDATE outbox_event SET leased_until = NULL,"
-            + " available_at = now() + interval '100 years', last_error = ? WHERE id = ?", reason, id);
+    public int cancel(UUID id, String reason, UUID leaseToken) {
+        return jdbc.update("""
+                UPDATE outbox_event SET leased_until = NULL, leased_by = NULL,
+                       available_at = now() + interval '100 years', last_error = ?
+                 WHERE id = ? AND leased_by = ?
+                """, reason, id, leaseToken);
     }
 }

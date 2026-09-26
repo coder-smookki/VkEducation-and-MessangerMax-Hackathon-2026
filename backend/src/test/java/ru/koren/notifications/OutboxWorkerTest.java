@@ -17,6 +17,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import ru.koren.max.application.MaxSender;
 import ru.koren.notifications.application.OutboxWorker;
 import ru.koren.notifications.persistence.OutboxRepository;
+import java.sql.Timestamp;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -182,4 +183,21 @@ class OutboxWorkerTest {
             + " WHERE deduplication_key = ?", key);
         assertEquals(1, worker.drainOnce().sent(), "a dead worker's lease must expire by itself");
     }
+    @Test
+    void aWorkerThatLostItsLeaseCannotRecordTheDelivery() {
+        queue(author);
+        UUID myToken = UUID.randomUUID();
+        var claimed = outbox.claim(new Timestamp(System.currentTimeMillis()), 60,
+            OutboxWorker.MAX_ATTEMPTS, 10, myToken);
+        assertEquals(1, claimed.size());
+
+        // Our lease expires and another worker takes the row while our send is still in flight.
+        jdbc.update("UPDATE outbox_event SET leased_by = ?, leased_until = now() + interval '1 hour'"
+            + " WHERE deduplication_key = ?", UUID.randomUUID(), key);
+
+        assertEquals(0, outbox.markSent(claimed.getFirst().id(), myToken),
+            "a lost lease must not let us record a clean delivery");
+        assertFalse(isSent(), "the row belongs to the other worker now");
+    }
+
 }

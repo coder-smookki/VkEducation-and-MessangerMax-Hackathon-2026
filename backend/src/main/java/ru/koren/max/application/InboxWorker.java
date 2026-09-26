@@ -3,6 +3,7 @@ package ru.koren.max.application;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.util.List;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -36,23 +37,31 @@ public class InboxWorker {
 
     public Drained drainOnce() {
         Timestamp now = Timestamp.from(clock.instant());
+        // A fresh token per batch: even this same worker must not finish a row it re-claimed later.
+        UUID leaseToken = UUID.randomUUID();
         List<InboxRepository.InboxRow> claimed =
-            tx.execute(status -> inbox.claim(now, LEASE_SECONDS, MAX_ATTEMPTS, BATCH));
+            tx.execute(status -> inbox.claim(now, LEASE_SECONDS, MAX_ATTEMPTS, BATCH, leaseToken));
         int handled = 0;
         int failed = 0;
         for (var row : claimed) {
             try {
                 // Handling and marking share one transaction: a crash between them would repeat the work.
-                tx.executeWithoutResult(status -> {
+                boolean kept = Boolean.TRUE.equals(tx.execute(status -> {
                     handler.handle(row.eventKey(), row.payload());
-                    inbox.markProcessed(row.id());
-                });
+                    return inbox.markProcessed(row.id(), leaseToken) == 1;
+                }));
+                if (!kept) {
+                    // Our lease expired mid-handling and another worker owns the event now.
+                    log.warn("Inbox event {} finished after its lease expired; another worker owns it",
+                        row.id());
+                }
                 handled++;
             } catch (RuntimeException failure) {
                 // Never log the payload: an update carries user text and identifiers.
                 log.warn("Inbox event {} failed on attempt {}: {}", row.id(), row.attempts(),
                     failure.getClass().getSimpleName());
-                inbox.release(row.id(), Timestamp.from(clock.instant().plusSeconds(backoff(row.attempts()))));
+                inbox.release(row.id(),
+                    Timestamp.from(clock.instant().plusSeconds(backoff(row.attempts()))), leaseToken);
                 failed++;
             }
         }
