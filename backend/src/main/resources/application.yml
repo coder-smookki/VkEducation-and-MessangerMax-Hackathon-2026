@@ -37,10 +37,17 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,info
   endpoint:
     health:
       show-details: never
+  info:
+    env:
+      enabled: true
+info:
+  app:
+    # Set at deploy: RELEASE_SHA=$(git rev-parse HEAD). A stand without it answers "unknown".
+    sha: ${RELEASE_SHA:unknown}
 koren:
   inference-url: ${INFERENCE_URL:http://127.0.0.1:8000}
   # Off by default: while it is off a saved report answers MANUAL_REQUIRED and queues nothing,
