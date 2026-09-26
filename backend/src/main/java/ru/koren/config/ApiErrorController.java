@@ -26,7 +26,14 @@ public class ApiErrorController implements ErrorController {
         ProblemDetail problem = ProblemDetail.forStatus(status);
         problem.setTitle(titleFor(status));
         problem.setProperty("code", codeFor(status));
-        return ResponseEntity.status(status).contentType(MediaType.APPLICATION_PROBLEM_JSON).body(problem);
+        // The id is the only link between what the user saw and what the log says; it reveals nothing else.
+        Object requestId = request.getAttribute(RequestIdFilter.ATTRIBUTE);
+        var answer = ResponseEntity.status(status).contentType(MediaType.APPLICATION_PROBLEM_JSON);
+        if (requestId instanceof String id) {
+            problem.setProperty("requestId", id);
+            answer.header(RequestIdFilter.HEADER, id);
+        }
+        return answer.body(problem);
     }
 
     /** For security handlers, which answer before any controller runs. Titles are constants: no escaping. */

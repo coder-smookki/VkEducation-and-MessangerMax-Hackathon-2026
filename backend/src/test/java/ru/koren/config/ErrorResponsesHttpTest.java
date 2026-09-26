@@ -9,11 +9,15 @@ import java.net.http.HttpResponse;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
@@ -27,7 +31,8 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * S-07 / QA-R09 over a real port, not MockMvc: MockMvc neither forwards failures to /error nor masks the
  * CSRF token, so both defects it was hiding - every 400/404/500 turning into 401, and an untested CSRF
- * handshake - are only visible here.
+ * handshake - are only visible here. Every response carries X-Request-Id, and a failure is logged
+ * under that id without its message.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
     "spring.datasource.url=${DB_TEST_URL}", "spring.datasource.username=${DB_TEST_USER:koren}",
@@ -35,6 +40,7 @@ import static org.junit.jupiter.api.Assertions.*;
     "koren.max.bot-token=k1-test-bot-token:not-a-real-secret"
 })
 @EnabledIfEnvironmentVariable(named = "DB_TEST_URL", matches = ".+")
+@ExtendWith(OutputCaptureExtension.class)
 class ErrorResponsesHttpTest {
 
     private static final String AUTHOR_INIT_DATA =
@@ -68,7 +74,7 @@ class ErrorResponsesHttpTest {
 
     private final JsonMapper json = JsonMapper.builder().build();
 
-    private record Answer(int status, String contentType, String body) {
+    private record Answer(int status, String contentType, String requestId, String body) {
         JsonNode json(JsonMapper mapper) {
             return mapper.readTree(body);
         }
@@ -82,15 +88,21 @@ class ErrorResponsesHttpTest {
         String csrfToken;
 
         Answer send(String method, String path, String body) throws Exception {
+            return send(method, path, body, Map.of());
+        }
+
+        Answer send(String method, String path, String body, Map<String, String> headers) throws Exception {
             var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path))
                 .method(method, body == null ? HttpRequest.BodyPublishers.noBody()
                     : HttpRequest.BodyPublishers.ofString(body))
                 .header("Accept", "application/json");
             if (body != null) request.header("Content-Type", "application/json");
+            headers.forEach(request::header);
             if (csrfToken != null && !"GET".equals(method)) request.header(csrfHeader, csrfToken);
             var response = client.send(request.build(), HttpResponse.BodyHandlers.ofString());
             return new Answer(response.statusCode(),
-                response.headers().firstValue("Content-Type").orElse(""), response.body());
+                response.headers().firstValue("Content-Type").orElse(""),
+                response.headers().firstValue("X-Request-Id").orElse(null), response.body());
         }
 
         /** What the Mini App does: fetch the masked token, then send it back as a header. */
@@ -153,13 +165,39 @@ class ErrorResponsesHttpTest {
     }
 
     @Test
-    void anUnexpectedFailureIsA500WithoutItsDetails() throws Exception {
+    void anUnexpectedFailureIsA500WithoutItsDetails(CapturedOutput output) throws Exception {
         var browser = new Browser();
         browser.login();
         var answer = browser.send("GET", "/api/v1/items/test-failure/boom", null);
         assertProblem(answer, 500, "INTERNAL_ERROR");
         assertFalse(answer.body().contains(HIDDEN_DETAIL), "the exception message stays on the server");
         assertFalse(answer.body().contains("IllegalStateException"), "so does the exception class");
+
+        // The user can quote one id, and the log finds the failure under it.
+        assertNotNull(answer.requestId());
+        assertEquals(answer.requestId(), answer.json(json).get("requestId").asString());
+        String log = output.getAll();
+        assertTrue(log.contains("[" + answer.requestId() + "]"), "the failure is logged under the request id");
+        assertTrue(log.contains("java.lang.IllegalStateException"), "the class and frames are logged");
+        assertFalse(log.contains(HIDDEN_DETAIL), "the message is not: it may hold user text or SQL values");
+    }
+
+    @Test
+    void everyAnswerCarriesARequestIdAndOnlyASafeOneIsKept() throws Exception {
+        var browser = new Browser();
+        browser.login();
+        var ok = browser.send("GET", "/api/v1/me", null);
+        assertEquals(200, ok.status());
+        assertTrue(ok.requestId().matches("[0-9a-f-]{36}"), "a fresh id when the caller sent none");
+
+        var quoted = browser.send("GET", "/api/v1/me", null, Map.of("X-Request-Id", "qa-r09-check-0001"));
+        assertEquals("qa-r09-check-0001", quoted.requestId(), "a tester's own id is kept to find it in the log");
+
+        String forged = "x".repeat(200);
+        var refused = browser.send("GET", "/api/v1/me", null, Map.of("X-Request-Id", forged));
+        assertNotEquals(forged, refused.requestId(), "an id that could flood a log line is replaced");
+        assertProblem(new Browser().send("GET", "/api/v1/me", null), 401, "AUTH_REQUIRED");
+        assertNotNull(new Browser().send("GET", "/api/v1/me", null).requestId(), "a refusal has an id too");
     }
 
     @Test
