@@ -3,12 +3,35 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "engines": { "node": ">=22.12.0" },
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview --host 127.0.0.1"
+    "preview": "vite preview --host 127.0.0.1",
+    "api:generate": "openapi-typescript ../contracts/author-review.openapi.json -o src/api/schema.d.ts",
+    "api:check": "node scripts/check-api.mjs",
+    "test": "playwright test --project=ui",
+    "test:integration": "playwright test --project=integration",
+    "format:check": "prettier --check src/App.tsx src/main.tsx src/components src/features src/platform src/api/client.ts src/api/queries.ts src/styles.css tests playwright.config.ts scripts"
   },
-  "dependencies": { "react": "19.3.0", "react-dom": "19.3.0" },
-  "devDependencies": { "@types/react": "^19.2.0", "@types/react-dom": "^19.2.0", "@types/node": "^24.0.0", "@vitejs/plugin-react": "6.1.1", "typescript": "~5.9.3", "vite": "8.3.0" }
+  "dependencies": {
+    "@tanstack/react-query": "5.104.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-router-dom": "7.18.4"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.11.1",
+    "@playwright/test": "1.63.0",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "openapi-typescript": "7.13.0",
+    "prettier": "3.9.9",
+    "typescript": "~5.9.3",
+    "vite": "8.3.0"
+  }
 }

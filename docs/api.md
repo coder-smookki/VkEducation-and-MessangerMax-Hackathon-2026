@@ -1,5 +1,15 @@
 # Контракты и статус API
 
+## Потребитель Mini App (26.09)
+
+Все запросы идут на `/api/v1` того же origin `https://hackathon.lumnex.ru`. Вход отправляет сырой initData в `/auth/max`, затем читает `/me`. CSRF берётся из JSON `/csrf`; после `CSRF_TOKEN_INVALID` допускается один повтор с обновлённым токеном и прежним ключом команды.
+
+Сетевой сбой/5xx после команды означает неизвестный исход, не гарантированный отказ. UI сохраняет точное тело и Idempotency-Key для ручного повтора. При 409 серверные данные загружаются отдельно от пользовательского ввода. 404 не раскрывает чужой объект. Logout очищает session cache.
+
+Release proxy добавляет JSON 503 `SERVICE_UNAVAILABLE` при недоступном upstream и JSON 413 при своём лимите тела. Это поведение nginx, не новые Java endpoints. `api:check` в CI запрещает расхождение generated TypeScript и OpenAPI.
+
+Известный долг backend: CaseService сейчас добавляет `ДЕМО-` к displayNumber независимо от профиля. UI показывает серверное значение без подмены; перед несинтетическим выпуском Семён должен определить корректную нумерацию.
+
 Обновлено 26.09.2026 (S-08). Всё, что ниже названо работающим, отвечает на PostgreSQL за настоящей сессией и покрыто тестами. Машинная схема - [author-review.openapi.json](../contracts/author-review.openapi.json): у каждой операции поле `x-implementation-status`. `ContractRoutesTest` при каждом прогоне сверяет её с маршрутами, которые реально регистрирует Spring, в обе стороны: маршрут без описания и описание без маршрута роняют сборку. Остальные контракты - [contracts/README](../contracts/README.md).
 
 ## Что работает
@@ -29,7 +39,7 @@
 | GET `/api/v1/cases/{caseId}/history?cursor=&limit=` | сессия | 200 `{items,nextCursor}` | S-05 |
 | POST `/max/webhook` | update MAX и секрет в заголовке | 200 после записи во входящий ящик | S-05 |
 
-Только в профиле `demo`: GET `/api/v1/demo/case` и `/api/v1/demo/compare`. Это учебный пример, не часть рабочего API; вне demo они закрыты. `DemoCase` и `Comparison` из `frontend/src/api/client.ts` - типы примера, не DTO приложения.
+Только в профиле `demo`: GET `/api/v1/demo/case` и `/api/v1/demo/compare`. Это учебный пример, не часть рабочего API; вне demo они закрыты. Рабочий frontend больше не использует DemoCase/Comparison: `src/api/schema.d.ts` сгенерирован из `author-review.openapi.json`, а `src/api/client.ts` экспортирует его прикладные типы.
 
 ## Чего нет
 

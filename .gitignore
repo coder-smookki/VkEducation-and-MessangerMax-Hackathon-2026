@@ -25,3 +25,6 @@ ml/data/private/
 # Local research PDFs and private working deliverables
 output/
 backups/
+
+frontend/test-results/
+frontend/playwright-report/

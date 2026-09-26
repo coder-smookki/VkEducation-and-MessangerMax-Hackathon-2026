@@ -1,0 +1,85 @@
+# Standalone release configuration; never merge with compose.yaml (it enables demo).
+name: koren-release
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: koren
+      POSTGRES_USER: koren
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set a private database password}
+    volumes: ["release-db:/var/lib/postgresql/data"]
+    networks: [data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U koren -d koren"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+  backend:
+    build: ./backend
+    environment:
+      SERVER_ADDRESS: 0.0.0.0
+      DB_URL: jdbc:postgresql://db:5432/koren
+      DB_USER: koren
+      DB_PASSWORD: ${DB_PASSWORD:?Set a private database password}
+      MAX_BOT_TOKEN: ${MAX_BOT_TOKEN:?Set the bot token on the server only}
+      MAX_WEBHOOK_SECRET: ${MAX_WEBHOOK_SECRET:-}
+      MAX_WORKERS_ENABLED: "false"
+      ANALYSIS_ENABLED: ${ANALYSIS_ENABLED:-false}
+      INFERENCE_URL: http://ml:8000
+      KAFKA_ENABLED: "false"
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
+      SESSION_COOKIE_SAMESITE: ${SESSION_COOKIE_SAMESITE:-Lax}
+      SERVER_FORWARD_HEADERS_STRATEGY: framework
+    depends_on:
+      db: { condition: service_healthy }
+    networks: [data, app, outbound]
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+  ml:
+    profiles: [analysis]
+    build: ./ml
+    environment:
+      KOREN_KAFKA_ENABLED: "false"
+      KOREN_COMPARE_ANALYZER: rules
+    networks: [app]
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.release
+    ports: ["127.0.0.1:${WEB_PORT:-8090}:8080"]
+    depends_on: [backend]
+    networks: [app, outbound]
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  https:
+    profiles: [https]
+    image: caddy:2-alpine
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-hackathon.lumnex.ru}
+    ports: ["80:80", "443:443", "443:443/udp"]
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - release-tls:/data
+      - release-caddy:/config
+    networks: [app, outbound]
+    depends_on:
+      web: { condition: service_healthy }
+    restart: unless-stopped
+networks:
+  data: { internal: true }
+  app: { internal: true }
+  outbound: {}
+volumes:
+  release-db:
+  release-tls:
+  release-caddy:
