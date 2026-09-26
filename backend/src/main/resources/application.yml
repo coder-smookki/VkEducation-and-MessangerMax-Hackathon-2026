@@ -55,3 +55,7 @@ koren:
     # Empty means the webhook route does not exist at all.
     webhook-secret: ${MAX_WEBHOOK_SECRET:}
     workers-enabled: ${MAX_WORKERS_ENABLED:false}
+logging:
+  pattern:
+    # Every line written while serving a request carries its id; worker lines have none.
+    correlation: "[%X{requestId:-}] "

@@ -1,9 +1,11 @@
 package ru.koren.config;
 
+import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.session.ChangeSessionIdAuthenticationStrategy;
@@ -11,7 +13,7 @@ import org.springframework.security.web.authentication.session.SessionAuthentica
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
-import org.springframework.http.HttpStatus;
+import org.springframework.security.web.csrf.CsrfException;
 
 /** Closed by default. A route opens only together with authentication and object authorization. */
 @Configuration
@@ -32,14 +34,24 @@ public class SecurityConfig {
         http.securityContext(context -> context.securityContextRepository(securityContextRepository()));
         // Cookie commands stay CSRF protected; the token is readable by the Mini App script.
         http.csrf(csrf -> csrf.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
-            .ignoringRequestMatchers("/max/webhook"));        http.exceptionHandling(handling -> handling.authenticationEntryPoint((request, response, e) -> {
-            response.setStatus(HttpStatus.UNAUTHORIZED.value());
-            response.setContentType("application/problem+json;charset=UTF-8");
-            response.getWriter().write(
-                "{\"type\":\"about:blank\",\"title\":\"Нужен вход через MAX\","
-                    + "\"status\":401,\"code\":\"AUTH_REQUIRED\"}");
-        }));
+            .ignoringRequestMatchers("/max/webhook"));
+        http.exceptionHandling(handling -> handling
+            .authenticationEntryPoint((request, response, e) -> ApiErrorController.write(response,
+                HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Нужен вход через MAX"))
+            // Only two things reach here: a failed CSRF check, and a route this API does not have.
+            // Object-level refusals are CaseException 403s with their own codes and never come this way.
+            .accessDeniedHandler((request, response, e) -> {
+                if (e instanceof CsrfException) {
+                    ApiErrorController.write(response, HttpStatus.FORBIDDEN, "CSRF_TOKEN_INVALID",
+                        "Проверка запроса не пройдена, обновите страницу");
+                } else {
+                    ApiErrorController.write(response, HttpStatus.NOT_FOUND, "NOT_FOUND", "Не найдено");
+                }
+            }));
         http.authorizeHttpRequests(auth -> {
+            // A forward to /error after a failure is not a new request: without this every 400, 404
+            // and 500 of an open route was rewritten into 401. A direct GET /error is still denied.
+            auth.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll();
             auth.requestMatchers(HttpMethod.GET, "/actuator/health").permitAll();
             if (environment.matchesProfiles("demo")) {
                 auth.requestMatchers(HttpMethod.GET, "/api/v1/demo/**").permitAll();
@@ -54,7 +66,7 @@ public class SecurityConfig {
             auth.requestMatchers(HttpMethod.POST, "/api/v1/auth/logout").authenticated();
             auth.requestMatchers(HttpMethod.POST, "/api/v1/memberships/claim").authenticated();
             auth.requestMatchers(HttpMethod.POST, "/max/webhook").permitAll();
-            // Case routes stay closed until object authorization is wired in the next step.
+            // Anything not listed does not exist for a client: 401 without a session, 404 with one.
             auth.anyRequest().denyAll();
         });
         // No form login, no Basic login, no blanket CSRF disable, no trusted client user ID.
