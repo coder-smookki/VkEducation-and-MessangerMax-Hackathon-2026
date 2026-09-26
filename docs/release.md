@@ -47,8 +47,8 @@ Seed запускается отдельным явным шагом и толь
 | Анализ отчёта в Python | `ANALYSIS_ENABLED`, `COMPARE_ANALYZER` | выключен, stub | выключен, пока holdout Софии не измерен; при включении - `rules` |
 | Текстовый бот и уведомления | `MAX_WEBHOOK_SECRET`, `MAX_WORKERS_ENABLED` | маршрута нет, воркеры стоят | выключен до HTTPS-стенда и настоящего отправителя: сейчас отправитель отказывает, сообщения копятся в очереди |
 | Разбор свободной фразы на пункты | - | STUB | автор вводит пункты сам |
-| Похожие обращения, Kafka и Chroma | `KAFKA_ENABLED` | выключено | выключено |
-| Demo-маршруты `/api/v1/demo/**` | профиль `demo` | в dev-Compose включён | выключить в release-конфигурации (K-07, QA-R09) |
+| Похожие обращения, Kafka и Chroma | `KAFKA_ENABLED` и профиль Compose `similar` | не запускаются | не запускаются; backend их не ждёт |
+| Demo-маршруты `/api/v1/demo/**` | `SPRING_PROFILES_ACTIVE` | `demo` в Compose для разработки | `release` на стенде - demo закрыт (QA-R09) |
 
 ### Окружение
 
@@ -92,7 +92,7 @@ G2 не пройден: вход и бот не проверены на наст
 
 1. На машине выпуска: `git status --porcelain` пуст, `git rev-parse HEAD` - SHA кандидата. Записать его сюда и в [журнал](operations-log.md).
 2. Разрешённый backup стенда перед выпуском: `python3 scripts/db_backup.py backup`, затем `verify` на этом дампе.
-3. Выпуск с версией: `RELEASE_SHA=$(git rev-parse HEAD) docker compose up -d --build`. Без `RELEASE_SHA` стенд честно отвечает `unknown`, и проверка версии не проходит.
+3. Выпуск с версией и без demo: `SPRING_PROFILES_ACTIVE=release RELEASE_SHA=$(git rev-parse HEAD) docker compose up -d --build`. Без `RELEASE_SHA` стенд честно отвечает `unknown`, без `release` открыт demo - smoke не пройдёт ни в том, ни в другом случае. Сервер стенда должен скачивать образы с Docker Hub; если нет - зеркало `mirror.gcr.io` в настройках Docker.
 4. Server smoke с другой машины: `python3 scripts/stand_smoke.py --expect-sha <SHA>` - все строки PASS. С `--login-max-user-id <синтетический id>` дополнительно проверяются вход, флаги Secure и HttpOnly у cookie и живая сессия.
 5. MAX smoke - вручную в настоящем клиенте: открыть Mini App из бота, войти, пройти основной сценарий двумя ролями ([проверка другим участником](#проверка-другим-участником)). Пока бот и HTTPS-стенд не готовы, в материалах и журнале это BLOCKED с причиной, а не PASS.
 6. Роли проверяющим: `seed_stand.py invite` и `dispatcher`. Коды и доступы - только закрытым каналом, согласованным с капитаном; не в Git, не в общий чат, не в материалы.
