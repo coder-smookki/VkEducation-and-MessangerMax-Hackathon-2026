@@ -38,4 +38,38 @@ public class DialogRepository {
                        version = bot_dialog.version + 1, updated_at = now()
                 """, userId);
     }
+
+    public void setAwaitingCaseText(UUID userId) {
+        jdbc.update("""
+                INSERT INTO bot_dialog(user_id, state) VALUES (?, 'AWAITING_CASE_TEXT')
+                ON CONFLICT (user_id) DO UPDATE
+                   SET state = 'AWAITING_CASE_TEXT', case_id = NULL, item_id = NULL,
+                       content_version = NULL, work_round = NULL,
+                       version = bot_dialog.version + 1, updated_at = now()
+                """, userId);
+    }
+
+    public void setAwaitingItems(UUID userId, UUID caseId) {
+        jdbc.update("""
+                INSERT INTO bot_dialog(user_id, state, case_id) VALUES (?, 'AWAITING_ITEMS', ?)
+                ON CONFLICT (user_id) DO UPDATE
+                   SET state = 'AWAITING_ITEMS', case_id = EXCLUDED.case_id, item_id = NULL,
+                       content_version = NULL, work_round = NULL,
+                       version = bot_dialog.version + 1, updated_at = now()
+                """, userId, caseId);
+    }
+
+    /** The round is stored with the question: an answer that arrives after a new round is stale. */
+    public void setAwaitingObservation(UUID userId, UUID caseId, UUID itemId,
+                                       int contentVersion, int workRound) {
+        jdbc.update("""
+                INSERT INTO bot_dialog(user_id, state, case_id, item_id, content_version, work_round)
+                VALUES (?, 'AWAITING_OBSERVATION', ?, ?, ?, ?)
+                ON CONFLICT (user_id) DO UPDATE
+                   SET state = 'AWAITING_OBSERVATION', case_id = EXCLUDED.case_id,
+                       item_id = EXCLUDED.item_id, content_version = EXCLUDED.content_version,
+                       work_round = EXCLUDED.work_round,
+                       version = bot_dialog.version + 1, updated_at = now()
+                """, userId, caseId, itemId, contentVersion, workRound);
+    }
 }

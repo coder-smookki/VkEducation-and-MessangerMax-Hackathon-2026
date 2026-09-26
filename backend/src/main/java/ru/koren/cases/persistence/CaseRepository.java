@@ -74,6 +74,41 @@ public class CaseRepository {
                 """, (rs, row) -> rs.getObject("user_id", UUID.class), houseId);
     }
 
+    /** Houses where this person still has access, in a stable order. */
+    public List<UUID> activeHouses(UUID userId) {
+        return jdbc.query("""
+                SELECT house_id FROM membership
+                 WHERE user_id = ? AND revoked_at IS NULL
+                 ORDER BY house_id
+                """, (rs, row) -> rs.getObject("house_id", UUID.class), userId);
+    }
+
+    public record PendingObservationRow(UUID itemId, UUID caseId, int contentVersion, int workRound,
+                                        String category, String location, String symptom) {}
+
+    /**
+     * Active items of this author's confirmed cases that report finished work and still await an
+     * answer. Oldest first, so the bot can walk them one at a time without numbering anything.
+     */
+    public List<PendingObservationRow> awaitingObservation(UUID authorId, int limit) {
+        return jdbc.query("""
+                SELECT i.id, i.case_id, i.content_version, i.work_round,
+                       r.category, r.location, r.symptom
+                  FROM case_item i
+                  JOIN service_case c ON c.id = i.case_id
+                  JOIN item_revision r ON r.item_id = i.id AND r.content_version = i.content_version
+                 WHERE c.author_id = ? AND c.submission_status = 'CONFIRMED'
+                   AND i.administrative_status = 'ACTIVE'
+                   AND i.work_status = 'REPORTED_DONE'
+                   AND i.observation = 'NOT_RECEIVED'
+                 ORDER BY c.created_at, i.position, i.id
+                 LIMIT ?
+                """, (rs, row) -> new PendingObservationRow(rs.getObject("id", UUID.class),
+            rs.getObject("case_id", UUID.class), rs.getInt("content_version"),
+            rs.getInt("work_round"), rs.getString("category"), rs.getString("location"),
+            rs.getString("symptom")), authorId, limit);
+    }
+
     public Optional<CaseRow> findCase(UUID caseId) {
         return jdbc.query("""
                 SELECT id, house_id, author_id, source_revision, version, submission_status, created_at,

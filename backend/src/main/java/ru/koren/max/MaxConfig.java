@@ -1,28 +1,31 @@
 package ru.koren.max;
 
+import java.time.Clock;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.transaction.PlatformTransactionManager;
-import ru.koren.max.application.WebhookIntake;
-import ru.koren.max.persistence.InboxRepository;
-import java.time.Clock;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
-import ru.koren.max.application.InboxWorker;
-import ru.koren.max.application.UpdateHandler;
-import ru.koren.max.persistence.DialogRepository;
+import org.springframework.transaction.PlatformTransactionManager;
 import ru.koren.cases.application.CaseService;
+import ru.koren.cases.persistence.CaseRepository;
 import ru.koren.identity.persistence.MaxUserProvisioner;
 import ru.koren.max.application.BotDialog;
+import ru.koren.max.application.InboxWorker;
+import ru.koren.max.application.UpdateHandler;
+import ru.koren.max.application.WebhookIntake;
+import ru.koren.max.persistence.DialogRepository;
+import ru.koren.max.persistence.InboxRepository;
 import ru.koren.notifications.persistence.OutboxRepository;
 
-
-/** Without a configured secret the webhook does not exist at all: an open one is worse than none. */
+/**
+ * Without a configured secret the webhook does not exist at all: an open one is worse than none.
+ * The bot token is required too, because a bot that cannot answer is not a bot.
+ */
 @Configuration
 @Profile("!no-db")
 @ConditionalOnExpression("'${koren.max.webhook-secret:}' != '' and '${koren.max.bot-token:}' != ''")
@@ -34,15 +37,20 @@ public class MaxConfig {
     }
 
     @Bean
+    DialogRepository dialogRepository(JdbcTemplate jdbc) {
+        return new DialogRepository(jdbc);
+    }
+
+    @Bean
     WebhookIntake webhookIntake(InboxRepository inbox, PlatformTransactionManager transactions,
                                 @Value("${koren.max.webhook-secret}") String secret) {
         return new WebhookIntake(inbox, transactions, secret);
     }
 
     @Bean
-    UpdateHandler updateHandler(CaseService cases, MaxUserProvisioner users,
+    UpdateHandler updateHandler(CaseService cases, CaseRepository repo, MaxUserProvisioner users,
                                 DialogRepository dialogs, OutboxRepository outbox) {
-        return new BotDialog(cases, users, dialogs, outbox);
+        return new BotDialog(cases, repo, users, dialogs, outbox);
     }
 
     @Bean
@@ -70,10 +78,5 @@ public class MaxConfig {
         void drainInbox() {
             worker.drainOnce();
         }
-    }
-
-    @Bean
-    DialogRepository dialogRepository(JdbcTemplate jdbc) {
-        return new DialogRepository(jdbc);
     }
 }
