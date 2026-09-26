@@ -15,6 +15,8 @@ services:
       retries: 20
   kafka:
     image: apache/kafka:3.9.0
+    # Only for the similar-cases feature, which is off in the candidate: docker compose --profile similar up
+    profiles: [ "similar" ]
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
@@ -39,7 +41,7 @@ services:
     build: ./ml
     environment:
       KOREN_CHROMA_PATH: /app/data/chroma
-      KOREN_KAFKA_ENABLED: "true"
+      KOREN_KAFKA_ENABLED: ${KAFKA_ENABLED:-false}
       KOREN_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       KOREN_KAFKA_TOPIC: ${KAFKA_CASE_UPDATES_TOPIC:-koren.case-updates}
       KOREN_KAFKA_GROUP_ID: ${KAFKA_ML_GROUP_ID:-koren-ml-indexer}
@@ -53,14 +55,15 @@ services:
   backend:
     build: ./backend
     environment:
-      SPRING_PROFILES_ACTIVE: demo
+      # demo opens /api/v1/demo/** for local development; a stand sets SPRING_PROFILES_ACTIVE=release
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-demo}
       SERVER_ADDRESS: 0.0.0.0
       DB_URL: jdbc:postgresql://db:5432/${DB_NAME:-koren}
       DB_USER: ${DB_USER:-koren}
       DB_PASSWORD: ${DB_PASSWORD:?Copy .env.example to .env}
       INFERENCE_URL: http://ml:8000
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      KAFKA_ENABLED: "true"
+      KAFKA_ENABLED: ${KAFKA_ENABLED:-false}
       KAFKA_CASE_UPDATES_TOPIC: ${KAFKA_CASE_UPDATES_TOPIC:-koren.case-updates}
       MAX_BOT_TOKEN: ${MAX_BOT_TOKEN:-}
       MAX_WEBHOOK_SECRET: ${MAX_WEBHOOK_SECRET:-}
@@ -70,7 +73,7 @@ services:
     ports: ["127.0.0.1:8080:8080"]
     depends_on:
       db: {condition: service_healthy}
-      kafka: {condition: service_healthy}
+      kafka: {condition: service_healthy, required: false}
       ml: {condition: service_started}
   frontend:
     build: ./frontend

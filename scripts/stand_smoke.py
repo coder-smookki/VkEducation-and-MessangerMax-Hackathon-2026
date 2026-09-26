@@ -120,7 +120,10 @@ def surface():
     status, headers, text = fetch("/actuator/health")
     health = parse(text) or {}
     check("health is UP", status == 200 and health.get("status") == "UP", f"{status} {text[:60]}")
-    check("health shows no internals", "components" not in health and "details" not in health)
+    # An unreachable stand must fail every check, never pass one by saying nothing.
+    check(
+        "health shows no internals", status == 200 and "components" not in health and "details" not in health
+    )
     check("every answer carries X-Request-Id", bool(headers and headers.get("X-Request-Id")))
 
     sha = expected_sha()
@@ -134,7 +137,7 @@ def surface():
 
     for path in CLOSED_PATHS:
         status, _, _ = fetch(path)
-        check(f"{path} is closed", status in (401, 403, 404), str(status))
+        check(f"{path} is closed", status in (401, 403, 404), str(status))  # None (unreachable) fails
 
     status, headers, text = fetch("/api/v1/no-such-route")
     content_type = headers.get("Content-Type", "") if headers else ""
@@ -145,7 +148,7 @@ def surface():
     )
 
     status, _, _ = fetch("/max/webhook")
-    check("the webhook does not answer a plain GET", status != 200, str(status))
+    check("the webhook does not answer a plain GET", status is not None and status != 200, str(status))
 
     if args.local:
         print("  SKIP  private ports (--local)")
