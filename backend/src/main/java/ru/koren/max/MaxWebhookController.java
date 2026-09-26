@@ -18,7 +18,8 @@ import ru.koren.max.application.WebhookIntake;
 @ConditionalOnBean(WebhookIntake.class)
 public class MaxWebhookController {
 
-    public static final String SECRET_HEADER = "X-Max-Webhook-Secret";
+    /** The header MAX itself sends with every webhook when the subscription has a secret. */
+    public static final String SECRET_HEADER = "X-Max-Bot-Api-Secret";
 
     private final WebhookIntake intake;
 
