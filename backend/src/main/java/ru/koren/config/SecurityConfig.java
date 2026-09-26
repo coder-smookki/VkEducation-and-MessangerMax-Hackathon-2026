@@ -53,6 +53,7 @@ public class SecurityConfig {
             // and 500 of an open route was rewritten into 401. A direct GET /error is still denied.
             auth.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll();
             auth.requestMatchers(HttpMethod.GET, "/actuator/health").permitAll();
+            auth.requestMatchers(HttpMethod.GET, "/actuator/info").permitAll();
             if (environment.matchesProfiles("demo")) {
                 auth.requestMatchers(HttpMethod.GET, "/api/v1/demo/**").permitAll();
             }

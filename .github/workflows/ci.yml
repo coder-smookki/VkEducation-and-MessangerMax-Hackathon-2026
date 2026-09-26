@@ -61,9 +61,13 @@ jobs:
           uv run pylint app
         working-directory: ml
   integration:
-    needs: [backend, frontend, ml]
+    needs: [ backend, frontend, ml ]
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # This job checks the similar-cases chain, which the candidate does not start: switch it on here.
+    env:
+      COMPOSE_PROFILES: similar
+      KAFKA_ENABLED: "true"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6

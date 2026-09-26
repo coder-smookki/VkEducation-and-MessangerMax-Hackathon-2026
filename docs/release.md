@@ -96,8 +96,8 @@ Seed запускается отдельным явным шагом и толь
 | Анализ отчёта в Python | `ANALYSIS_ENABLED`, `COMPARE_ANALYZER` | выключен, stub | выключен, пока holdout Софии не измерен; при включении - `rules` |
 | Текстовый бот и уведомления | `MAX_WEBHOOK_SECRET`, `MAX_WORKERS_ENABLED` | маршрута нет, воркеры стоят | выключен до HTTPS-стенда и настоящего отправителя: сейчас отправитель отказывает, сообщения копятся в очереди |
 | Разбор свободной фразы на пункты | - | STUB | автор вводит пункты сам |
-| Похожие обращения, Kafka и Chroma | `KAFKA_ENABLED` | выключено | выключено |
-| Demo-маршруты `/api/v1/demo/**` | профиль `demo` | в dev-Compose включён | выключены в compose.release.yaml; локально анонимный запрос отклонён |
+| Похожие обращения, Kafka и Chroma | `KAFKA_ENABLED`; в dev-Compose - профиль `similar` | не запускаются | в compose.release.yaml Kafka нет; backend её не ждёт |
+| Demo-маршруты `/api/v1/demo/**` | `SPRING_PROFILES_ACTIVE` (dev-Compose, по умолчанию `demo`) | в dev-Compose включён | compose.release.yaml профиль demo не задаёт - demo закрыт; анонимный запрос отклонён |
 
 ### Окружение
 
@@ -134,3 +134,18 @@ Seed ничего не удаляет. Ролей в обход сервера �
 ### Фактические ограничения
 
 G2 не пройден: вход и бот не проверены на настоящем MAX, нужен HTTPS-стенд. Нагрузка измерена на ноутбуке (p95 20 мс при 10 сессиях), а не на стенде. Анализатор оценён только на development и regression; holdout не написан. displayName и ownerDisplayName всегда null. Исполнителя и его кабинета нет. Подробно - [PROJECT_STATE](memory/PROJECT_STATE.md).
+
+## Передача (S-09, 29.09) и контроль сдачи (S-10, 30.09)
+
+Порядок для Семёна; внутренняя подача - до 18:00 29.09, дедлайн - 30.09 12:00 МСК.
+
+1. На машине выпуска: `git status --porcelain` пуст, `git rev-parse HEAD` - SHA кандидата. Записать его сюда и в [журнал](operations-log.md).
+2. Разрешённый backup стенда перед выпуском: в том же терминале задать `COMPOSE_FILE`, `COMPOSE_PROJECT_NAME`, `COMPOSE_ENV_FILES` (как в разделе release-конфигурации), затем `python3 scripts/db_backup.py backup` и `verify` на этом дампе. Те же переменные нужны `seed_stand.py` и `ops_status.py`.
+3. Выпуск с версией: `RELEASE_SHA=$(git rev-parse HEAD) docker compose --env-file /etc/koren/release.env -p koren-release -f compose.release.yaml up --build -d` (с `--profile https`, если используется подготовленный Caddy; см. [release-конфигурацию](#подготовленная-release-конфигурация)). Без `RELEASE_SHA` стенд честно отвечает `unknown`, и проверка версии не проходит. Сервер стенда должен скачивать образы с Docker Hub; если нет - зеркало `mirror.gcr.io` в настройках Docker.
+4. Server smoke с другой машины: `python3 scripts/stand_smoke.py --expect-sha <SHA>` - все строки PASS. С `--login-max-user-id <синтетический id>` дополнительно проверяются вход, флаги Secure и HttpOnly у cookie и живая сессия.
+5. MAX smoke - вручную в настоящем клиенте: открыть Mini App из бота, войти, пройти основной сценарий двумя ролями ([проверка другим участником](#проверка-другим-участником)). Пока бот и HTTPS-стенд не готовы, в материалах и журнале это BLOCKED с причиной, а не PASS.
+6. Роли проверяющим: `seed_stand.py invite` и `dispatcher`. Коды и доступы - только закрытым каналом, согласованным с капитаном; не в Git, не в общий чат, не в материалы.
+7. `python3 scripts/ops_status.py`: очереди не растут, отказов доставки нет или они объяснены.
+8. Строка в журнале: время, SHA, результат smoke, backup. Капитан сверяет кабинет и сохраняет подтверждение подачи.
+
+30.09 до 12:00 - повторить шаги 4 и 7 и записать результат. После сдачи - только то, что разрешено в [журнале](operations-log.md).

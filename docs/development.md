@@ -28,6 +28,8 @@ docker compose up --build -d
 python3 scripts/smoke.py
 ```
 
+Kafka и индекс похожих обращений по умолчанию не запускаются: они нужны только функции похожих обращений, которая в кандидате выключена. Включить: `COMPOSE_PROFILES=similar KAFKA_ENABLED=true docker compose up --build -d`.
+
 Существующий `.env` не перезаписывать. Альтернатива без копирования файла: `docker compose --env-file .env.example up --build -d` для локальных учебных данных.
 
 | Адрес | Назначение |
@@ -36,7 +38,7 @@ python3 scripts/smoke.py
 | `http://127.0.0.1:8080/actuator/health` | Health Java и БД |
 | `127.0.0.1:5432` | PostgreSQL; значения из `.env` |
 | `http://ml:8000` | Python только внутри Docker-сети в обычном Compose |
-| `127.0.0.1:9092` | Kafka для локальных инструментов; внутри сети `kafka:29092` |
+| `127.0.0.1:9092` | Kafka, только с профилем `similar`; внутри сети `kafka:29092` |
 
 Для диагностики: `docker compose ps`, `docker compose logs --tail=60 <service>`. Не сохранять логи с реальными обращениями в Git. Остановка `docker compose down` сохраняет volume БД; `down -v` удаляет данные и не является обычной командой остановки.
 
@@ -126,6 +128,7 @@ INFERENCE_TEST_URL=http://127.0.0.1:8000 ./mvnw -B -Dtest=IntakeContractTest tes
 Из корня, с локальной тестовой конфигурацией:
 
 ```sh
+export COMPOSE_PROFILES=similar KAFKA_ENABLED=true
 docker compose --env-file .env.example -f compose.yaml -f compose.test.yaml up --build -d
 python3 scripts/smoke.py
 ```
