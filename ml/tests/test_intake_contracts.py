@@ -156,6 +156,8 @@ def test_confirmed_context_schema_is_current():
         ("ConfirmReportLinks", "report-links-request.json"),
         ("CreateReportResponse", "report-create-response.json"),
         ("WorkReportView", "report-view.json"),
+        ("ReportSuggestions", "report-suggestions-ready.json"),
+        ("ReportSuggestions", "report-suggestions-stale.json"),
         ("RecordObservation", "observation-request.json"),
         ("DecideItem", "decision-withdraw-request.json"),
         ("DecideItem", "decision-archive-request.json"),

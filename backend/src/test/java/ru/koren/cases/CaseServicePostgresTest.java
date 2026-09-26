@@ -26,6 +26,7 @@ import java.time.Clock;
 import ru.koren.reports.persistence.ReportRepository;
 import ru.koren.observations.persistence.ObservationRepository;
 import ru.koren.notifications.persistence.OutboxRepository;
+import ru.koren.inference.persistence.AnalysisRepository;
 
 /** Real PostgreSQL only; skipped without DB_TEST_URL. Fixture: A/B residents of H1, C resident of H2, D dispatcher of H1. */
 @SpringBootTest(properties = {
@@ -354,7 +355,8 @@ class CaseServicePostgresTest {
             }
         };
         var failingService = new CaseService(failing, new ReportRepository(jdbc),
-            new ObservationRepository(jdbc), new OutboxRepository(jdbc), transactions, Clock.systemUTC());
+            new ObservationRepository(jdbc), new OutboxRepository(jdbc), new AnalysisRepository(jdbc),
+            transactions, Clock.systemUTC(), false);
         assertThrows(IllegalStateException.class,
                 () -> failingService.create(a, h1, "Откатываемый текст", "create-10"));
         assertEquals(0, count("SELECT count(*) FROM service_case WHERE author_id = ?", a));

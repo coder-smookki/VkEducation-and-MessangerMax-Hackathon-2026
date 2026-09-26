@@ -18,6 +18,7 @@ import ru.koren.reports.application.CreateReportResponse;
 import ru.koren.reports.application.WorkReportView;
 import ru.koren.cases.application.CaseView;
 import ru.koren.reports.application.ConfirmLinksRequest;
+import ru.koren.reports.application.ReportSuggestionsView;
 
 /** Work reports; every rule stays in CaseService, the actor comes from the session. */
 @RestController
@@ -49,6 +50,11 @@ public class ReportController {
     @GetMapping("/reports/{reportId}")
     public WorkReportView get(Authentication authentication, @PathVariable UUID reportId) {
         return service.getReport(actor(authentication), reportId);
+    }
+
+    @GetMapping("/reports/{reportId}/suggestions")
+    public ReportSuggestionsView suggestions(Authentication authentication, @PathVariable UUID reportId) {
+        return service.getSuggestions(actor(authentication), reportId);
     }
 
     @PostMapping("/reports/{reportId}/links")

@@ -36,6 +36,10 @@ import java.util.Comparator;
 import ru.koren.reports.application.LinkInput;
 import ru.koren.observations.persistence.ObservationRepository;
 import ru.koren.notifications.persistence.OutboxRepository;
+import org.springframework.beans.factory.annotation.Value;
+import ru.koren.inference.InferenceContract;
+import ru.koren.inference.persistence.AnalysisRepository;
+import ru.koren.reports.application.ReportSuggestionsView;
 
 /**
  * S1 use cases for drafts and confirmation. actorId must come from server authentication, never a request body.
@@ -86,13 +90,19 @@ public class CaseService {
     private final Clock clock;
     private final JsonMapper json = JsonMapper.builder().build();
     private final OutboxRepository outbox;
+    private final AnalysisRepository analyses;
+    private final boolean analysisEnabled;
 
     public CaseService(CaseRepository repo, ReportRepository reports, ObservationRepository observations,
-                       OutboxRepository outbox, PlatformTransactionManager transactions, Clock clock) {
+                       OutboxRepository outbox, AnalysisRepository analyses,
+                       PlatformTransactionManager transactions, Clock clock,
+                       @Value("${koren.analysis.enabled:false}") boolean analysisEnabled) {
         this.repo = repo;
         this.reports = reports;
         this.observations = observations;
         this.outbox = outbox;
+        this.analyses = analyses;
+        this.analysisEnabled = analysisEnabled;
         tx = new TransactionTemplate(transactions);
         readTx = new TransactionTemplate(transactions);
         readTx.setReadOnly(true);
@@ -628,14 +638,56 @@ public class CaseService {
                 reports.insertTargets(reportId, caseId, targetItemIds);
                 repo.insertAudit(caseId, actorId, "REPORT_SAVED", json.writeValueAsString(
                     orderedMap("caseId", caseId, "reportId", reportId, "targetCount", targetItemIds.size())));
+                // The analysis is only queued here, in the same transaction; Python is called later,
+                // outside it, so saving the report never depends on the analysis succeeding.
+                if (analysisEnabled) analyses.enqueue(reportId, caseId, row.sourceRevision());
                 // Saving text changes no item: no round, no work status, no observation.
                 var stored = reports.findReport(reportId).orElseThrow();
                 var report = new WorkReportView(reportId, caseId, actorId, reportText, targetItemIds,
                     stored.createdAt().toInstant(), List.of());
                 return TxOutcome.fresh(new CreateReportResponse(report,
                     viewOf(repo.findCase(caseId).orElseThrow()),
-                    new AnalysisView("MANUAL_REQUIRED")));
+                    new AnalysisView(analysisEnabled ? "QUEUED" : "MANUAL_REQUIRED")));
             });
+    }
+
+    /**
+     * The analysis of one report as its author or a dispatcher may see it. Reading never queues work.
+     * RUNNING and STALE are not stored: they are what QUEUED and READY mean right now.
+     */
+    public ReportSuggestionsView getSuggestions(UUID actorId, UUID reportId) {
+        Objects.requireNonNull(actorId);
+        Objects.requireNonNull(reportId);
+        return readTx.execute(status -> {
+            var report = reports.findReport(reportId).orElseThrow(CaseException::notFound);
+            var caseRow = loadVisible(actorId, report.caseId());
+            var analysis = analyses.findByReport(reportId).orElse(null);
+            if (analysis == null) return new ReportSuggestionsView("MANUAL_REQUIRED", null, null);
+            return switch (analysis.status()) {
+                case "QUEUED" -> new ReportSuggestionsView(analysis.leased() ? "RUNNING" : "QUEUED",
+                    analysis.id(), null);
+                case "READY" -> readyOrStale(caseRow, analysis);
+                default -> new ReportSuggestionsView("MANUAL_REQUIRED", analysis.id(), null);
+            };
+        });
+    }
+
+    /** A READY result is served only while the snapshot it was built from still describes the case. */
+    private ReportSuggestionsView readyOrStale(CaseRow caseRow, AnalysisRepository.AnalysisRow analysis) {
+        var stored = analyses.findSuggestion(analysis.suggestionId()).orElseThrow();
+        var result = json.readValue(stored.payload(), InferenceContract.Response.class);
+        var current = new java.util.HashMap<UUID, CaseRepository.ItemRow>();
+        repo.findItems(caseRow.id()).forEach(item -> current.put(item.id(), item));
+        boolean fresh = stored.sourceRevision() == caseRow.sourceRevision()
+            && result.suggestions().stream().allMatch(suggestion -> {
+            var item = current.get(suggestion.itemId());
+            return item != null && item.contentVersion() == suggestion.contentVersion()
+                && item.workRound() == suggestion.workRound();
+        });
+        // A stale hint is withheld, not shown with a warning: it describes a round that is over.
+        return fresh
+            ? new ReportSuggestionsView("READY", analysis.id(), result)
+            : new ReportSuggestionsView("STALE", analysis.id(), null);
     }
 
     public WorkReportView getReport(UUID actorId, UUID reportId) {
