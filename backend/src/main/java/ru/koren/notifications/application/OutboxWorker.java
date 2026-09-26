@@ -1,7 +1,5 @@
 package ru.koren.notifications.application;
 
-import java.sql.Timestamp;
-import java.time.Clock;
 import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -18,7 +16,7 @@ public class OutboxWorker {
     public static final int MAX_ATTEMPTS = 5;
     static final int LEASE_SECONDS = 60;
     static final int BATCH = 20;
-    private static final long[] BACKOFF_SECONDS = {10, 60, 300, 1800};
+    private static final int[] BACKOFF_SECONDS = {10, 60, 300, 1800};
 
     private static final Logger log = LoggerFactory.getLogger(OutboxWorker.class);
 
@@ -28,23 +26,20 @@ public class OutboxWorker {
     private final CaseService cases;
     private final MaxSender sender;
     private final TransactionTemplate tx;
-    private final Clock clock;
 
     public OutboxWorker(OutboxRepository outbox, CaseService cases, MaxSender sender,
-                        PlatformTransactionManager transactions, Clock clock) {
+                        PlatformTransactionManager transactions) {
         this.outbox = outbox;
         this.cases = cases;
         this.sender = sender;
         this.tx = new TransactionTemplate(transactions);
-        this.clock = clock;
     }
 
     public Drained drainOnce() {
-        Timestamp now = Timestamp.from(clock.instant());
         // A fresh token per batch, so finishing a row proves we still hold the lease we took.
         UUID leaseToken = UUID.randomUUID();
         List<OutboxRepository.OutboxRow> claimed =
-            tx.execute(status -> outbox.claim(now, LEASE_SECONDS, MAX_ATTEMPTS, BATCH, leaseToken));
+            tx.execute(status -> outbox.claim(LEASE_SECONDS, MAX_ATTEMPTS, BATCH, leaseToken));
         int sent = 0;
         int failed = 0;
         int cancelled = 0;
@@ -69,16 +64,15 @@ public class OutboxWorker {
                 // Only the failure class is stored and logged; the payload carries user text.
                 log.warn("Outbox event {} failed on attempt {}: {}", row.id(), row.attempts(),
                     failure.getClass().getSimpleName());
-                outbox.release(row.id(),
-                    Timestamp.from(clock.instant().plusSeconds(backoff(row.attempts()))),
-                    failure.getClass().getSimpleName(), leaseToken);
+                outbox.release(row.id(), backoff(row.attempts()), failure.getClass().getSimpleName(),
+                    leaseToken);
                 failed++;
             }
         }
         return new Drained(sent, failed, cancelled);
     }
 
-    private static long backoff(int attempts) {
+    private static int backoff(int attempts) {
         return BACKOFF_SECONDS[Math.min(Math.max(attempts, 1), BACKOFF_SECONDS.length) - 1];
     }
 }

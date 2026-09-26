@@ -1,6 +1,5 @@
 package ru.koren.max;
 
-import java.time.Clock;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -55,8 +54,8 @@ public class MaxConfig {
 
     @Bean
     InboxWorker inboxWorker(InboxRepository inbox, UpdateHandler handler,
-                            PlatformTransactionManager transactions, Clock clock) {
-        return new InboxWorker(inbox, handler, transactions, clock);
+                            PlatformTransactionManager transactions) {
+        return new InboxWorker(inbox, handler, transactions);
     }
 
     /**

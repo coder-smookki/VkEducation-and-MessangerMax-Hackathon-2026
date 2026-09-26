@@ -1,11 +1,13 @@
 package ru.koren.notifications.persistence;
 
-import java.sql.Timestamp;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-/** Durable delivery queue. A row is written in the same transaction as the state it announces. */
+/**
+ * Durable delivery queue. A row is written in the same transaction as the state it announces.
+ * All queue time comes from the database clock, never from the application's.
+ */
 public class OutboxRepository {
 
     public record OutboxRow(UUID id, UUID caseId, UUID recipientId, String eventType,
@@ -38,17 +40,16 @@ public class OutboxRepository {
     }
 
     /** Claims under a lease owned by leaseToken; only that owner may later finish the row. */
-    public List<OutboxRow> claim(Timestamp now, int leaseSeconds, int maxAttempts, int limit,
-                                 UUID leaseToken) {
+    public List<OutboxRow> claim(int leaseSeconds, int maxAttempts, int limit, UUID leaseToken) {
         return jdbc.query("""
                 UPDATE outbox_event
-                   SET leased_until = ?::timestamptz + make_interval(secs => ?),
+                   SET leased_until = now() + make_interval(secs => ?),
                        leased_by = ?, attempts = attempts + 1
                  WHERE id IN (
                        SELECT id FROM outbox_event
                         WHERE sent_at IS NULL
-                          AND available_at <= ?
-                          AND (leased_until IS NULL OR leased_until <= ?)
+                          AND available_at <= now()
+                          AND (leased_until IS NULL OR leased_until <= now())
                           AND attempts < ?
                         ORDER BY available_at, id
                           FOR UPDATE SKIP LOCKED
@@ -57,7 +58,7 @@ public class OutboxRepository {
                 """, (rs, row) -> new OutboxRow(rs.getObject("id", UUID.class),
                 rs.getObject("case_id", UUID.class), rs.getObject("recipient_id", UUID.class),
                 rs.getString("event_type"), rs.getString("payload"), rs.getInt("attempts")),
-            now, leaseSeconds, leaseToken, now, now, maxAttempts, limit);
+            leaseSeconds, leaseToken, maxAttempts, limit);
     }
 
     /**
@@ -74,12 +75,12 @@ public class OutboxRepository {
     }
 
     /** Keeps the reason next to the row: a parked notification must explain itself without logs. */
-    public int release(UUID id, Timestamp availableAt, String error, UUID leaseToken) {
+    public int release(UUID id, int delaySeconds, String error, UUID leaseToken) {
         return jdbc.update("""
-                UPDATE outbox_event SET leased_until = NULL, leased_by = NULL, available_at = ?,
-                       last_error = ?
+                UPDATE outbox_event SET leased_until = NULL, leased_by = NULL,
+                       available_at = now() + make_interval(secs => ?), last_error = ?
                  WHERE id = ? AND leased_by = ?
-                """, availableAt, error == null ? null
+                """, delaySeconds, error == null ? null
             : error.substring(0, Math.min(error.length(), 500)), id, leaseToken);
     }
 

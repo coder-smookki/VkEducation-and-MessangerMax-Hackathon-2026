@@ -1,7 +1,5 @@
 package ru.koren.max.application;
 
-import java.sql.Timestamp;
-import java.time.Clock;
 import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -16,7 +14,7 @@ public class InboxWorker {
     static final int LEASE_SECONDS = 60;
     public static final int MAX_ATTEMPTS = 5;
     static final int BATCH = 20;
-    private static final long[] BACKOFF_SECONDS = {5, 30, 120, 600};
+    private static final int[] BACKOFF_SECONDS = {5, 30, 120, 600};
 
     private static final Logger log = LoggerFactory.getLogger(InboxWorker.class);
 
@@ -25,22 +23,18 @@ public class InboxWorker {
     private final InboxRepository inbox;
     private final UpdateHandler handler;
     private final TransactionTemplate tx;
-    private final Clock clock;
 
-    public InboxWorker(InboxRepository inbox, UpdateHandler handler,
-                       PlatformTransactionManager transactions, Clock clock) {
+    public InboxWorker(InboxRepository inbox, UpdateHandler handler, PlatformTransactionManager transactions) {
         this.inbox = inbox;
         this.handler = handler;
         this.tx = new TransactionTemplate(transactions);
-        this.clock = clock;
     }
 
     public Drained drainOnce() {
-        Timestamp now = Timestamp.from(clock.instant());
         // A fresh token per batch: even this same worker must not finish a row it re-claimed later.
         UUID leaseToken = UUID.randomUUID();
         List<InboxRepository.InboxRow> claimed =
-            tx.execute(status -> inbox.claim(now, LEASE_SECONDS, MAX_ATTEMPTS, BATCH, leaseToken));
+            tx.execute(status -> inbox.claim(LEASE_SECONDS, MAX_ATTEMPTS, BATCH, leaseToken));
         int handled = 0;
         int failed = 0;
         for (var row : claimed) {
@@ -60,15 +54,14 @@ public class InboxWorker {
                 // Never log the payload: an update carries user text and identifiers.
                 log.warn("Inbox event {} failed on attempt {}: {}", row.id(), row.attempts(),
                     failure.getClass().getSimpleName());
-                inbox.release(row.id(),
-                    Timestamp.from(clock.instant().plusSeconds(backoff(row.attempts()))), leaseToken);
+                inbox.release(row.id(), backoff(row.attempts()), leaseToken);
                 failed++;
             }
         }
         return new Drained(handled, failed);
     }
 
-    private static long backoff(int attempts) {
+    private static int backoff(int attempts) {
         return BACKOFF_SECONDS[Math.min(Math.max(attempts, 1), BACKOFF_SECONDS.length) - 1];
     }
 }
