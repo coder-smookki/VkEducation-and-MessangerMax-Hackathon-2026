@@ -120,6 +120,23 @@ public class CaseService {
         return readTx.execute(status -> viewOf(loadVisible(actorId, caseId)));
     }
 
+    /**
+     * Asked again immediately before delivery: access may have been revoked after the notification
+     * was queued. One rule, one place - this reuses the same check the read path uses.
+     */
+    public boolean mayRead(UUID actorId, UUID caseId) {
+        Objects.requireNonNull(actorId);
+        Objects.requireNonNull(caseId);
+        return Boolean.TRUE.equals(readTx.execute(status -> {
+            try {
+                loadVisible(actorId, caseId);
+                return true;
+            } catch (CaseException denied) {
+                return false;
+            }
+        }));
+    }
+
     public CasePage listCases(UUID actorId, UUID houseId, String queueState, String cursor, Integer limit) {
         Objects.requireNonNull(actorId);
         int pageSize = limit == null ? DEFAULT_LIMIT : limit;
