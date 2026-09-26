@@ -1,5 +1,9 @@
 # Протокол проверок и готовность
 
+## Проверки рабочего Mini App 26.09
+
+[Протокол Кирилла](qa/kirill-2026-09-26.md): 23/23 Playwright UI, 3/3 browser → nginx → Java → PostgreSQL, build/api:check/format:check. Запуск из чистого checkout описан в README. Fixtures UI, синтетический Bridge при настоящем API и реальные MAX-аккаунты - разные уровни; последний ещё NOT_RUN. Скриншоты сделаны из работающего UI, не из design. София должна независимо пройти QA и физические устройства.
+
 ## Что уже подтверждено
 
 Исходный код dev: `2f70acf03fbf8383b815a4a528a1df9165f5e51e`. На нём проверен [успешный CI 19.09](https://github.com/coder-smookki/VkEducation-and-MessangerMax-Hackathon-2026/actions/runs/35443265565): backend/frontend/ml/integration. Это историческое доказательство ядра; новый commit проверяется отдельно.

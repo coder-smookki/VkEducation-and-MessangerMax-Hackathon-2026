@@ -1,5 +1,13 @@
 # Архитектура и ответственность
 
+## Владение состоянием frontend
+
+React Router управляет маршрутами и блокировкой ухода с несохранённой формы. TanStack Query хранит серверные проекции, отменяет старые запросы и обновляет связанные списки после команды. Эти две зависимости заменяют отдельную самописную маршрутизацию и кэш.
+
+Форма получает свежий snapshot при открытии; после 409 сохраняет ввод, показывает актуальную версию и требует явного принятия контекста. Неизвестный исход хранит сериализованное тело и тот же Idempotency-Key в памяти до повтора; автоматического повтора команд нет. Старый идемпотентный ответ не откатывает cache на меньшую caseVersion. localStorage содержит только тему/размер текста.
+
+`allowedActions` пока не реализован. Видимость действий использует `/me.memberships` и отношение `authorId === me.userId`; это интерфейсная подсказка, Java повторно проверяет все права. Роли, результаты и версии не задаются URL или клиентским текстом.
+
 ## Единый путь команд
 
 ```mermaid
@@ -20,15 +28,16 @@ Java проверяет сессию/получателя, Membership, види�
 
 | Путь от корня | Реальный статус | Что достроить |
 |---|---|---|
-| `backend/.../cases/application/CaseService.java` | Внутренний CRUD/confirm с транзакциями | HTTP, приём и следующие шаги |
-| `backend/.../cases/persistence/CaseRepository.java` | SQL и выборки ядра | Дополнительные проекции/команды с теми же проверками |
-| `backend/.../cases/domain/` | ItemState и CaseProgress | Сохранять единый расчёт результата |
-| `backend/.../identity/` | Валидатор MAX и provisioner | Сессия, `/me`, приглашения, отзыв Membership |
-| `backend/.../config/SecurityConfig.java` | denyAll кроме health/demo | Точечные правила после реализации входа |
-| `backend/.../reports/`, `observations/`, `notifications/`, `max/` | Только package-info | Настоящие команды/адаптеры, без дублирования CaseService |
-| `backend/.../inference/` | HTTP, валидаторы, fallback, кандидаты/Kafka | Актуальность snapshot на пользовательском пути |
-| `ml/app/features/` | Intake, compare STUB/RULES, index | Исправить смешанные субъекты, оценить воздержание |
-| `frontend/src/` | Учебный экран | Рабочие сценарии из дизайна на согласованном API |
+| `backend/.../cases/application/CaseService.java` | CRUD/confirm/приём/шаг/отчёт/связи/наблюдения/решения | Один владелец продуктовых команд; не дублировать на клиенте |
+| `backend/.../cases/persistence/`, `cases/domain/` | SQL, версии, права, ItemState и CaseProgress | Сохранять серверный расчёт результата |
+| `backend/.../identity/`, `config/SecurityConfig.java` | MAX HMAC, сессия, CSRF, memberships, приглашения, закрытые маршруты | Проверить реальный MAX web/mobile |
+| `backend/.../max/`, `notifications/` | Webhook, диалог и durable inbox/outbox | Настоящий MaxSender ещё отсутствует |
+| `backend/.../inference/` | HTTP, валидаторы, fallback, кандидаты/Kafka | Kafka-публикация CRUD ещё не подключена |
+| `ml/app/features/` | Extract STUB, clarify RULES, compare RULES v2, производный индекс | Независимый holdout; не выдавать анализ за ремонт |
+| `frontend/src/features/` | Автор, очередь, отчёты/связи, наблюдения, история | Приёмка Софии и живой MAX |
+| `frontend/src/api/` | Generated OpenAPI types, cookie/CSRF client, Query cache, повторы | API не заменяется локальной моделью состояний |
+| `frontend/src/components/`, `platform/max.ts` | MAX-палитра, темы/текст, формы, Bridge и защита ввода | Клавиатура и screen reader на физических устройствах |
+| `compose.release.yaml`, `deploy/`, `frontend/nginx.conf` | Отдельная no-demo сборка, loopback proxy, опциональный HTTPS | Публикация сервера только после возобновления пользователем |
 
 Здесь `backend/.../` означает `backend/src/main/java/ru/koren/`, а не существующий путь с буквальным многоточием.
 
@@ -36,7 +45,7 @@ Java проверяет сессию/получателя, Membership, види�
 
 Один HTTPS origin: `/` - статическая сборка Mini App, `/api/v1` - Java API, `/max/webhook` - вход событий MAX. Последний путь не находится под `/api/v1`. Python, PostgreSQL, Kafka/Chroma не доступны из браузера и публичного интернета. Токен MAX только на сервере. Vite dev server и profile local/demo/no-db не выходят на публичный домен.
 
-Основной runtime остаётся модульным Java-монолитом с PostgreSQL и внутренним Python. Новая release-конфигурация с необязательным индексом - задача, а не уже существующий режим Compose. Сначала доказать ручной основной путь; не добавлять брокер или новый сервис там, где существующей таблицы очереди достаточно.
+Основной runtime остаётся модульным Java-монолитом с PostgreSQL и внутренним Python. `compose.release.yaml` запускает основной ручной путь без Kafka/Chroma; Python включается отдельным профилем `analysis`. Сначала доказать ручной основной путь; не добавлять брокер или новый сервис там, где существующей таблицы очереди достаточно.
 
 ## Сессия и доверие
 

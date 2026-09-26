@@ -1,8 +1,24 @@
 # Разработка и запуск
 
-## Полный локальный Compose
+## Mini App с настоящим Java API (26.09)
 
-Понадобится Docker с Compose; зависимости приложения собираются в контейнерах. Это среда разработки на loopback, с синтетическим UI, PostgreSQL, Kafka и производным Chroma-индексом. Пользовательский HTTP-путь пока отсутствует; внутренний CaseService уже сохраняет тестовые обращения на PostgreSQL.
+Основная проверка теперь `python3 scripts/check_miniapp.py` из корня после `npm --prefix frontend ci` и установки Chromium из README. Она создаёт отдельный Compose project со случайным тестовым ключом, PostgreSQL и release-сборкой frontend, запускает три сквозных теста и удаляет собственный project с volume. Рабочие базы не используются. Это настоящий HTTP/SQL и эмуляция только стартовых данных MAX, не проверка клиента MAX.
+
+```sh
+npm --prefix frontend run api:check
+npm --prefix frontend run format:check
+npm --prefix frontend run build
+npm --prefix frontend test
+python3 scripts/check_miniapp.py
+```
+
+Для ручной разработки Vite: `npm --prefix frontend run dev`. `API_PROXY_TARGET` задаёт адрес разрешённого локального Java API; по умолчанию `http://127.0.0.1:8080`. Пользовательские маршруты требуют серверную сессию. У UI нет публичного обхода входа или переключателя роли; фикстуры и синтетический Bridge существуют только в Playwright.
+
+Отдельный постоянный стенд поднимается по [release](release.md). Для локального HTTP допустим `SESSION_COOKIE_SECURE=false` только в закрытом тестовом env; на HTTPS оставить true. Не открывать Vite или профили demo/no-db на публичном домене.
+
+## Исторический учебный Compose для smoke Java/Python
+
+Понадобится Docker с Compose; зависимости приложения собираются в контейнерах. Это среда разработки на loopback с PostgreSQL, Kafka, производным Chroma-индексом и включёнными demo API. React уже заменён на рабочее Mini App; обычное открытие в браузере потребует входа через MAX. `scripts/smoke.py` по-прежнему проверяет учебные API, а не полный пользовательский интерфейс.
 
 Из корня репозитория, только если `.env` ещё не создан:
 
@@ -18,7 +34,7 @@ Kafka и индекс похожих обращений по умолчанию 
 
 | Адрес | Назначение |
 |---|---|
-| `http://127.0.0.1:5173` | Учебный интерфейс и прокси `/api` |
+| `http://127.0.0.1:5173` | Mini App и прокси `/api`; без сессии показан вход |
 | `http://127.0.0.1:8080/actuator/health` | Health Java и БД |
 | `127.0.0.1:5432` | PostgreSQL; значения из `.env` |
 | `http://ml:8000` | Python только внутри Docker-сети в обычном Compose |
@@ -52,7 +68,7 @@ npm ci
 npm run dev
 ```
 
-Этот путь **не проверяет Flyway, PostgreSQL или сохранение данных**. После остановки Python кнопка анализа должна показать ручной режим, а пример обращения остаться доступным.
+Этот путь **не проверяет Flyway, PostgreSQL или сохранение данных** и не обслуживает рабочие команды Mini App. Он оставлен для `scripts/smoke.py` и учебных demo API; рабочий React больше не содержит учебной кнопки анализа.
 
 ## Проверки
 
@@ -94,6 +110,8 @@ npm run build
 2. Выполнить `uv run --directory ml python -m scripts.export_openapi`.
 3. Обновить `contracts/examples`, документацию и тесты несовместимых случаев.
 4. Запустить Python, Java и smoke; изменение не завершено, пока один потребитель понимает старую схему.
+
+После изменения Java OpenAPI выполнить `npm --prefix frontend run api:generate`, закоммитить `frontend/src/api/schema.d.ts` и проверить `api:check`/build/UI. Не править generated TypeScript вручную.
 
 Экспорт обновляет inference OpenAPI и confirmed-context JSON Schema. `author-review.openapi.json` поддерживается отдельно с Java REST-спецификацией, потому что Python не реализует команды автора. Python dev-зависимость jsonschema проверяет общие примеры и фактические HTTP-ответы, включая ошибки 422/413.
 
