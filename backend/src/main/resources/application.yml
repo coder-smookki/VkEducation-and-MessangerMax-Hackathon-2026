@@ -62,6 +62,8 @@ koren:
     # Empty means the webhook route does not exist at all.
     webhook-secret: ${MAX_WEBHOOK_SECRET:}
     workers-enabled: ${MAX_WORKERS_ENABLED:false}
+  # Empty: case numbers are plain ("124"). A synthetic stand may label them: CASE_NUMBER_PREFIX=ДЕМО-
+  case-number-prefix: ${CASE_NUMBER_PREFIX:}
 logging:
   pattern:
     # Every line written while serving a request carries its id; worker lines have none.

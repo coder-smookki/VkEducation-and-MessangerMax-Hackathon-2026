@@ -376,6 +376,8 @@ class AcceptanceHttpTest {
             "each case keeps its own confirmedAt");
         assertFalse(other.get("receipt").get("confirmedAt").isNull());
         assertNotEquals(first.get("displayNumber").asString(), other.get("displayNumber").asString());
+        assertTrue(first.get("displayNumber").asString().matches("\\d+"),
+            "a plain number unless the stand asks for a prefix, never an unconditional ДЕМО-");
     }
 
     private static tools.jackson.databind.JsonNode caseNode(tools.jackson.databind.JsonNode page, UUID caseId) {        for (var node : page) {

@@ -92,6 +92,9 @@ public class CaseService {
     private final OutboxRepository outbox;
     private final AnalysisRepository analyses;
     private final boolean analysisEnabled;
+    /** Empty by default; a stand with synthetic data may label its numbers, e.g. CASE_NUMBER_PREFIX=ДЕМО-. */
+    @Value("${koren.case-number-prefix:}")
+    private String caseNumberPrefix = "";
 
     public CaseService(CaseRepository repo, ReportRepository reports, ObservationRepository observations,
                        OutboxRepository outbox, AnalysisRepository analyses,
@@ -396,7 +399,7 @@ public class CaseService {
         }
         return new CaseView(row.id(), row.houseId(), row.authorId(), row.submissionStatus(), row.version(),
             row.sourceRevision(), sourceText,
-            "ДЕМО-" + row.displayNumber(),
+            caseNumberPrefix + row.displayNumber(),
             new CaseReceipt(confirmedAt, instant(row.acceptedAt()), row.acceptedBy()),
             "FULL", views, CaseProgress.from(states), row.createdAt().toInstant());
     }
