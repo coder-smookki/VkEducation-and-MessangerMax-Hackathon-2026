@@ -25,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.time.Clock;
 import ru.koren.reports.persistence.ReportRepository;
 import ru.koren.observations.persistence.ObservationRepository;
+import ru.koren.notifications.persistence.OutboxRepository;
 
 /** Real PostgreSQL only; skipped without DB_TEST_URL. Fixture: A/B residents of H1, C resident of H2, D dispatcher of H1. */
 @SpringBootTest(properties = {
@@ -55,6 +56,7 @@ class CaseServicePostgresTest {
             String casesOfFixture = "SELECT id FROM service_case WHERE house_id IN (?, ?)";
             jdbc.update("DELETE FROM processed_command WHERE actor_id IN (?,?,?,?)", a, b, c, d);
             jdbc.update("DELETE FROM audit_event WHERE case_id IN (" + casesOfFixture + ")", h1, h2);
+            jdbc.update("DELETE FROM outbox_event WHERE case_id IN (" + casesOfFixture + ")", h1, h2);
             jdbc.update("DELETE FROM report_item_link WHERE case_id IN (" + casesOfFixture + ")", h1, h2);
             jdbc.update("DELETE FROM resident_observation WHERE case_id IN (" + casesOfFixture + ")", h1, h2);
             jdbc.update("DELETE FROM work_report WHERE case_id IN (" + casesOfFixture + ")", h1, h2);
@@ -337,6 +339,7 @@ class CaseServicePostgresTest {
         // The deferred current-revision FK requires the case rows to disappear in one transaction.
         new TransactionTemplate(transactions).executeWithoutResult(status -> {
             jdbc.update("DELETE FROM audit_event WHERE case_id = ?", created.caseId());
+            jdbc.update("DELETE FROM outbox_event WHERE case_id = ?", created.caseId());
             jdbc.update("DELETE FROM case_revision WHERE case_id = ?", created.caseId());
             jdbc.update("DELETE FROM service_case WHERE id = ?", created.caseId());
             jdbc.update("DELETE FROM membership WHERE user_id = ? AND house_id = ?", a, h1);
@@ -351,7 +354,7 @@ class CaseServicePostgresTest {
             }
         };
         var failingService = new CaseService(failing, new ReportRepository(jdbc),
-            new ObservationRepository(jdbc), transactions, Clock.systemUTC());
+            new ObservationRepository(jdbc), new OutboxRepository(jdbc), transactions, Clock.systemUTC());
         assertThrows(IllegalStateException.class,
                 () -> failingService.create(a, h1, "Откатываемый текст", "create-10"));
         assertEquals(0, count("SELECT count(*) FROM service_case WHERE author_id = ?", a));

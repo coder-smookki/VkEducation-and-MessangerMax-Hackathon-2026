@@ -18,7 +18,6 @@ import ru.koren.notifications.persistence.OutboxRepository;
 /** Durability lives here; the transport lives in max/. Same switch as the inbox worker. */
 @Configuration
 @Profile("!no-db")
-@ConditionalOnExpression("'${koren.max.bot-token:}' != ''")
 public class NotificationsConfig {
 
     @Bean
@@ -27,6 +26,7 @@ public class NotificationsConfig {
     }
 
     @Bean
+    @ConditionalOnExpression("'${koren.max.bot-token:}' != ''")
     OutboxWorker outboxWorker(OutboxRepository outbox, CaseService cases, MaxSender sender,
                               PlatformTransactionManager transactions, Clock clock) {
         return new OutboxWorker(outbox, cases, sender, transactions, clock);
@@ -34,6 +34,7 @@ public class NotificationsConfig {
 
     @Configuration
     @EnableScheduling
+    @ConditionalOnExpression("'${koren.max.bot-token:}' != ''")
     @ConditionalOnProperty(name = "koren.max.workers-enabled", havingValue = "true")
     static class Workers {
 

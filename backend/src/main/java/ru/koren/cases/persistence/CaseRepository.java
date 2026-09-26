@@ -65,6 +65,15 @@ public class CaseRepository {
             (rs, rowNum) -> rs.getString(1), userId, houseId).stream().findFirst();
     }
 
+    /** Active dispatchers of a house, in a stable order so a dedup key stays reproducible. */
+    public List<UUID> activeDispatchers(UUID houseId) {
+        return jdbc.query("""
+                SELECT user_id FROM membership
+                 WHERE house_id = ? AND role = 'DISPATCHER' AND revoked_at IS NULL
+                 ORDER BY user_id
+                """, (rs, row) -> rs.getObject("user_id", UUID.class), houseId);
+    }
+
     public Optional<CaseRow> findCase(UUID caseId) {
         return jdbc.query("""
                 SELECT id, house_id, author_id, source_revision, version, submission_status, created_at,
