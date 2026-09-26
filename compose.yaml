@@ -43,6 +43,7 @@ services:
       KOREN_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       KOREN_KAFKA_TOPIC: ${KAFKA_CASE_UPDATES_TOPIC:-koren.case-updates}
       KOREN_KAFKA_GROUP_ID: ${KAFKA_ML_GROUP_ID:-koren-ml-indexer}
+      KOREN_COMPARE_ANALYZER: ${COMPARE_ANALYZER:-stub}
     volumes: ["chroma-data:/app/data/chroma"]
     healthcheck:
       test: ["CMD", "/app/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)"]
@@ -62,6 +63,9 @@ services:
       KAFKA_ENABLED: "true"
       KAFKA_CASE_UPDATES_TOPIC: ${KAFKA_CASE_UPDATES_TOPIC:-koren.case-updates}
       MAX_BOT_TOKEN: ${MAX_BOT_TOKEN:-}
+      MAX_WEBHOOK_SECRET: ${MAX_WEBHOOK_SECRET:-}
+      MAX_WORKERS_ENABLED: ${MAX_WORKERS_ENABLED:-false}
+      ANALYSIS_ENABLED: ${ANALYSIS_ENABLED:-false}
     ports: ["127.0.0.1:8080:8080"]
     depends_on:
       db: {condition: service_healthy}
