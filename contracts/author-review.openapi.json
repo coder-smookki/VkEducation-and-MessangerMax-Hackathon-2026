@@ -6,6 +6,138 @@
     "description": "Contract 03. x-implementation-status per operation: IMPLEMENTED means the route runs on PostgreSQL behind a real session and is covered by tests; TARGET means planned and not routed yet. Fixtures stay synthetic. A schema alone is never proof that an endpoint answers."
   },
   "paths": {
+    "/api/v1/csrf": {
+      "get": {
+        "operationId": "getCsrfToken",
+        "summary": "CSRF-токен для команд сессии",
+        "description": "Открыт без сессии: нужен и до входа. token в ответе замаскирован и отправляется как есть в заголовке headerName; сырое значение лежит в cookie XSRF-TOKEN, и его подставлять нельзя.",
+        "x-implementation-status": "IMPLEMENTED",
+        "x-task": "S-02",
+        "responses": {
+          "200": {
+            "description": "Токен и имя заголовка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CsrfToken"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/max": {
+      "post": {
+        "operationId": "loginWithMax",
+        "summary": "Вход по initData из MAX",
+        "description": "initData проверяется по подписи бота; роль и доступ берутся с сервера, не из тела. Успех создаёт новую сессию (новый идентификатор cookie).",
+        "x-implementation-status": "IMPLEMENTED",
+        "x-task": "S-02",
+        "x-csrf": "Use the headerName/token returned by GET /api/v1/csrf. Required for session commands.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Проверенный пользователь и его действующие членства",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Некорректный запрос",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Подпись initData не подтверждена: INVALID_MAX_INIT_DATA",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Нет CSRF-токена: CSRF_TOKEN_INVALID",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Тело больше 256 КиБ: PAYLOAD_TOO_LARGE",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "operationId": "logout",
+        "summary": "Выход: сессия уничтожается",
+        "x-implementation-status": "IMPLEMENTED",
+        "x-task": "S-02",
+        "x-csrf": "Use the headerName/token returned by GET /api/v1/csrf. Required for session commands.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Сессии больше нет"
+          },
+          "401": {
+            "description": "Нет сессии: AUTH_REQUIRED",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Нет CSRF-токена: CSRF_TOKEN_INVALID",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/cases/{caseId}/items": {
       "patch": {
         "operationId": "updateDraftItems",
@@ -417,6 +549,310 @@
           }
         },
         "x-task": "S-02"
+      },
+      "post": {
+        "operationId": "createCase",
+        "summary": "Автор заводит черновик обращения",
+        "description": "Дом должен быть среди действующих членств автора; автор берётся из сессии, не из тела. Повтор с тем же Idempotency-Key и телом возвращает сохранённый ответ.",
+        "x-implementation-status": "IMPLEMENTED",
+        "x-task": "S-02",
+        "x-csrf": "Use the headerName/token returned by GET /api/v1/csrf. Required for session commands.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "pattern": "^[\\x21-\\x7E]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCase"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Созданный черновик",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorCaseView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Некорректный запрос или ключ идемпотентности",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нет сессии",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Нет членства в доме или CSRF-токена",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Ключ использован с другим телом",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Тело больше 256 КиБ",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Недопустимые поля",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cases/{caseId}": {
+      "get": {
+        "operationId": "getCase",
+        "summary": "Карточка обращения",
+        "description": "Автору - всегда; диспетчеру дома - только подтверждённое. Недоступное и несуществующее обращение одинаково отвечают 404.",
+        "x-implementation-status": "IMPLEMENTED",
+        "x-task": "S-02",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Полная карточка",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorCaseView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Некорректный идентификатор",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нет сессии",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Обращение не существует или недоступно",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cases/{caseId}/source": {
+      "patch": {
+        "operationId": "updateDraftSource",
+        "summary": "Автор исправляет исходный текст черновика",
+        "description": "Только автор и только в DRAFT; новая редакция увеличивает sourceRevision.",
+        "x-implementation-status": "IMPLEMENTED",
+        "x-task": "S-02",
+        "x-csrf": "Use the headerName/token returned by GET /api/v1/csrf. Required for session commands.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "pattern": "^[\\x21-\\x7E]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDraftSource"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Карточка после правки",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorCaseView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Некорректный запрос или ключ идемпотентности",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нет сессии",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Действие недоступно или нет CSRF-токена",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Обращение не существует или недоступно",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Устаревшая версия, ключ с другим телом или обращение уже подтверждено",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Тело больше 256 КиБ",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Недопустимые поля",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/memberships/claim": {
@@ -2672,6 +3108,81 @@
         "required": [
           "items",
           "nextCursor"
+        ]
+      },
+      "CsrfToken": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "headerName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "parameterName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "token": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "headerName",
+          "parameterName",
+          "token"
+        ]
+      },
+      "LoginRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "window.WebApp.initData ровно так, как его подписал MAX; не пересобирать и не декодировать.",
+        "properties": {
+          "initData": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "initData"
+        ]
+      },
+      "CreateCase": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "houseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sourceText": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 5000
+          }
+        },
+        "required": [
+          "houseId",
+          "sourceText"
+        ]
+      },
+      "UpdateDraftSource": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "expectedCaseVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "sourceText": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 5000
+          }
+        },
+        "required": [
+          "expectedCaseVersion",
+          "sourceText"
         ]
       }
     }
