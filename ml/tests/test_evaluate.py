@@ -44,3 +44,24 @@ def test_metrics_are_honest_for_both_analyzers(tmp_path):
     assert metrics["coverage"] > 0
     assert metrics["labelPrecision"]["denominator"] == metrics["substantive"]
     assert metrics["evidenceValidity"]["value"] == 1.0
+
+
+def test_splits_are_reported_apart_and_a_missing_holdout_is_null(tmp_path):
+    written = evaluate.main(results_dir=tmp_path)
+    for path in written:
+        splits = json.loads(path.read_text(encoding="utf-8"))["splits"]
+        assert splits["development"]["items"] == 29
+        assert splits["regression"]["items"] == 12
+        if not evaluate.SPLIT_PATHS["holdout"].exists():
+            # Not provided is not a score: a null here must never be read as 0 or as 100%.
+            assert splits["holdout"] is None
+
+
+def test_rules_never_transfer_a_predicate_in_the_regression_split(tmp_path):
+    written = evaluate.main(results_dir=tmp_path)
+    rules = next(p for p in written if p.name.startswith("eval-rules-"))
+    regression = json.loads(rules.read_text(encoding="utf-8"))["splits"]["regression"]
+    precision = regression["labelPrecision"]
+    assert precision["denominator"] > 0
+    assert precision["numerator"] == precision["denominator"], "a substantive answer was wrong"
+    assert regression["evidenceValidity"]["value"] == 1.0
