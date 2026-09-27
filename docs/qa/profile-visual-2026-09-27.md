@@ -41,7 +41,10 @@
 | Build, api:check, format:check, diff-check | PASS |
 | MaxInitDataValidatorTest | **23/23 PASS**, JDK21 |
 | AuthHttpTest, InvitationHttpTest, CrossSiteCookieHttpTest | **12/12 PASS**, PostgreSQL17, без skip |
+| `uv run pytest -q tests/test_intake_contracts.py` | **47/47 PASS**, все примеры контрактов |
 | Disposable guard при неправильном проекте/нелокальном URL | Отказ до чтения токена и любых запросов/SQL |
 | Визуальный просмотр 48 PNG и повтор после исправления переносов | PASS в указанном объёме |
 
 JS gzip131,21KB, CSS gzip7,89KB; новых зависимостей нет. Это размеры сборки, не метрики скорости пользовательской сети. В QA-assert высоты кнопки учитывается дробная координата анимации; минимальная CSS-высота сохранена. Старый селектор с Unicode-стрелкой обновлён после перехода на SVG.
+
+Первый CI для1958e17 обнаружил пропущенные nullable-поля в `me-no-access.json`. Пример синхронизирован с MeView; 47 проверок контрактов повторены локально. Runtime-код не менялся, выпуск ожидает зелёного CI исправленного SHA.
