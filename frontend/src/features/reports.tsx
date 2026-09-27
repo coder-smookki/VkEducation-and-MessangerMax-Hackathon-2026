@@ -32,7 +32,10 @@ export function NewReportPage() {
   const query = useCase(caseId);
   if (query.isPending || (!query.isFetchedAfterMount && query.isFetching))
     return <Loading />;
-  if (query.error || !query.data)
+  if (
+    !query.data ||
+    (query.error instanceof ApiError && [403, 404].includes(query.error.status))
+  )
     return (
       <ErrorPanel
         error={query.error}
@@ -56,7 +59,7 @@ export function NewReportPage() {
     <ReportForm
       key={caseId}
       data={query.data}
-      load={async () => (await query.refetch()).data}
+      load={async () => (await query.refetch({ throwOnError: true })).data}
     />
   );
 }
@@ -174,6 +177,15 @@ function ReportForm({
           load={load}
           onAdopt={(current) => {
             setVersion(current.caseVersion);
+            setSelected((previous) =>
+              previous.filter((id) =>
+                current.items.some(
+                  (item) =>
+                    item.itemId === id &&
+                    item.administrativeStatus === "ACTIVE",
+                ),
+              ),
+            );
             operation.reset();
           }}
         />
@@ -211,7 +223,14 @@ export function ReportPage() {
     (!reportQuery.isFetchedAfterMount && reportQuery.isFetching)
   )
     return <Loading />;
-  if (caseQuery.error || reportQuery.error)
+  if (
+    (!caseQuery.data && caseQuery.error) ||
+    (!reportQuery.data && reportQuery.error) ||
+    (caseQuery.error instanceof ApiError &&
+      [403, 404].includes(caseQuery.error.status)) ||
+    (reportQuery.error instanceof ApiError &&
+      [403, 404].includes(reportQuery.error.status))
+  )
     return (
       <ErrorPanel
         error={caseQuery.error || reportQuery.error}
@@ -243,7 +262,13 @@ export function ReportPage() {
         void analysis.refetch();
       }}
       dispatcher={dispatcher}
-      load={async () => (await caseQuery.refetch()).data}
+      load={async () => {
+        const [current] = await Promise.all([
+          caseQuery.refetch({ throwOnError: true }),
+          reportQuery.refetch({ throwOnError: true }),
+        ]);
+        return current.data;
+      }}
       meId={me.userId}
     />
   );
@@ -515,7 +540,11 @@ function LinkForm({
                   <div className="actions">
                     <Button
                       type="submit"
-                      disabled={!valid || !!operation.error}
+                      disabled={
+                        !valid ||
+                        (operation.error instanceof ApiError &&
+                          operation.error.status === 409)
+                      }
                     >
                       {review
                         ? "Подтвердить выбранные связи"
@@ -540,7 +569,19 @@ function LinkForm({
                   load={load}
                   onAdopt={(current) => {
                     setSnapshot(current);
-                    setChoices({});
+                    setChoices((previous) =>
+                      Object.fromEntries(
+                        Object.entries(previous).filter(
+                          ([id]) =>
+                            current.items.some(
+                              (item) =>
+                                item.itemId === id &&
+                                item.administrativeStatus === "ACTIVE",
+                            ) &&
+                            !report.links.some((link) => link.itemId === id),
+                        ),
+                      ),
+                    );
                     setReview(false);
                     operation.reset();
                   }}

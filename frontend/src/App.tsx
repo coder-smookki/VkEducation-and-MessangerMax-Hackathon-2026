@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Link,
@@ -12,7 +12,14 @@ import {
 import { ApiError, command, get, resetCsrf, send } from "./api/client";
 import type { Me, Membership } from "./api/client";
 import { useCommand } from "./api/queries";
-import { getRawMaxInitData, nativeBack } from "./platform/max";
+import {
+  getRawMaxInitData,
+  nativeBack,
+  needsMaxRelaunch,
+  MAX_APP_URL,
+  openMaxApp,
+} from "./platform/max";
+import { AboutPage, TestDataBanner } from "./features/about";
 import {
   Button,
   CommandError,
@@ -34,17 +41,77 @@ import { PreferencesPanel } from "./components/preferences";
 export type Session = {
   me: Me;
   house?: Membership;
+  selectHouse(houseId: string): void;
   refreshAccess(): void;
   logout(): void;
 };
 export const useSession = () => useOutletContext<Session>();
+function DraftCopy() {
+  const [text, setText] = useState<string>();
+  return (
+    <>
+      <Button
+        kind="secondary"
+        onClick={() => {
+          // Read the visible user's form, including disabled controls after 401.
+          // Hidden fields, passwords, cookies and Bridge data are never included.
+          const controls = document.querySelectorAll<
+            HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+          >(
+            "#main-content textarea, #main-content input:not([type]), #main-content input[type=text], #main-content input[type=datetime-local], #main-content select",
+          );
+          setText(
+            Array.from(controls)
+              .filter(
+                (control) =>
+                  control.getClientRects().length && control.value.trim(),
+              )
+              .map((control) => {
+                const label = control.labels?.[0]?.textContent?.trim() || "";
+                const value =
+                  control instanceof HTMLSelectElement
+                    ? control.selectedOptions[0]?.text || control.value
+                    : control.value;
+                return label ? `${label}:\n${value}` : value;
+              })
+              .join("\n\n"),
+          );
+        }}
+      >
+        Подготовить текст для копирования
+      </Button>
+      {text !== undefined &&
+        (text ? (
+          <div className="field">
+            <label htmlFor="session-draft-copy">Текст для копирования</label>
+            <textarea
+              id="session-draft-copy"
+              readOnly
+              rows={6}
+              value={text}
+              onFocus={(event) => event.currentTarget.select()}
+            />
+            <p className="caption">
+              Выделите и скопируйте этот текст перед закрытием. После нового
+              входа его можно вставить в форму.
+            </p>
+          </div>
+        ) : (
+          <p>
+            На этой странице нет заполненных текстовых полей. Сохранённые
+            обращения останутся в сервисе.
+          </p>
+        ))}
+    </>
+  );
+}
 async function enter(signal?: AbortSignal): Promise<Me> {
   try {
     return await get<Me>("/me", signal);
   } catch (error) {
     if (!(error instanceof ApiError) || error.status !== 401) throw error;
     const initData = getRawMaxInitData();
-    if (!initData) throw error;
+    if (!initData || needsMaxRelaunch()) throw error;
     await send<Me>(command("/auth/max", { initData }));
     return get<Me>("/me", signal);
   }
@@ -64,9 +131,33 @@ export function App() {
   const navigate = useNavigate();
   const location = useLocation();
   const me = session.data;
+  const [selectedHouse, setSelectedHouse] = useState<{
+    userId: string;
+    houseId: string;
+  }>();
+  const selectHouse = useCallback(
+    (houseId: string) => {
+      if (me?.memberships.some((m) => m.houseId === houseId)) {
+        setSelectedHouse((current) =>
+          current?.userId === me.userId && current.houseId === houseId
+            ? current
+            : { userId: me.userId, houseId },
+        );
+      }
+    },
+    [me],
+  );
   const house =
     me?.memberships.find((m) => m.houseId === search.get("house")) ||
+    me?.memberships.find(
+      (m) =>
+        selectedHouse?.userId === me.userId &&
+        m.houseId === selectedHouse.houseId,
+    ) ||
     me?.memberships[0];
+  useEffect(() => {
+    if (house) selectHouse(house.houseId);
+  }, [house?.houseId, selectHouse]);
   const reenter = useCommand<Me>((result) => {
     if (me && result.userId !== me.userId) {
       cache.clear();
@@ -79,11 +170,19 @@ export function App() {
       predicate: (q) => q.queryKey[0] !== "session",
     });
   });
+  const relaunch =
+    needsMaxRelaunch() ||
+    (reenter.error instanceof ApiError &&
+      reenter.error.code === "INVALID_MAX_INIT_DATA");
   useEffect(() => {
     const listener = () => setExpired(true);
     window.addEventListener("koren:session-expired", listener);
     return () => window.removeEventListener("koren:session-expired", listener);
   }, []);
+  useEffect(() => {
+    if (me && session.error instanceof ApiError && session.error.status === 401)
+      setExpired(true);
+  }, [me, session.error]);
   useEffect(() => {
     const match = /^\/cases\/([^/]+)\//.exec(location.pathname);
     return nativeBack(
@@ -118,11 +217,13 @@ export function App() {
     ? {
         me,
         house,
+        selectHouse,
         refreshAccess: () => {
           void cache.invalidateQueries({ queryKey: ["session"] });
         },
         logout: () => {
           setSignedOut(true);
+          setSelectedHouse(undefined);
           cache.clear();
           resetCsrf();
           navigate("/", { replace: true });
@@ -186,18 +287,31 @@ export function App() {
         )}
       </aside>
       <main id="main-content" tabIndex={-1}>
-        {signedOut ? (
+        <TestDataBanner />
+        {location.pathname === "/about" ? (
+          <AboutPage backTo={me && !signedOut ? "/profile" : "/"} />
+        ) : signedOut ? (
           <section className="card">
             <Title>Вы вышли</Title>
             <p>Данные сессии удалены с этого устройства.</p>
-            <Button
-              onClick={() => {
-                setSignedOut(false);
-                void session.refetch();
-              }}
-            >
-              Войти через MAX
-            </Button>
+            {needsMaxRelaunch() ? (
+              <a
+                className="button primary"
+                href={MAX_APP_URL}
+                onClick={openMaxApp}
+              >
+                Открыть заново в MAX
+              </a>
+            ) : (
+              <Button
+                onClick={() => {
+                  setSignedOut(false);
+                  void session.refetch();
+                }}
+              >
+                Войти через MAX
+              </Button>
+            )}
           </section>
         ) : session.isPending ? (
           <BrandSplash />
@@ -212,16 +326,20 @@ export function App() {
               Сообщите о проблеме в доме, следите за каждым пунктом и проверяйте
               результат.
             </p>
-            {!getRawMaxInitData() ? (
+            {needsMaxRelaunch() ||
+            (session.error instanceof ApiError &&
+              session.error.code === "INVALID_MAX_INIT_DATA") ? (
               <>
                 <Notice>
-                  Откройте мини-приложение из чата с ботом в MAX. В обычном
-                  браузере новый вход недоступен.
+                  Откройте мини-приложение из чата с ботом в MAX. Для нового
+                  входа закройте его и нажмите «Открыть приложение» в боте. В
+                  обычном браузере новый вход недоступен.
                 </Notice>
                 <p>
                   <a
                     className="button primary"
-                    href="https://max.ru/t109_hakaton_max_bot?startapp"
+                    href={MAX_APP_URL}
+                    onClick={openMaxApp}
                   >
                     Открыть в MAX
                   </a>
@@ -241,6 +359,9 @@ export function App() {
                 Проверить вход
               </Button>
             </div>
+            <Link className="text-link" to="/about">
+              О сервисе и удалении данных
+            </Link>
           </section>
         ) : (
           context && (
@@ -253,16 +374,38 @@ export function App() {
       {expired && me && (
         <Dialog title="Войдите снова" onCancel={() => setExpired(false)}>
           <p>Сессия завершилась. Несохранённый ввод остаётся на странице.</p>
-          <CommandError operation={reenter} />
+          {relaunch ? (
+            <>
+              <Notice>
+                Данные запуска MAX устарели. Скопируйте несохранённый текст,
+                затем закройте мини-приложение и откройте его снова кнопкой в
+                боте. Обычное обновление страницы не обновляет вход. После
+                открытия проверьте, сохранилось ли ваше действие.
+              </Notice>
+              <DraftCopy />
+            </>
+          ) : (
+            <CommandError operation={reenter} />
+          )}
           <div className="actions">
-            <Button
-              disabled={reenter.isPending || !getRawMaxInitData()}
-              onClick={() =>
-                reenter.run("/auth/max", { initData: getRawMaxInitData() })
-              }
-            >
-              Войти через MAX
-            </Button>
+            {relaunch ? (
+              <a
+                className="button primary"
+                href={MAX_APP_URL}
+                onClick={openMaxApp}
+              >
+                Открыть заново в MAX
+              </a>
+            ) : (
+              <Button
+                disabled={reenter.isPending || !getRawMaxInitData()}
+                onClick={() =>
+                  reenter.run("/auth/max", { initData: getRawMaxInitData() })
+                }
+              >
+                Войти через MAX
+              </Button>
+            )}
             <Button kind="secondary" onClick={() => setExpired(false)}>
               Вернуться к вводу
             </Button>
@@ -466,6 +609,9 @@ export function ProfilePage() {
       </section>
       <Link className="button secondary" to="/logout">
         Выйти
+      </Link>
+      <Link className="button secondary" to="/about">
+        О сервисе и удалении данных
       </Link>
     </>
   );

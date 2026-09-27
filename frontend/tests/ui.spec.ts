@@ -121,7 +121,7 @@ test("account without membership needs an invitation", async ({ page }) => {
   await page.getByRole("link", { name: "Ввести код приглашения" }).click();
   await page.getByLabel("Код приглашения").fill("bad-code");
   await page.route("**/memberships/claim", (r) =>
-    problem(r, 403, "ACTION_FORBIDDEN"),
+    problem(r, 403, "INVITATION_REJECTED"),
   );
   await page.getByRole("button", { name: "Подключить дом" }).click();
   await expect(page.getByRole("alert")).toBeVisible();
@@ -237,7 +237,7 @@ test("invitation success is cleared before a different code can fail", async ({
     claims++;
     return claims === 1
       ? route.fulfill({ json: me })
-      : problem(route, 403, "ACTION_FORBIDDEN");
+      : problem(route, 403, "INVITATION_REJECTED");
   });
   await page.goto("/#/access");
   await page.getByLabel("Код приглашения").fill("valid-code");

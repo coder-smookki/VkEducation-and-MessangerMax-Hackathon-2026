@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import {
   Link,
@@ -376,13 +376,20 @@ export function CasesPage() {
 }
 export function CasePage() {
   const { caseId = "" } = useParams();
-  const { me } = useSession();
+  const { me, selectHouse } = useSession();
   const query = useCase(caseId);
+  const caseHouseId = query.isSuccess ? query.data.houseId : undefined;
+  useEffect(() => {
+    if (caseHouseId) selectHouse(caseHouseId);
+  }, [caseHouseId, selectHouse]);
   const saved = useCaseSaved();
   const acceptance = useCommand<Case>(saved);
   if (query.isPending || (!query.isFetchedAfterMount && query.isFetching))
     return <Loading />;
-  if (query.error || !query.data)
+  if (
+    !query.data ||
+    (query.error instanceof ApiError && [403, 404].includes(query.error.status))
+  )
     return (
       <ErrorPanel
         error={query.error}
@@ -454,7 +461,11 @@ export function CasePage() {
             <>
               <CommandError operation={acceptance} />
               <Button
-                disabled={acceptance.locked}
+                disabled={
+                  acceptance.locked ||
+                  (acceptance.error instanceof ApiError &&
+                    acceptance.error.status === 409)
+                }
                 onClick={() =>
                   acceptance.run(`/cases/${caseId}/acceptance`, {
                     expectedCaseVersion: data.caseVersion,
@@ -463,6 +474,13 @@ export function CasePage() {
               >
                 {acceptance.isPending ? "Принимаем…" : "Принять обращение"}
               </Button>
+              <ConflictReview
+                error={acceptance.error}
+                load={async () =>
+                  (await query.refetch({ throwOnError: true })).data
+                }
+                onAdopt={() => acceptance.reset()}
+              />
             </>
           )}
         </>
@@ -816,7 +834,10 @@ export function DraftPage({ sourceOnly = false }: { sourceOnly?: boolean }) {
   const query = useCase(caseId);
   if (query.isPending || (!query.isFetchedAfterMount && query.isFetching))
     return <Loading />;
-  if (query.error || !query.data)
+  if (
+    !query.data ||
+    (query.error instanceof ApiError && [403, 404].includes(query.error.status))
+  )
     return (
       <ErrorPanel
         error={query.error}
@@ -837,7 +858,7 @@ export function DraftPage({ sourceOnly = false }: { sourceOnly?: boolean }) {
       key={`${caseId}-${sourceOnly}`}
       data={query.data}
       sourceOnly={sourceOnly}
-      load={async () => (await query.refetch()).data}
+      load={async () => (await query.refetch({ throwOnError: true })).data}
     />
   );
 }
@@ -1076,6 +1097,7 @@ export function ConflictReview({
 }) {
   const [current, setCurrent] = useState<Case>();
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>();
   if (!(error instanceof ApiError) || error.status !== 409) return null;
   return (
     <section className="card conflict">
@@ -1089,8 +1111,14 @@ export function ConflictReview({
         disabled={loading}
         onClick={async () => {
           setLoading(true);
+          setCurrent(undefined);
+          setLoadError(undefined);
           try {
-            setCurrent(await load());
+            const latest = await load();
+            if (!latest) throw new Error("CASE_REFRESH_FAILED");
+            setCurrent(latest);
+          } catch (failure) {
+            setLoadError(failure);
           } finally {
             setLoading(false);
           }
@@ -1098,6 +1126,7 @@ export function ConflictReview({
       >
         Загрузить актуальную версию
       </Button>
+      <ErrorPanel error={loadError} />
       {current && (
         <>
           <p className="caption">Версия карточки: {current.caseVersion}</p>
@@ -1136,7 +1165,10 @@ export function ConfirmCasePage() {
   const operation = useCommand<Case>(saved);
   if (query.isPending || (!query.isFetchedAfterMount && query.isFetching))
     return <Loading />;
-  if (query.error || !query.data)
+  if (
+    !query.data ||
+    (query.error instanceof ApiError && [403, 404].includes(query.error.status))
+  )
     return (
       <ErrorPanel
         error={query.error}
@@ -1211,7 +1243,8 @@ export function ConfirmCasePage() {
             !data.items.length ||
             data.authorId !== me.userId ||
             operation.locked ||
-            !!operation.error
+            (operation.error instanceof ApiError &&
+              operation.error.status === 409)
           }
           onClick={() =>
             operation.run(`/cases/${caseId}/confirm`, {
@@ -1228,7 +1261,7 @@ export function ConfirmCasePage() {
       </div>
       <ConflictReview
         error={operation.error}
-        load={async () => (await query.refetch()).data}
+        load={async () => (await query.refetch({ throwOnError: true })).data}
         onAdopt={() => operation.reset()}
       />
       <DirtyGuard dirty={false} pending={operation.locked} />

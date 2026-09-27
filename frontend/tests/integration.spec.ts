@@ -389,6 +389,9 @@ test("real API: author → dispatcher → partial result → archive, with acces
     await author.page.setViewportSize({ width: 320, height: 844 });
     await author.page.goto("/#WebAppData=synthetic-launch&WebAppPlatform=web");
     await expect(
+      author.page.getByRole("region", { name: "Тестовый стенд" }),
+    ).toContainText("Учебный дом, данные тестовые");
+    await expect(
       author.page.getByRole("heading", {
         name: "Пока нет обращений",
         exact: true,
@@ -413,6 +416,7 @@ test("real API: author → dispatcher → partial result → archive, with acces
     const created = await createdResponse;
     expect(created.status()).toBe(201);
     const initial = (await created.json()) as Case;
+    expect(initial.displayNumber).toMatch(/^ДЕМО-\d+$/);
     await expect(
       author.page.getByRole("heading", { name: "Черновик сохранён" }),
     ).toBeVisible();

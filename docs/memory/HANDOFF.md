@@ -2,13 +2,15 @@
 
 В актуальной `dev` после серверного `0635314` исправлены отозванный доступ к draft/replay, истёкший срок при повторе шага, повторное приглашение и UI-восстановление через `/me`. **47 UI / 4 real API / 30 целевых Java/PostgreSQL PASS**. Исправления не опубликованы; следующий технический шаг - backup/verify, выпуск проверенного SHA и smoke по [release](../release.md). SQL-миграций/DTO нет. Детали - [QA](../qa/profile-visual-2026-09-27.md#аудит-документации-и-интеграции---2709).
 
+В текущую интеграцию Кирилла включены совместимость AbortController, 409 и повтор форм, сохранение дома, stale-initData → новый запуск MAX, подготовка текста к копированию, About/112/`smookki@yandex.ru` и явная маркировка учебного стенда. Точный результат deployment будет в [журнале](../operations-log.md). Семён выполняет seed apply/check сам после входа трёх MAX-аккаунтов; текущие записи не очищать.
+
 ## Ветка backend-polish (Семён, 27.09 вечер)
 
-Готова к PR в `dev`, на сервер не выкатывалась. Проверено локально: Java 233 PASS, Python 102 PASS, ruff/pylint чисто, `docker compose up --build -d` + `smoke.py` PASS, `build --no-cache` 1 мин, `load.py` 30 с p95 21 мс.
+Уже объединена PR13 в `dev` (`7ff53dd`), повторный merge не нужен. Проверено коллегой локально: Java 233 PASS, Python 102 PASS, ruff/pylint чисто, `docker compose up --build -d` + `smoke.py` PASS, `build --no-cache` 1 мин, `load.py` 30 с p95 21 мс.
 
 - Бот: `/start` предупреждает «не аварийная служба, звоните 112» и несёт кнопку «Открыть приложение» (`max.ru/<бот>?startapp`); остальные ответы - только текст.
 - Ошибки из фильтров безопасности (401/403/404/411/413) несут `requestId` в теле, как и остальные.
-- Отказ по коду приглашения - `INVITATION_REJECTED` 403 (был `ACTION_FORBIDDEN`); текст в UI уже был. Заглушки в `frontend/tests/ui.spec.ts` ещё отвечают старым кодом - поправить Кириллу.
+- Отказ по коду приглашения - `INVITATION_REJECTED` 403 (был `ACTION_FORBIDDEN`); текст в UI уже был. Тестовые ответы в `frontend/tests/ui.spec.ts` согласованы с новым кодом в текущей интеграции.
 - `seed_stand.py apply/check`: два синтетических дома и роли автор/диспетчер/посторонний из `scripts/seed/seed.json`, MAX id - в `scripts/seed/accounts.private.json` (не в Git); `check` выходит с 1 при лишних правах (R24).
 - `ops_status.py`: коды выхода 0/1/2 по проверкам зависших и недавно упавших очередей; `load.py` считает запрос без ответа ошибкой.
 - README: раздел «Запуск одной командой»; `compose.yaml` передаёт `MAX_BOT_NAME` и `CASE_NUMBER_PREFIX`; `DATA-API.yaml` в корне (валидатор - ПОДТВЕРЖДЕНИЕ).

@@ -22,15 +22,17 @@
 | D01..D10 | Очередь/фильтры, приём, шаг, отчёт, цитаты, явные связи, архив пункта | Ответственный nextAction - текущий диспетчер; справочника других сотрудников нет |
 | X01..X10 | Loading, empty, denied, ошибки, pending, неизвестный исход, конфликт и повтор входа | Автоматизированные UI fixtures плюс реальные negative API checks |
 | R01..R04, C01..C06 | Адаптивные компоненты, темы, большой текст, широкая очередь-таблица и отчёт в две колонки | Chromium 320/390/768/1440; реальные устройства ожидают проверки |
-| M06 | Экран справки с настоящими support/privacy данными не опубликован | Нужны согласованные контакты/политика; не подставлять конкурсную поддержку как поддержку продукта |
+| M06 | `/#/about` доступен до входа и из профиля: реальные категории данных, запрос удаления, поддержка `smookki@yandex.ru`, предупреждение про 112 | Реализовано в новой редакции `dev`; проверку и публикацию сверять по журналу. Это не автоматическое удаление и не утверждённая полная политика хранения |
 | B01..B04 | Ранее действующий бот и MAX Web проверялись 27.09; редизайн ДомПульс их не меняет | Прежняя проверка не подтверждает новые баннеры; полный G2 с двумя аккаунтами и mobile остаётся независимой приёмке |
 | S01/S02 | Should выключен | UI поиска похожих обращений не заявлен |
 
-Маршруты runtime: `/#/`, `/#/access`, `/#/profile`, `/#/logout`, `/#/new`, `/#/cases/:caseId`, редактор `/edit` или `/source`, подтверждение `/review`, действие `/items/:itemId/:action`, отчёты `/reports/new` и `/reports/:reportId`. Один маршрут покрывает несколько состояний матрицы. Корневую ссылку организаторам передавать без hash: `https://hackathon.lumnex.ru/`.
+Маршруты runtime: `/#/`, `/#/access`, `/#/profile`, `/#/about`, `/#/logout`, `/#/new`, `/#/cases/:caseId`, редактор `/edit` или `/source`, подтверждение `/review`, действие `/items/:itemId/:action`, отчёты `/reports/new` и `/reports/:reportId`. Новая справка добавляет тринадцатый route pattern; 48 снимков 12 маршрутов из прежнего протокола не считаются её проверкой. Один маршрут покрывает несколько состояний матрицы. Корневую ссылку организаторам передавать без hash: `https://hackathon.lumnex.ru/`.
 
 Исходная матрица содержит 62 ID, включая ошибки/адаптивность/бот/библиотеку/расширение; профиль добавлен как композиция существующего `/me`. Один ID не требует отдельного route или endpoint. Все пути API ниже относительно `/api/v1`, кроме MAX webhook. Буква A в screen ID не обозначает QA-A.
 
 Статус на 27.09: таблицы ниже сохраняют 62 ID проектных состояний. Основной runtime реализован и проверен в указанном выше объёме; история первой интеграции - в [протоколе 26.09](qa/kirill-2026-09-26.md). Статус серверной операции указан в машинной схеме `x-implementation-status`; PNG не доказывает готовность отсутствующей функции.
+
+При сборке с `VITE_TRAINING_MODE=true` общий баннер «Учебный дом, данные тестовые» виден и до входа, и на рабочих страницах. В release флаг приходит из `TRAINING_MODE`; имя/адрес дома не определяют его автоматически. Баннер не меняет доступ и не заменяет данные API.
 
 Каждый экран также обязан обрабатывать loading/denied/error/смену контекста; командный экран - pending/409/unknown outcome. Все реальные значения приходят с сервера; synthetic placeholders не замена API.
 
@@ -43,8 +45,8 @@
 | M03 Ввод приглашения<br>[dark](../design/images/mobile/M03_invitation_dark.png) / [light](../design/images/mobile/M03_invitation_light.png) | POST /memberships/claim | invitationCode; безопасное одноразовое потребление | S-02/K-02; QA-A04 |
 | M04 Выбор доступного дома и контекста<br>[dark](../design/images/mobile/M04_available-contexts_dark.png) / [light](../design/images/mobile/M04_available-contexts_light.png) | GET /me, выбор существующего context | Только memberships пользователя; role не изменяется | S-02/K-01; QA-A02 |
 | M05 Настройки<br>[dark](../design/images/mobile/M05_settings_dark.png) / [light](../design/images/mobile/M05_settings_light.png) | Локальные theme/text prefs | System/light/dark; normal/large; не API прав/уведомлений | K-01/K-06; QA-E12 |
-| M06 Помощь и о сервисе<br>[dark](../design/images/mobile/M06_help_dark.png) / [light](../design/images/mobile/M06_help_light.png) | Публичная фактическая справка | Контакты поддержки/политика должны быть заполнены | K-08; QA-R09 |
-| M07 Сессия закончилась<br>[dark](../design/images/mobile/M07_session-expired_dark.png) / [light](../design/images/mobile/M07_session-expired_light.png) | 401 → повторный MAX-вход | Старый auth context сбрасывается; ввод не публикуется | S-02/K-05; QA-A01 |
+| M06 Помощь и о сервисе<br>[dark](../design/images/mobile/M06_help_dark.png) / [light](../design/images/mobile/M06_help_light.png) | `/#/about`, без команды API | Категории данных и назначение; `smookki@yandex.ru`; запрос удаления по почте, без секретов; архив/выход не удаляют данные; при опасности 112 | K-08; QA-R09; `about.spec.ts`, результат сверять по протоколу |
+| M07 Сессия закончилась<br>[dark](../design/images/mobile/M07_session-expired_dark.png) / [light](../design/images/mobile/M07_session-expired_light.png) | 401 → вход при свежем initData, иначе закрыть/открыть через бот и `openMaxLink` | Ввод остаётся до закрытия страницы; перед перезапуском скопировать. Refresh страницы не обновляет запуск MAX; серверный TTL не ослаблен | S-02/K-05; QA-A01 |
 | M08 Карточка недоступна<br>[dark](../design/images/mobile/M08_unavailable-card_dark.png) / [light](../design/images/mobile/M08_unavailable-card_light.png) | 403/404 чтения карточки | Без номера/адреса чужой сущности | S-02/K-06; QA-A02 |
 
 ## Автор
@@ -90,7 +92,7 @@
 | Экран и макеты | Команда / чтение | Обязательные данные и смысл | Реализация / проверка |
 |---|---|---|---|
 | X01 Ошибка обязательного поля<br>[dark](../design/images/states/X01_required-field-error_dark.png) / [light](../design/images/states/X01_required-field-error_light.png) | 422 / frontend required field | Согласованные лимиты и field errors | S-02/K-06; QA-A10 |
-| X02 Конфликт изменения<br>[dark](../design/images/states/X02_version-conflict_dark.png) / [light](../design/images/states/X02_version-conflict_light.png) | 409 + GET актуальной карточки | Сохранить локальный ввод; новый key не обходит конфликт | S-02/K-06; QA-A05 |
+| X02 Конфликт изменения<br>[dark](../design/images/states/X02_version-conflict_dark.png) / [light](../design/images/states/X02_version-conflict_light.png) | 409 + успешный GET актуальной карточки + явное сравнение | Ввод не стирается; после ошибки GET нельзя принять старый кэш. После сравнения исключить недоступные пункты/уже существующие связи из выбора | S-02/K-06; QA-A05 |
 | X03 Потеря сети — неизвестный исход<br>[dark](../design/images/states/X03_unknown-save-outcome_dark.png) / [light](../design/images/states/X03_unknown-save-outcome_light.png) | Повтор исходного key/body + GET | Неизвестный исход; ни success, ни потеря не утверждаются | S-02/K-06; QA-R02 |
 | X04 Подсказка недоступна — ручные связи<br>[dark](../design/images/states/X04_manual-links-fallback_dark.png) / [light](../design/images/states/X04_manual-links-fallback_light.png) | Python timeout/STUB/MANUAL | Сохранённый текст + ручной выбор без ложной цитаты | S-06/K-03; QA-E10 |
 | X05 Карточка не загрузилась<br>[dark](../design/images/states/X05_card-load-error_dark.png) / [light](../design/images/states/X05_card-load-error_light.png) | Ошибка GET → повтор чтения | Ошибка отличается от пустоты/удаления | K-06; QA-R01 |

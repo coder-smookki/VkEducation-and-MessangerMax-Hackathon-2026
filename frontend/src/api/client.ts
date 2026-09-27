@@ -48,15 +48,24 @@ export function command(
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const mutation = options.method && options.method !== "GET";
   const requestId = crypto.randomUUID();
-  const timeout = AbortSignal.timeout(20_000);
-  const signal = options.signal
-    ? AbortSignal.any([timeout, options.signal])
-    : timeout;
-  let response: Response;
+  const controller = new AbortController();
+  const callerSignal = options.signal;
+  let cancelledByCaller = false;
+  const cancel = () => {
+    if (controller.signal.aborted) return;
+    cancelledByCaller = true;
+    controller.abort();
+  };
+  callerSignal?.addEventListener("abort", cancel, { once: true });
+  if (callerSignal?.aborted) cancel();
+  // Older MAX WebViews support AbortController but not AbortSignal.any/timeout.
+  // The deadline covers both receiving headers and consuming the response body.
+  const timeout = window.setTimeout(() => controller.abort(), 20_000);
+  let id: string = requestId;
   try {
-    response = await fetch(`/api/v1${path}`, {
+    const response = await fetch(`/api/v1${path}`, {
       ...options,
-      signal,
+      signal: controller.signal,
       credentials: "same-origin",
       cache: "no-store",
       headers: {
@@ -65,34 +74,44 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
         ...options.headers,
       },
     });
+    id = response.headers.get("X-Request-Id") || requestId;
+    if (!response.ok) {
+      const problem = (await response.json().catch((error) => {
+        if (controller.signal.aborted) throw error;
+        return {};
+      })) as Partial<Schema["Problem"]>;
+      if (response.status === 401 && !["/me", "/auth/max"].includes(path))
+        window.dispatchEvent(new Event("koren:session-expired"));
+      throw new ApiError(
+        response.status,
+        problem.code || "HTTP_ERROR",
+        id,
+        Boolean(mutation && response.status >= 500),
+      );
+    }
+    if (response.status === 204) return undefined as T;
+    try {
+      return (await response.json()) as T;
+    } catch (error) {
+      if (controller.signal.aborted) throw error;
+      throw new ApiError(
+        response.status,
+        "INVALID_RESPONSE",
+        id,
+        Boolean(mutation),
+      );
+    }
   } catch (error) {
-    if (options.signal?.aborted) throw error;
-    throw new ApiError(0, "NETWORK_ERROR", requestId, Boolean(mutation));
-  }
-  const id = response.headers.get("X-Request-Id") || requestId;
-  if (!response.ok) {
-    const problem = (await response.json().catch(() => ({}))) as Partial<
-      Schema["Problem"]
-    >;
-    if (response.status === 401 && !["/me", "/auth/max"].includes(path))
-      window.dispatchEvent(new Event("koren:session-expired"));
-    throw new ApiError(
-      response.status,
-      problem.code || "HTTP_ERROR",
-      id,
-      Boolean(mutation && response.status >= 500),
-    );
-  }
-  if (response.status === 204) return undefined as T;
-  try {
-    return (await response.json()) as T;
-  } catch {
-    throw new ApiError(
-      response.status,
-      "INVALID_RESPONSE",
-      id,
-      Boolean(mutation),
-    );
+    if (cancelledByCaller)
+      throw (
+        callerSignal?.reason ??
+        new DOMException("Request cancelled", "AbortError")
+      );
+    if (error instanceof ApiError) throw error;
+    throw new ApiError(0, "NETWORK_ERROR", id, Boolean(mutation));
+  } finally {
+    window.clearTimeout(timeout);
+    callerSignal?.removeEventListener("abort", cancel);
   }
 }
 export const get = <T>(path: string, signal?: AbortSignal) =>

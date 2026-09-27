@@ -22,7 +22,7 @@ started = time.monotonic()
 # Shell settings must not activate HTTPS or replace the disposable signing key.
 overrides = {
     "DB_PASSWORD", "MAX_BOT_TOKEN", "MAX_WEBHOOK_SECRET", "MAX_WORKERS_ENABLED",
-    "RELEASE_SHA", "ANALYSIS_ENABLED",
+    "RELEASE_SHA", "ANALYSIS_ENABLED", "TRAINING_MODE", "CASE_NUMBER_PREFIX",
     "SESSION_COOKIE_SECURE", "SESSION_COOKIE_SAMESITE", "WEB_PORT", "SITE_ADDRESS",
 }
 stand_env = {
@@ -40,6 +40,7 @@ with tempfile.TemporaryDirectory(prefix="koren-ui-check-") as directory:
         + "\nMAX_BOT_TOKEN=" + secrets.token_urlsafe(32)
         + "\nMAX_WEBHOOK_SECRET=" + secrets.token_urlsafe(32)
         + "\nMAX_WORKERS_ENABLED=false\nRELEASE_SHA=" + release_sha
+        + "\nTRAINING_MODE=true\nCASE_NUMBER_PREFIX=ДЕМО-"
         + f"\nSESSION_COOKIE_SECURE=false\nSESSION_COOKIE_SAMESITE=Lax\nWEB_PORT={port}\n",
         encoding="utf-8",
     )

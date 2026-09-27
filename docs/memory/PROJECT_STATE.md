@@ -2,6 +2,12 @@
 
 Обновлено 27.09.2026, Europe/Moscow. Репозиторий `coder-smookki/VkEducation-and-MessangerMax-Hackathon-2026`, интеграционная ветка `dev`. Код, документация и версия сервера учитываются отдельно; push не означает deployment. S-01..S-09, sender и webhook коллег уже объединены, повторно сливать прежние ветки не нужно.
 
+## Интеграция backend-polish перед выпуском - 27.09 вечер
+
+PR13 Семёна (`7ff53dd`) уже в dev. Добавлены публичная страница «О сервисе» с `smookki@yandex.ru` и 112, явный учебный баннер, CASE_NUMBER_PREFIX в release, выход из тупика со старым initData, сохранение выбранного дома, совместимый AbortController и исправление 409/блокировок форм. Для незаписанного ввода перед перезапуском MAX доступно отдельное read-only поле копирования; оно не включает Bridge/cookies/скрытые поля и не сохраняет обращение в storage. SQL/DTO не менялись.
+
+Реальный локальный release-путь: **4/4 Playwright PASS**, 28,2 с (сборка/старт/проверка 41,8 с), включая TRAINING_MODE и серверный ДЕМО-префикс. **70/70 UI PASS** (39,9 с), api:check/format/build PASS. About: дополнительно 3/3 при TRAINING_MODE=false и 3/3 при true, ширина 320 px и шрифт 36 px, axe без нарушений. Новый выпуск ещё не подтверждён; до записи точного SHA ниже сервер остаётся прежним. Seed двух домов и трёх MAX-аккаунтов выполняет Семён после выпуска.
+
 ## Текущий сервер и данные
 
 - Mini App **https://hackathon.lumnex.ru/**, бот [t109_hakaton_max_bot](https://max.ru/t109_hakaton_max_bot), [запуск в MAX](https://max.ru/t109_hakaton_max_bot?startapp).

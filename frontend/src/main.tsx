@@ -15,6 +15,7 @@ import { ItemActionPage } from "./features/item-actions";
 import { NewReportPage, ReportPage } from "./features/reports";
 import { startCaseId } from "./platform/max";
 import "./styles.css";
+import "./components/about.css";
 
 // The blocking Bridge script has already read MAX's launch fragment. It is not an app route.
 // Preserve explicit browser links; start_param selects a route but never grants access.
@@ -32,6 +33,7 @@ const router = createHashRouter([
       { path: "/", element: <CasesPage /> },
       { path: "/access", element: <AccessPage /> },
       { path: "/profile", element: <ProfilePage /> },
+      { path: "/about", element: null },
       { path: "/logout", element: <LogoutPage /> },
       { path: "/new", element: <NewCasePage /> },
       { path: "/cases/:caseId", element: <CasePage /> },

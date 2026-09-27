@@ -2,7 +2,7 @@
 
 ## Mini App с настоящим Java API (27.09)
 
-Основная проверка теперь `python3 scripts/check_miniapp.py` из корня после `npm --prefix frontend ci` и установки Chromium из README. Она создаёт отдельный Compose project со случайным тестовым ключом, PostgreSQL и release-сборкой frontend, запускает четыре сквозных теста и удаляет собственный project с volume. Рабочие базы не используются. Это настоящий HTTP/SQL и эмуляция только стартовых данных MAX, не проверка клиента MAX. `KOREN_QA_CAPTURE=/absolute/path python3 scripts/check_miniapp.py` дополнительно сохраняет 48 снимков действующих маршрутов: указывать отдельный локальный каталог вне Git. Состав сценариев и пределы - [QA](qa/profile-visual-2026-09-27.md).
+Основная проверка теперь `python3 scripts/check_miniapp.py` из корня после `npm --prefix frontend ci` и установки Chromium из README. Она создаёт отдельный Compose project со случайным тестовым ключом, PostgreSQL и release-сборкой frontend, запускает четыре сквозных теста и удаляет собственный project с volume. Рабочие базы не используются. Runner сам задаёт `TRAINING_MODE=true` и `CASE_NUMBER_PREFIX=ДЕМО-` для временной среды и удаляет одноимённые внешние env overrides: интеграционные проверки сверяют учебный баннер и серверный displayNumber. Это настоящий HTTP/SQL и эмуляция только стартовых данных MAX, не проверка клиента MAX. `KOREN_QA_CAPTURE=/absolute/path python3 scripts/check_miniapp.py` дополнительно сохраняет 48 снимков действующих маршрутов: указывать отдельный локальный каталог вне Git. Состав сценариев и пределы - [QA](qa/profile-visual-2026-09-27.md).
 
 ```sh
 npm --prefix frontend run api:check
@@ -13,6 +13,14 @@ python3 scripts/check_miniapp.py
 ```
 
 Для ручной разработки Vite: `npm --prefix frontend run dev`. `API_PROXY_TARGET` задаёт адрес разрешённого локального Java API; по умолчанию `http://127.0.0.1:8080`. Пользовательские маршруты требуют серверную сессию. У UI нет публичного обхода входа или переключателя роли; фикстуры и синтетический Bridge существуют только в Playwright.
+
+Публичная справка открывается по `/#/about` и без сессии MAX; рабочие маршруты по-прежнему требуют вход. Тексты справки и контакт `smookki@yandex.ru` находятся в `frontend/src/features/about.tsx`, отдельные стили - в `frontend/src/components/about.css`. Ссылка удаления только открывает почту с темой, не отправляет письмо и не изменяет БД.
+
+Для локального показа учебного баннера запускать Vite с `VITE_TRAINING_MODE=true`; без этого значения баннера нет. В release используется `TRAINING_MODE=true` из приватного env: Compose передаёт его как build argument `VITE_TRAINING_MODE`. Это флаг сборки, поэтому `up -d` без пересборки web не изменит уже собранный интерфейс. `CASE_NUMBER_PREFIX` независимо передаётся backend и влияет на подпись номера. Ни флаг, ни префикс не добавляют фикстуры и не выключают авторизацию.
+
+UI-набор включает `about.spec.ts`, `transport.spec.ts`, `case-flow.spec.ts` и `session.spec.ts`. Проверка обоих значений учебного флага требует двух отдельных запусков Vite с соответствующим env; при `reuseExistingServer` уже работающий процесс может сохранить прежнее значение. Проверки с тестовым Bridge не подтверждают физический клиент MAX.
+
+После истечения initData новый вход требует закрыть Mini App и снова открыть кнопкой бота. Reload страницы может оставить прежние данные запуска; увеличение серверного TTL и подмена подписи не являются исправлением. Скопировать несохранённый текст перед закрытием.
 
 Отдельный постоянный стенд поднимается по [release](release.md). Для локального HTTP задать `SESSION_COOKIE_SECURE=false` и `SESSION_COOKIE_SAMESITE=Lax` только в закрытом тестовом env. На HTTPS нужны `true` и `None`: MAX Web открывает Mini App в iframe с другого сайта. Эти настройки применяются и к session cookie, и к CSRF cookie; CSRF-заголовок всё равно обязателен. Не открывать Vite или профили demo/no-db на публичном домене.
 

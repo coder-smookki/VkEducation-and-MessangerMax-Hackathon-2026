@@ -3,6 +3,8 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
+ARG VITE_TRAINING_MODE=false
+ENV VITE_TRAINING_MODE=$VITE_TRAINING_MODE
 RUN npm run build
 
 FROM nginx:1.28-alpine

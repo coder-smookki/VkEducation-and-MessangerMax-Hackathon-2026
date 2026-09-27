@@ -2,7 +2,7 @@ import { StateIllustration } from "../components/brand";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useSession } from "../App";
-import type { Case, Item } from "../api/client";
+import { ApiError, type Case, type Item } from "../api/client";
 import { useCase, useCaseSaved, useCommand } from "../api/queries";
 import {
   Button,
@@ -27,7 +27,10 @@ export function ItemActionPage() {
   const query = useCase(caseId);
   if (query.isPending || (!query.isFetchedAfterMount && query.isFetching))
     return <Loading />;
-  if (query.error || !query.data)
+  if (
+    !query.data ||
+    (query.error instanceof ApiError && [403, 404].includes(query.error.status))
+  )
     return (
       <ErrorPanel
         error={query.error}
@@ -59,7 +62,7 @@ export function ItemActionPage() {
       item={item}
       action={action}
       actorId={me.userId}
-      load={async () => (await query.refetch()).data}
+      load={async () => (await query.refetch({ throwOnError: true })).data}
     />
   );
 }
@@ -280,7 +283,11 @@ function ItemForm({
                   <Button
                     type="submit"
                     kind={!observation && !next ? "danger" : "primary"}
-                    disabled={!valid || !!operation.error}
+                    disabled={
+                      !valid ||
+                      (operation.error instanceof ApiError &&
+                        operation.error.status === 409)
+                    }
                   >
                     {operation.isPending
                       ? "Сохраняем…"

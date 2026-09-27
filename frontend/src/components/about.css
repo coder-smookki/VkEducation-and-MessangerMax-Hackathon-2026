@@ -1,0 +1,26 @@
+.about-page {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.about-data-list {
+  padding-inline-start: 1.25em;
+  margin-block-end: 0;
+}
+.about-data-list li + li {
+  margin-block-start: 1em;
+}
+.about-page .button {
+  max-width: 100%;
+  white-space: normal;
+  text-align: center;
+}
+.training-banner {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.training-banner .notice {
+  margin-block-start: 0;
+}
+.training-banner p {
+  margin-block-end: 0;
+}
