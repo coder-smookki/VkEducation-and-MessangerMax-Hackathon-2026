@@ -97,7 +97,7 @@ PATCH items заменяет весь draft-список: пункт без item
 
 Тело `/api` больше 256 КиБ отклоняется до чтения (413), тело без Content-Length (chunked) - 411. sourceText и reportText 1-5000 символов, location 1-300, symptom 1-1000, reason 1-1000; длина считается в Unicode code points (в UI - `Array.from(text)`). Draft - 0-20 пунктов, confirm - 1-20; targetItemIds и links непусты, без дублей, не больше 20.
 
-Любая ошибка - `application/problem+json` с `{type,title,status,code}`; у 500 ещё `requestId`. Ни текста исключения, ни класса, ни введённых значений в ответе нет.
+Любая ошибка - `application/problem+json` с `{type,title,status,code,requestId}`; `requestId` совпадает с заголовком `X-Request-Id`. Ни текста исключения, ни класса, ни введённых значений в ответе нет.
 
 | HTTP | code | Когда | Реакция UI |
 |---|---|---|---|
@@ -106,6 +106,7 @@ PATCH items заменяет весь draft-список: пункт без item
 | 401 | INVALID_MAX_INIT_DATA | подпись initData не подтверждена | войти заново из MAX |
 | 403 | CSRF_TOKEN_INVALID | нет или неверен CSRF-токен | взять токен из GET `/csrf` и повторить с тем же Idempotency-Key |
 | 403 | ACTION_FORBIDDEN | объект виден, действие не разрешено | показать запрет |
+| 403 | INVITATION_REJECTED | код приглашения использован, истёк или не существует (причина не раскрывается) | попросить новый код у диспетчера |
 | 404 | RESOURCE_NOT_FOUND | объект не существует или недоступен | не намекать на существование чужого |
 | 404 | NOT_FOUND | такого маршрута нет (с сессией) | ошибка клиента |
 | 409 | CASE_VERSION_CONFLICT, ITEM_VERSION_CONFLICT, STALE_CONTEXT | версия или раунд устарели | перечитать карточку, сохранить ввод, спросить пользователя |

@@ -218,6 +218,8 @@ def run(session, house, deadline):
         except (urllib.error.URLError, TimeoutError, ConnectionError) as failure:
             with lock:
                 transport_errors[type(failure).__name__] += 1
+            # A dead backend must not turn into a busy loop that hides it; wait like after any request.
+            time.sleep(args.think_ms / 1000)
             continue
         with lock:
             samples[name].append(seconds)
@@ -256,6 +258,7 @@ def main():
 
     everything = [seconds for values in samples.values() for seconds in values]
     total = len(everything)
+    lost = sum(transport_errors.values())
     if total == 0:
         raise SystemExit("No request completed; is the backend up at " + args.api_url + "?")
     all_statuses = defaultdict(int)
@@ -291,10 +294,13 @@ def main():
     print(f"machine {platform.platform()}, {os.cpu_count()} CPU, Python {platform.python_version()}")
     print("Record next to these numbers: how Java and PostgreSQL were run, and the Python analysis mode.")
 
-    passed = p95 < P95_TARGET_SECONDS and server_errors / total < SERVER_ERROR_TARGET and other_client == 0
+    # A request that never got an answer (refused, reset, timed out) is a failure too, not a missing sample:
+    # otherwise a backend that dies mid-run leaves only its fast early answers and still "passes".
+    failure_share = (server_errors + lost) / (total + lost)
+    passed = p95 < P95_TARGET_SECONDS and failure_share < SERVER_ERROR_TARGET and other_client == 0
     print(
         "\nRESULT " + ("PASS" if passed else "FAIL") + f": p95 {p95 * 1000:.0f} ms (target < 1000), "
-        f"5xx {server_errors / total:.2%} (target < 1%), unexpected 4xx {other_client}"
+        f"5xx + no answer {failure_share:.2%} (target < 1%), unexpected 4xx {other_client}"
     )
     raise SystemExit(0 if passed else 1)
 
