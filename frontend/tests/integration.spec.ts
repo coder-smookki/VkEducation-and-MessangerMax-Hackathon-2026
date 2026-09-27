@@ -239,7 +239,7 @@ test("real API: author → dispatcher → partial result → archive, with acces
       .getByRole("button", { name: "Принять обращение", exact: true })
       .click();
     await expect(
-      dispatcher.page.getByText("Принято диспетчером", { exact: false }),
+      dispatcher.page.getByText("Принято диспетчером", { exact: true }),
     ).toBeVisible();
     await dispatcher.page
       .locator(".item-card")
@@ -348,8 +348,12 @@ test("real API: author → dispatcher → partial result → archive, with acces
       path: "../tmp/kirill/partial-real-light.png",
       fullPage: true,
     });
-    await author.page.getByText("Настройки вида", { exact: true }).click();
-    await author.page.getByLabel("Тема", { exact: true }).selectOption("dark");
+    await author.page
+      .getByRole("button", { name: "Настройки вида", exact: true })
+      .click();
+    await author.page
+      .getByRole("radio", { name: "Тёмная", exact: true })
+      .check();
     await author.page
       .getByRole("button", { name: "Готово", exact: true })
       .click();

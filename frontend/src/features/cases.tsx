@@ -28,17 +28,43 @@ import {
 } from "../components/ui";
 import {
   categories,
+  CategorySymbol,
+  CaseStatus,
   ItemFacts,
   ItemHeading,
   Progress,
   observationLabels,
   workLabels,
 } from "../components/domain";
+import { StateIllustration } from "../components/brand";
 
+type ListFilter = "all" | "waiting" | "draft" | "restored";
+const listFilters: { value: ListFilter; label: string }[] = [
+  { value: "all", label: "Все" },
+  { value: "waiting", label: "Ждут приёма" },
+  { value: "draft", label: "Черновики" },
+  { value: "restored", label: "Восстановлено" },
+];
+function matchesFilter(value: Case, filter: ListFilter) {
+  if (filter === "waiting")
+    return value.submissionStatus === "CONFIRMED" && !value.receipt.acceptedAt;
+  if (filter === "draft") return value.submissionStatus === "DRAFT";
+  if (filter === "restored") return value.progress.allConfirmed;
+  return true;
+}
 export function CasesPage() {
   const { house, me } = useSession();
   const [search, setSearch] = useSearchParams();
-  const queue = house?.role === "DISPATCHER" ? search.get("queue") || "" : "";
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [local, setLocal] = useState({
+    houseId: "",
+    text: "",
+    filter: "all" as ListFilter,
+  });
+  const text = local.houseId === house?.houseId ? local.text : "";
+  const filter = local.houseId === house?.houseId ? local.filter : "all";
+  const dispatcher = house?.role === "DISPATCHER";
+  const queue = dispatcher ? search.get("queue") || "" : "";
   const query = useInfiniteQuery({
     queryKey: ["cases", me.userId, house?.houseId, queue],
     enabled: !!house,
@@ -52,7 +78,8 @@ export function CasesPage() {
   });
   if (!house)
     return (
-      <section className="card">
+      <section className="card empty empty-state">
+        <StateIllustration kind="house" />
         <Title>Подключите свой дом</Title>
         <p>Чтобы создать обращение, нужен код от диспетчера.</p>
         <Link className="button primary" to="/access">
@@ -61,15 +88,64 @@ export function CasesPage() {
       </section>
     );
   const all = query.data?.pages.flatMap((page) => page.items) || [];
+  const needle = text.trim().toLocaleLowerCase("ru");
+  const visible = all.filter(
+    (value) =>
+      (dispatcher || matchesFilter(value, filter)) &&
+      (!needle ||
+        [
+          value.displayNumber,
+          value.sourceText,
+          ...value.items.flatMap((item) => [
+            item.symptom,
+            item.location,
+            categories[item.category],
+          ]),
+        ]
+          .join(" ")
+          .toLocaleLowerCase("ru")
+          .includes(needle)),
+  );
+  function setText(value: string) {
+    setLocal({ houseId: house!.houseId, text: value, filter });
+  }
+  function resetFilters() {
+    setLocal({ houseId: house!.houseId, text: "", filter: "all" });
+    if (queue) setSearch({ house: house!.houseId });
+  }
   return (
     <>
-      <div className="page-heading">
+      <div className="page-heading case-list-heading">
         <div>
-          <Title>
-            {house.role === "DISPATCHER"
-              ? "Очередь обращений"
-              : "Мои обращения"}
-          </Title>
+          <div className="case-list-title">
+            <Title>{dispatcher ? "Очередь обращений" : "Мои обращения"}</Title>
+            <button
+              className="icon-button search-trigger"
+              type="button"
+              aria-label="Поиск обращений"
+              aria-expanded={searchOpen || !!text}
+              aria-controls="case-search"
+              onClick={() => {
+                if (searchOpen || text) {
+                  setSearchOpen(false);
+                  setText("");
+                } else setSearchOpen(true);
+              }}
+            >
+              <Icon name="search" />
+            </button>
+            <button
+              className="icon-button"
+              type="button"
+              aria-label="Обновить"
+              onClick={() => {
+                void query.refetch();
+              }}
+              disabled={query.isFetching}
+            >
+              <Icon name="refresh" />
+            </button>
+          </div>
           <p className="page-description">{house.address}</p>
         </div>
         <Link className="button primary" to={`/new?house=${house.houseId}`}>
@@ -77,7 +153,19 @@ export function CasesPage() {
           Новое обращение
         </Link>
       </div>
-      <section className="toolbar" aria-label="Фильтры">
+      <div id="case-search" hidden={!searchOpen && !text}>
+        <label className="case-search">
+          <Icon name="search" />
+          <span className="sr-only">Поиск по загруженным обращениям</span>
+          <input
+            type="search"
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            placeholder="Номер, тема или место"
+          />
+        </label>
+      </div>
+      <section className="toolbar list-tools" aria-label="Фильтры">
         {me.memberships.length > 1 && (
           <Select
             label="Дом"
@@ -91,16 +179,17 @@ export function CasesPage() {
             ))}
           </Select>
         )}
-        {house.role === "DISPATCHER" && (
+        {dispatcher ? (
           <Select
             label="Показывать"
             value={queue}
-            onChange={(value) =>
+            onChange={(value) => {
+              setLocal({ houseId: house.houseId, text: "", filter: "all" });
               setSearch({
                 house: house.houseId,
                 ...(value ? { queue: value } : {}),
-              })
-            }
+              });
+            }}
           >
             <option value="">Все доступные</option>
             <option value="NEEDS_ACCEPTANCE">Ждут приёма</option>
@@ -108,18 +197,38 @@ export function CasesPage() {
             <option value="AWAITING_AUTHOR">Ждут наблюдения автора</option>
             <option value="ARCHIVED">Есть архивные пункты</option>
           </Select>
+        ) : (
+          <div className="filter-chips" aria-label="Состояние обращений">
+            {listFilters.map((item) => (
+              <button
+                className={`filter-chip${filter === item.value ? " active" : ""}`}
+                type="button"
+                key={item.value}
+                aria-pressed={filter === item.value}
+                onClick={() =>
+                  setLocal({ houseId: house.houseId, text, filter: item.value })
+                }
+              >
+                {item.label}
+                {query.data && (
+                  <span className="filter-count">
+                    {
+                      all.filter((value) => matchesFilter(value, item.value))
+                        .length
+                    }
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
         )}
-        <Button
-          kind="quiet"
-          onClick={() => {
-            void query.refetch();
-          }}
-          disabled={query.isFetching}
-        >
-          <Icon name="refresh" />
-          Обновить
-        </Button>
       </section>
+      {query.hasNextPage && !query.error && (
+        <p className="caption list-scope">
+          Загружено {all.length} обращений. Поиск и счётчики относятся к
+          загруженным карточкам. Остальные доступны по кнопке «Загрузить ещё».
+        </p>
+      )}
       {query.isPending ? (
         <Loading />
       ) : query.error ? (
@@ -131,31 +240,28 @@ export function CasesPage() {
         />
       ) : (
         <>
-          {!all.length ? (
-            <section className="card empty">
-              <span className="empty-symbol">
-                <Icon name="home" />
-              </span>
+          {!visible.length ? (
+            <section className="card empty empty-state">
+              <StateIllustration
+                kind={all.length || queue ? "empty" : "house"}
+              />
               <h2>
-                {queue
+                {queue || needle || filter !== "all"
                   ? "Под этот фильтр пока ничего не подходит"
                   : "Пока нет обращений"}
               </h2>
               <p>
-                {queue
-                  ? "Выберите другой фильтр или покажите все доступные обращения."
-                  : "Создайте первое обращение. Каждую проблему можно будет отслеживать отдельно."}
+                {queue || needle || filter !== "all"
+                  ? "Измените поиск или покажите все доступные обращения."
+                  : "Здесь будут ваши обращения и новости о работах по дому."}
               </p>
-              {queue && (
-                <Button
-                  kind="secondary"
-                  onClick={() => setSearch({ house: house.houseId })}
-                >
+              {(queue || needle || filter !== "all") && (
+                <Button kind="secondary" onClick={resetFilters}>
                   Сбросить фильтр
                 </Button>
               )}
             </section>
-          ) : house.role === "DISPATCHER" ? (
+          ) : dispatcher ? (
             <table className="queue-table" aria-label="Доступные обращения">
               <thead>
                 <tr>
@@ -166,7 +272,7 @@ export function CasesPage() {
                 </tr>
               </thead>
               <tbody>
-                {all.map((value) => (
+                {visible.map((value) => (
                   <tr key={value.caseId}>
                     <td>
                       <p className="eyebrow">№{value.displayNumber}</p>
@@ -176,11 +282,7 @@ export function CasesPage() {
                       </Link>
                     </td>
                     <td data-label="Приём">
-                      {value.submissionStatus === "DRAFT"
-                        ? "Черновик"
-                        : value.receipt.acceptedAt
-                          ? "Принято диспетчером"
-                          : "Ждёт приёма"}
+                      <CaseStatus value={value} />
                     </td>
                     <td data-label="Наблюдения автора">
                       {value.progress.confirmed} из {value.progress.total}{" "}
@@ -195,35 +297,59 @@ export function CasesPage() {
             </table>
           ) : (
             <div className="case-list">
-              {all.map((value) => (
-                <article className="card case-row" key={value.caseId}>
-                  <div>
+              {visible.map((value) => (
+                <article
+                  className={`card case-row${value.submissionStatus === "DRAFT" ? " draft-card" : ""}`}
+                  key={value.caseId}
+                >
+                  <CategorySymbol
+                    category={value.items[0]?.category || "OTHER"}
+                  />
+                  <div className="case-card-content">
                     <p className="eyebrow">
                       №{value.displayNumber} · {formatDate(value.createdAt)}
                     </p>
-                    <h2>
-                      <Link to={`/cases/${value.caseId}`}>
-                        {value.items[0]?.symptom ||
-                          value.sourceText.slice(0, 100)}
+                    <div className="case-card-top">
+                      <h2>
+                        <Link to={`/cases/${value.caseId}`}>
+                          {value.items[0]?.symptom ||
+                            value.sourceText.slice(0, 100)}
+                        </Link>
+                      </h2>
+                      <CaseStatus value={value} />
+                    </div>
+                    {value.items[0]?.location && (
+                      <p className="caption">
+                        {value.items[0].location}
+                        {value.items.length > 1 &&
+                          ` · ещё пунктов: ${value.items.length - 1}`}
+                      </p>
+                    )}
+                    <div className="case-card-bottom">
+                      <div className="mini-progress" aria-hidden="true">
+                        <span
+                          style={{
+                            width: `${value.progress.total ? (value.progress.confirmed / value.progress.total) * 100 : 0}%`,
+                          }}
+                        />
+                      </div>
+                      <span className="caption">
+                        <strong>
+                          {value.progress.confirmed} из {value.progress.total}
+                        </strong>{" "}
+                        подтверждены автором
+                        {value.progress.withdrawn > 0 &&
+                          ` · отозвано ${value.progress.withdrawn}`}
+                      </span>
+                    </div>
+                    {value.submissionStatus === "DRAFT" && (
+                      <Link
+                        className="draft-continue"
+                        to={`/cases/${value.caseId}/edit`}
+                      >
+                        Продолжить черновик
                       </Link>
-                    </h2>
-                    <p className="case-status">
-                      {value.submissionStatus === "DRAFT"
-                        ? "Черновик · список ещё не подтверждён"
-                        : value.receipt.acceptedAt
-                          ? "Принято диспетчером"
-                          : "Список подтверждён · ждёт приёма"}
-                    </p>
-                  </div>
-                  <div className="list-progress">
-                    <strong>
-                      {value.progress.confirmed} из {value.progress.total}
-                    </strong>
-                    <span className="caption">
-                      подтверждены автором
-                      {value.progress.withdrawn > 0 &&
-                        ` · отозвано ${value.progress.withdrawn}`}
-                    </span>
+                    )}
                   </div>
                   <span className="row-arrow">
                     <Icon name="arrow" />
@@ -274,31 +400,36 @@ export function CasePage() {
       <Link className="back-link" to={`/?house=${data.houseId}`}>
         ← К обращениям
       </Link>
-      <div className="page-heading">
-        <div>
-          <Title>Обращение №{data.displayNumber}</Title>
-          <p className="page-description">{membership?.address}</p>
+      <section className="card case-intro">
+        <div className="case-intro-summary">
+          <CategorySymbol category={data.items[0]?.category || "OTHER"} />
+          <div>
+            <Title>Обращение №{data.displayNumber}</Title>
+            <p className="caption">{formatDate(data.createdAt)}</p>
+            <p className="page-description">{membership?.address}</p>
+          </div>
         </div>
-      </div>
-      <div className="case-meta">
-        <p className="receipt-status">
-          {data.submissionStatus === "DRAFT"
-            ? "Черновик"
-            : data.receipt.acceptedAt
-              ? `Принято диспетчером ${formatDate(data.receipt.acceptedAt)}`
-              : "Ждёт приёма диспетчером"}
-        </p>
-        <Button
-          kind="quiet"
-          onClick={() => {
-            void query.refetch();
-          }}
-          disabled={query.isFetching}
-        >
-          <Icon name="refresh" />
-          Обновить карточку
-        </Button>
-      </div>
+        <div className="case-meta">
+          <div>
+            <CaseStatus value={data} />
+            {data.receipt.acceptedAt && (
+              <p className="caption">
+                Принято диспетчером {formatDate(data.receipt.acceptedAt)}
+              </p>
+            )}
+          </div>
+          <Button
+            kind="quiet"
+            onClick={() => {
+              void query.refetch();
+            }}
+            disabled={query.isFetching}
+          >
+            <Icon name="refresh" />
+            Обновить карточку
+          </Button>
+        </div>
+      </section>
       {data.submissionStatus === "DRAFT" ? (
         <section className="card">
           <p className="eyebrow">Исходное обращение</p>
@@ -607,12 +738,17 @@ export function NewCasePage() {
         ← К обращениям
       </Link>
       <CreationSteps current={1} />
-      <Title>Что случилось?</Title>
-      <p className="muted">{house.address}</p>
-      <p className="page-description">
-        Опишите проблему своими словами. Если их несколько, на следующем шаге
-        разделите их на пункты.
-      </p>
+      <div className={`creation-intro ${text ? "has-text" : ""}`}>
+        <StateIllustration kind="document" />
+        <div>
+          <Title>Что случилось?</Title>
+          <p className="muted">{house.address}</p>
+          <p className="page-description">
+            Напишите, что произошло. Каждый вопрос вы сможете выделить в
+            отдельный пункт.
+          </p>
+        </div>
+      </div>
       <section className="card form-card">
         <form
           onSubmit={(e) =>
@@ -633,6 +769,10 @@ export function NewCasePage() {
               limit={5000}
               hint="Укажите место: подъезд, этаж или участок дома."
             />
+            <Notice>
+              Можно писать как есть. Список проблем вы проверите перед
+              отправкой.
+            </Notice>
             <Button type="submit" disabled={!validText(text, 5000)}>
               Сохранить и перейти к пунктам
             </Button>
@@ -648,9 +788,7 @@ export function NewCasePage() {
 function Created({ data, next }: { data: Case; next: () => void }) {
   return (
     <section className="card success-screen">
-      <span className="success-mark">
-        <Icon name="check" />
-      </span>
+      <StateIllustration kind="success" />
       <Title>Черновик сохранён</Title>
       <Notice tone="success">
         Обращение №{data.displayNumber}. Теперь составьте и проверьте отдельные
@@ -807,8 +945,14 @@ function DraftForm({
                 <p className="preserve">{data.sourceText}</p>
               </details>
               {items.map((item, index) => (
-                <section className="card" key={item.itemId || `new-${index}`}>
-                  <h2>Пункт {index + 1}</h2>
+                <section
+                  className="card draft-item"
+                  key={item.itemId || `new-${index}`}
+                >
+                  <div className="draft-item-heading">
+                    <CategorySymbol category={item.category} />
+                    <h2>Пункт {index + 1}</h2>
+                  </div>
                   <Select
                     label="Тема проблемы"
                     value={item.category}
@@ -990,9 +1134,7 @@ export function ConfirmCasePage() {
   if (data.submissionStatus === "CONFIRMED")
     return (
       <section className="card success-screen">
-        <span className="success-mark">
-          <Icon name="check" />
-        </span>
+        <StateIllustration kind="success" />
         <Title>Список подтверждён</Title>
         <p>
           Квитанция №{data.displayNumber} от{" "}
@@ -1011,12 +1153,36 @@ export function ConfirmCasePage() {
     <>
       <CreationSteps current={3} />
       <Title>Всё верно?</Title>
-      <p>
-        Подтвердите, что этот список точно описывает ваше обращение. После
-        подтверждения текст и состав нельзя изменить.
-      </p>
+      <aside className="notice review-intro">
+        <span className="category-symbol">
+          <Icon name="other" />
+        </span>
+        <div>
+          <strong>Проверьте данные перед отправкой</strong>
+          <p>
+            Подтвердите, что этот список точно описывает ваше обращение. После
+            подтверждения текст и состав нельзя изменить.
+          </p>
+        </div>
+      </aside>
+      <section className="card review-source">
+        <dl className="facts">
+          <div>
+            <dt>Дом</dt>
+            <dd>
+              {me.memberships.find(
+                (membership) => membership.houseId === data.houseId,
+              )?.address || "Дом обращения"}
+            </dd>
+          </div>
+          <div>
+            <dt>Исходный текст</dt>
+            <dd className="preserve">{data.sourceText}</dd>
+          </div>
+        </dl>
+      </section>
       {data.items.map((item, index) => (
-        <article className="card" key={item.itemId}>
+        <article className="card review-item" key={item.itemId}>
           <ItemHeading item={item} number={index + 1} />
         </article>
       ))}

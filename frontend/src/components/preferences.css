@@ -1,0 +1,250 @@
+dialog:has(> .preferences-content) {
+  width: min(calc(100% - 24px), 460px);
+  max-height: calc(100dvh - 32px);
+  border-radius: 24px;
+  padding: 24px;
+  padding-bottom: max(20px, env(safe-area-inset-bottom));
+  box-shadow: 0 24px 96px #101a4933;
+}
+
+dialog:has(> .preferences-content) > h2 {
+  margin: 0 36px 24px 0;
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.preferences-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.preferences-close:hover {
+  background: var(--surface-soft, var(--subtle));
+}
+
+.appearance-icon {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+}
+
+.preferences-content .theme-options {
+  min-width: 0;
+  margin: 0 0 20px;
+  padding: 0;
+  border: 0;
+}
+
+.theme-options legend {
+  margin-bottom: 10px;
+  padding: 0;
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+
+.theme-options-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.theme-option {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  min-width: 0;
+  min-height: 92px;
+  padding: 16px 6px 12px;
+  border: 1px solid transparent;
+  border-radius: 16px;
+  background: var(--surface-soft, var(--subtle));
+  color: var(--text);
+  text-align: center;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  cursor: pointer;
+}
+
+.theme-option span {
+  overflow-wrap: anywhere;
+}
+
+.theme-option.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.theme-option input[type="radio"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.theme-option:has(input:focus-visible) {
+  outline: 3px solid var(--focus, var(--accent));
+  outline-offset: 3px;
+}
+
+.preferences-switches {
+  display: grid;
+  gap: 10px;
+}
+
+.preference-switch {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: 12px;
+  min-height: 84px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.preference-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.preference-copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.preference-copy strong {
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.preference-copy small {
+  font-size: 0.77rem;
+  color: var(--muted);
+}
+
+.preference-switch input[type="checkbox"] {
+  position: relative;
+  appearance: none;
+  width: 44px;
+  height: 26px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--control-border, var(--muted));
+  border-radius: 24px;
+  background: var(--surface-soft, var(--subtle));
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.preference-switch input[type="checkbox"]::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: transform 160ms ease;
+}
+
+.preference-switch input[type="checkbox"]:checked {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.preference-switch input[type="checkbox"]:checked::after {
+  transform: translateX(18px);
+  background: var(--surface);
+}
+
+.preferences-content .preferences-note {
+  margin: 18px 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.preferences-content .actions {
+  margin-top: 18px;
+}
+
+@media (max-width: 600px) {
+  dialog:has(> .preferences-content) {
+    inset: auto 0 0;
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(100dvh - 16px);
+    margin: 0;
+    padding: 22px 20px max(20px, env(safe-area-inset-bottom));
+    border-radius: 24px 24px 0 0;
+  }
+}
+
+@media (max-width: 360px) {
+  .preference-switch {
+    grid-template-columns: minmax(0, 1fr) 44px;
+    gap: 10px;
+  }
+
+  .preference-switch > .preference-icon {
+    display: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .theme-option.selected {
+    border-color: Highlight;
+  }
+
+  .preference-switch input[type="checkbox"] {
+    appearance: auto;
+  }
+
+  .preference-switch input[type="checkbox"]::after {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .preference-switch input[type="checkbox"]::after {
+    transition: none;
+  }
+}
+
+:root[data-reduce-motion="true"]
+  .preference-switch
+  input[type="checkbox"]::after {
+  transition: none;
+}

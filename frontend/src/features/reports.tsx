@@ -1,3 +1,4 @@
+import { StateIllustration } from "../components/brand";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
@@ -12,7 +13,6 @@ import {
   DirtyGuard,
   ErrorPanel,
   Field,
-  Icon,
   Loading,
   Notice,
   Select,
@@ -78,9 +78,7 @@ function ReportForm({
   if (operation.isSuccess && operation.data)
     return (
       <section className="card success-screen">
-        <span className="success-mark">
-          <Icon name="check" />
-        </span>
+        <StateIllustration kind="success" />
         <Title>Текст отчёта сохранён</Title>
         <Notice tone="success">
           Пункты ещё не изменились. Отдельно укажите, с какими из них связан
@@ -384,9 +382,19 @@ function LinkForm({
                         и проверьте текст вручную.
                       </Notice>
                     ) : ["QUEUED", "RUNNING"].includes(analysis.status) ? (
-                      <Notice>
-                        Подсказка ещё готовится. Можно продолжить вручную.
-                      </Notice>
+                      <div className="analysis-pending" role="status">
+                        <StateIllustration kind="analysis" />
+                        <h3>Анализ в процессе</h3>
+                        <span
+                          className="brand-loading-track"
+                          aria-hidden="true"
+                        >
+                          <span />
+                        </span>
+                        <p className="muted">
+                          Подсказка ещё готовится. Можно продолжить вручную.
+                        </p>
+                      </div>
                     ) : (
                       <Notice>
                         Подсказка анализа требует вашей проверки. Ничего не

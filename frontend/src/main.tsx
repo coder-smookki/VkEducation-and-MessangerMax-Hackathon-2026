@@ -2,7 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createHashRouter, RouterProvider } from "react-router-dom";
-import { App, AccessPage, LogoutPage } from "./App";
+import { App, AccessPage, LogoutPage, ProfilePage } from "./App";
 import { queryClient } from "./api/queries";
 import {
   CasePage,
@@ -31,6 +31,7 @@ const router = createHashRouter([
     children: [
       { path: "/", element: <CasesPage /> },
       { path: "/access", element: <AccessPage /> },
+      { path: "/profile", element: <ProfilePage /> },
       { path: "/logout", element: <LogoutPage /> },
       { path: "/new", element: <NewCasePage /> },
       { path: "/cases/:caseId", element: <CasePage /> },

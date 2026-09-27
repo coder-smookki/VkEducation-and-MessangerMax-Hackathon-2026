@@ -31,13 +31,13 @@ Java проверяет сессию/получателя, Membership, види�
 | `backend/.../cases/application/CaseService.java` | CRUD/confirm/приём/шаг/отчёт/связи/наблюдения/решения | Один владелец продуктовых команд; не дублировать на клиенте |
 | `backend/.../cases/persistence/`, `cases/domain/` | SQL, версии, права, ItemState и CaseProgress | Сохранять серверный расчёт результата |
 | `backend/.../identity/`, `config/SecurityConfig.java` | MAX HMAC, сессия, CSRF, memberships, приглашения, закрытые маршруты | Проверить реальный MAX web/mobile |
-| `backend/.../max/`, `notifications/` | Webhook, диалог и durable inbox/outbox | Настоящий MaxSender ещё отсутствует |
+| `backend/.../max/`, `notifications/` | Webhook, диалог, durable inbox/outbox и HttpMaxSender | Контроль реальной доставки и повторов MAX |
 | `backend/.../inference/` | HTTP, валидаторы, fallback, кандидаты/Kafka | Kafka-публикация CRUD ещё не подключена |
 | `ml/app/features/` | Extract STUB, clarify RULES, compare RULES v2, производный индекс | Независимый holdout; не выдавать анализ за ремонт |
 | `frontend/src/features/` | Автор, очередь, отчёты/связи, наблюдения, история | Приёмка Софии и живой MAX |
 | `frontend/src/api/` | Generated OpenAPI types, cookie/CSRF client, Query cache, повторы | API не заменяется локальной моделью состояний |
-| `frontend/src/components/`, `platform/max.ts` | MAX-палитра, темы/текст, формы, Bridge и защита ввода | Клавиатура и screen reader на физических устройствах |
-| `compose.release.yaml`, `deploy/`, `frontend/nginx.conf` | Отдельная no-demo сборка, loopback proxy, опциональный HTTPS | Публикация сервера только после возобновления пользователем |
+| `frontend/src/components/`, `platform/max.ts` | ДомПульс, темы/текст/движение, формы, Bridge и защита ввода | Клавиатура и screen reader на физических устройствах |
+| `compose.release.yaml`, `deploy/`, `frontend/nginx.conf` | Отдельная no-demo сборка, loopback proxy, опциональный HTTPS | Выпуск разрешён пользователем; backup, CI и smoke для конкретного SHA |
 
 Здесь `backend/.../` означает `backend/src/main/java/ru/koren/`, а не существующий путь с буквальным многоточием.
 

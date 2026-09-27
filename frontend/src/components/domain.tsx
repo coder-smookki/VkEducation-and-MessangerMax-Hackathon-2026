@@ -31,6 +31,27 @@ export const relationLabels = {
   UNRELATED: "Относится к другой проблеме",
   CONFLICT: "Противоречивые сведения",
 };
+export function CategorySymbol({ category }: { category: Item["category"] }) {
+  return (
+    <span className={`category-symbol category-${category.toLowerCase()}`}>
+      <Icon name={categoryIcons[category]} />
+    </span>
+  );
+}
+export function CaseStatus({ value }: { value: Case }) {
+  const draft = value.submissionStatus === "DRAFT";
+  return (
+    <span
+      className={`status-badge ${draft ? "neutral" : value.receipt.acceptedAt ? "accepted" : "waiting"}`}
+    >
+      {draft
+        ? "Черновик"
+        : value.receipt.acceptedAt
+          ? "Принято диспетчером"
+          : "Ждёт приёма"}
+    </span>
+  );
+}
 export function Progress({ value }: { value: Case["progress"] }) {
   return (
     <section className="progress-summary" aria-label="Результат по пунктам">
@@ -115,9 +136,7 @@ export function ItemFacts({ item }: { item: Item }) {
 export function ItemHeading({ item, number }: { item: Item; number?: number }) {
   return (
     <div className="item-heading">
-      <span className="category-symbol">
-        <Icon name={categoryIcons[item.category]} />
-      </span>
+      <CategorySymbol category={item.category} />
       <div>
         <p className="eyebrow">
           {number && `Пункт ${number} · `}

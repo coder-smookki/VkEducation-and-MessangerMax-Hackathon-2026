@@ -128,6 +128,49 @@ test("account without membership needs an invitation", async ({ page }) => {
   await expect(page.getByLabel("Код приглашения")).toHaveValue("bad-code");
 });
 
+test("profile navigation shows the authenticated account and server memberships", async ({
+  page,
+}) => {
+  const { me } = await setup(page);
+  await page.goto("/");
+  const navigation = page.getByRole("navigation", {
+    name: "Основная навигация",
+  });
+  await navigation.getByRole("link", { name: "Профиль", exact: true }).click();
+  await expect(page).toHaveURL(/#\/profile$/);
+  await expect(
+    page.getByRole("heading", { name: "Профиль", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: me.displayName! }),
+  ).toBeVisible();
+  const house = page.getByRole("link", {
+    name: `${me.memberships[0].address} Житель`,
+    exact: true,
+  });
+  await expect(house).toHaveAttribute(
+    "href",
+    `#/?house=${me.memberships[0].houseId}`,
+  );
+  await expect(
+    page.getByRole("link", { name: "ДомПульс, главная", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Выйти", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Выйти из ДомПульса?", exact: true }),
+  ).toBeVisible();
+  // Navigation itself never terminates a session; the existing explicit command is required.
+  await expect(
+    page.getByRole("button", { name: "Завершить сессию", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("link", { name: "Остаться в ДомПульсе", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Доступ к дому", exact: true }),
+  ).toBeVisible();
+});
+
 test("theme, large text and denied storage preserve input; cancelled exit restores focus", async ({
   page,
 }) => {
@@ -139,8 +182,10 @@ test("theme, large text and denied storage preserve input; cancelled exit restor
   });
   await page.goto("/#/new");
   await page.getByLabel("Текст обращения").fill("Дверь скрипит 🚪");
-  await page.getByText("Настройки вида", { exact: true }).click();
-  await page.getByLabel("Тема", { exact: true }).selectOption("dark");
+  await page
+    .getByRole("button", { name: "Настройки вида", exact: true })
+    .click();
+  await page.getByRole("radio", { name: "Тёмная", exact: true }).check();
   await page.getByLabel("Крупный текст").check();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await expect(page.getByLabel("Текст обращения")).toHaveValue(
@@ -546,9 +591,11 @@ test("accessible editor and report forms at 320px with large text", async ({
   const { data } = await setup(page, true);
   await page.setViewportSize({ width: 320, height: 844 });
   await page.goto(`/#/cases/${caseId}/reports/new`);
-  await page.getByText("Настройки вида", { exact: true }).click();
+  await page
+    .getByRole("button", { name: "Настройки вида", exact: true })
+    .click();
   await page.getByLabel("Крупный текст").check();
-  await page.getByLabel("Тема", { exact: true }).selectOption("dark");
+  await page.getByRole("radio", { name: "Тёмная", exact: true }).check();
   await page.getByRole("button", { name: "Готово", exact: true }).click();
   await page.getByLabel("Текст отчёта").fill("Свет заменили 🚪 ".repeat(50));
   expect(
@@ -601,11 +648,11 @@ test("appearance dialog preserves input, restores focus, persists settings and r
     exact: true,
   });
   await trigger.click();
-  const dialog = page.getByRole("dialog", { name: "Удобный вид" });
+  const dialog = page.getByRole("dialog", { name: "Внешний вид приложения" });
   await expect(dialog).toBeVisible();
-  await page.getByLabel("Тема", { exact: true }).selectOption("dark");
+  await page.getByRole("radio", { name: "Тёмная", exact: true }).check();
   await page.getByLabel("Крупный текст").check();
-  await page.getByLabel("Без анимации").check();
+  await page.getByLabel("Уменьшить анимации").check();
   await expect(page.locator("html")).toHaveAttribute(
     "data-reduce-motion",
     "true",
@@ -646,8 +693,8 @@ test("appearance dialog preserves input, restores focus, persists settings and r
       .evaluate((el) => getComputedStyle(el).animationName),
   ).toBe("none");
   await trigger.click();
-  await page.getByLabel("Без анимации").uncheck();
-  await page.getByLabel("Тема", { exact: true }).selectOption("system");
+  await page.getByLabel("Уменьшить анимации").uncheck();
+  await page.getByRole("radio", { name: "Как в системе", exact: true }).check();
   await page.getByRole("button", { name: "Готово", exact: true }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
@@ -730,6 +777,7 @@ test("redesigned screen families remain accessible in both themes", async ({
       ["new", "/new"],
       ["observation", `/cases/${caseId}/items/${data.items[1].itemId}/observe`],
       ["access", "/access"],
+      ["profile", "/profile"],
     ]) {
       await page.goto(`/?screen=${name}-${theme}#${path}`);
       await capture(`${name}-${theme}`);

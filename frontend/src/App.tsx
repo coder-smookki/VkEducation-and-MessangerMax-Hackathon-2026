@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Link,
@@ -20,11 +20,16 @@ import {
   ErrorPanel,
   Field,
   Icon,
-  Loading,
   Notice,
   Title,
   submit,
 } from "./components/ui";
+import {
+  Brand,
+  BrandMark,
+  BrandSplash,
+  StateIllustration,
+} from "./components/brand";
 import { PreferencesPanel } from "./components/preferences";
 export type Session = {
   me: Me;
@@ -46,6 +51,7 @@ async function enter(signal?: AbortSignal): Promise<Me> {
 }
 export function App() {
   const cache = useQueryClient();
+  const navigation = useRef<HTMLElement>(null);
   const [signedOut, setSignedOut] = useState(false);
   const session = useQuery({
     queryKey: ["session"],
@@ -86,6 +92,28 @@ export function App() {
         : () => navigate(match ? `/cases/${match[1]}` : "/"),
     );
   }, [location.pathname, navigate]);
+  useEffect(() => {
+    const nav = navigation.current;
+    if (!nav) return;
+    // The mobile bar grows with text zoom and safe areas; reserve its actual height.
+    const measure = () => {
+      const height =
+        getComputedStyle(nav).position === "fixed"
+          ? nav.getBoundingClientRect().height
+          : 0;
+      document.documentElement.style.setProperty(
+        "--navigation-height",
+        `${height}px`,
+      );
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(nav);
+    measure();
+    return () => {
+      observer.disconnect();
+      document.documentElement.style.removeProperty("--navigation-height");
+    };
+  }, [!!me, signedOut]);
   const context: Session | null = me
     ? {
         me,
@@ -102,7 +130,9 @@ export function App() {
       }
     : null;
   return (
-    <div className="shell">
+    <div
+      className={`shell ${!["/", "/access", "/profile"].includes(location.pathname) ? "nested-page" : ""} ${me && !signedOut ? "authenticated" : "guest"} ${session.isPending && !signedOut ? "booting" : ""}`}
+    >
       <a
         className="skip"
         href="#main-content"
@@ -113,46 +143,48 @@ export function App() {
       >
         К содержимому
       </a>
-      <header className="app-header">
-        <Link
-          className="brand"
-          to={house ? `/?house=${house.houseId}` : "/"}
-          aria-label="КОРЕНЬ, главная"
-        >
-          <svg
-            className="brand-mark"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.7"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M12 21V3M12 8l6-4M12 13 6 9M12 18l-5 4M12 18l5 4" />
-          </svg>
-          <span>КОРЕНЬ</span>
-        </Link>
-        <PreferencesPanel />
-      </header>
-      {me && !signedOut && (
-        <nav className="app-nav" aria-label="Основная навигация">
-          <NavLink
-            end
+      <aside className="app-sidebar">
+        <header className="app-header">
+          <Link
+            className="brand"
             to={house ? `/?house=${house.houseId}` : "/"}
-            className={({ isActive }) =>
-              isActive ||
-              location.pathname.startsWith("/cases/") ||
-              location.pathname === "/new"
-                ? "active"
-                : ""
-            }
+            aria-label="ДомПульс, главная"
           >
-            Обращения
-          </NavLink>
-          <NavLink to="/access">Доступ к дому</NavLink>
-        </nav>
-      )}
+            <Brand />
+          </Link>
+          <PreferencesPanel />
+        </header>
+        {me && !signedOut && (
+          <nav
+            ref={navigation}
+            className="app-nav"
+            aria-label="Основная навигация"
+          >
+            <NavLink
+              end
+              to={house ? `/?house=${house.houseId}` : "/"}
+              className={({ isActive }) =>
+                isActive ||
+                location.pathname.startsWith("/cases/") ||
+                location.pathname === "/new"
+                  ? "active"
+                  : ""
+              }
+            >
+              <Icon name="home" />
+              <span>Обращения</span>
+            </NavLink>
+            <NavLink to="/access">
+              <Icon name="lock" />
+              <span>Доступ к дому</span>
+            </NavLink>
+            <NavLink to="/profile">
+              <Icon name="user" />
+              <span>Профиль</span>
+            </NavLink>
+          </nav>
+        )}
+      </aside>
       <main id="main-content" tabIndex={-1}>
         {signedOut ? (
           <section className="card">
@@ -168,12 +200,13 @@ export function App() {
             </Button>
           </section>
         ) : session.isPending ? (
-          <Loading />
+          <BrandSplash />
         ) : !me ? (
           <section className="welcome">
-            <span className="welcome-symbol">
-              <Icon name="home" />
-            </span>
+            <BrandMark className="welcome-logo" />
+            <p className="welcome-name">
+              Дом<span>Пульс</span>
+            </p>
             <Title>Каждая проблема остаётся на виду</Title>
             <p>
               Сообщите о проблеме в доме, следите за каждым пунктом и проверяйте
@@ -235,7 +268,7 @@ export function App() {
             </Button>
           </div>
           {!getRawMaxInitData() && (
-            <p>Для нового входа откройте КОРЕНЬ из MAX.</p>
+            <p>Для нового входа откройте ДомПульс из MAX.</p>
           )}
         </Dialog>
       )}
@@ -254,17 +287,21 @@ export function AccessPage() {
   return (
     <>
       <Title>Доступ к дому</Title>
+      {!me.memberships.length && <StateIllustration kind="house" />}
       {me.memberships.length > 0 && (
         <section className="card">
           <h2>Подключённые дома</h2>
           <ul className="membership-list">
             {me.memberships.map((m) => (
               <li key={m.houseId}>
-                <Icon name="home" />
-                <span>
-                  <strong>{m.address}</strong>
-                  <small>{roleLabel(m.role)}</small>
+                <span className="house-icon">
+                  <Icon name="home" />
                 </span>
+                <Link className="house-link" to={`/?house=${m.houseId}`}>
+                  <strong>{m.address}</strong>
+                  <small className="role-badge">{roleLabel(m.role)}</small>
+                </Link>
+                <Icon name="arrow" />
               </li>
             ))}
           </ul>
@@ -276,9 +313,14 @@ export function AccessPage() {
           Введите одноразовый код, который вам передал диспетчер дома.
         </p>
         {success && (
-          <Notice tone="success">
-            Доступ обновлён. Можно перейти к обращениям.
-          </Notice>
+          <div className="access-success" role="status">
+            <StateIllustration kind="success" />
+            <h2>Дом успешно подключён!</h2>
+            <p>Доступ обновлён. Можно перейти к обращениям.</p>
+            <Link className="button primary" to="/">
+              Готово
+            </Link>
+          </div>
         )}
         <form
           onSubmit={(e) =>
@@ -297,6 +339,7 @@ export function AccessPage() {
           {claim.isPending && <p role="status">Проверяем код…</p>}
         </form>
       </section>
+      <Notice>Если у вас нет кода, обратитесь к диспетчеру вашего дома.</Notice>
       <div className="actions">
         <Button kind="secondary" onClick={refreshAccess}>
           Обновить доступ
@@ -313,12 +356,61 @@ export function AccessPage() {
     </>
   );
 }
+export function ProfilePage() {
+  const { me } = useSession();
+  return (
+    <>
+      <Title>Профиль</Title>
+      <section className="card profile-card">
+        <span className="profile-avatar">
+          <Icon name="user" />
+        </span>
+        <h2>{me.displayName || "Пользователь MAX"}</h2>
+        <p className="muted">Вы вошли через MAX</p>
+      </section>
+      <section className="card">
+        <h2>Мои дома и роли</h2>
+        {me.memberships.length ? (
+          <ul className="membership-list">
+            {me.memberships.map((m) => (
+              <li key={m.houseId}>
+                <span className="house-icon">
+                  <Icon name="home" />
+                </span>
+                <Link className="house-link" to={`/?house=${m.houseId}`}>
+                  <strong>{m.address}</strong>
+                  <small className="role-badge">{roleLabel(m.role)}</small>
+                </Link>
+                <Icon name="arrow" />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted">Пока нет подключённых домов.</p>
+        )}
+        <Link className="text-link" to="/access">
+          Подключить дом
+        </Link>
+      </section>
+      <section className="card">
+        <h2>Удобно для вас</h2>
+        <p className="muted">
+          Тема, размер текста и анимации меняются кнопкой настроек в верхней
+          части экрана.
+        </p>
+      </section>
+      <Link className="button secondary" to="/logout">
+        Выйти
+      </Link>
+    </>
+  );
+}
 export function LogoutPage() {
   const { logout } = useSession();
   const operation = useCommand<void>(logout);
   return (
     <section className="card">
-      <Title>Выйти из КОРНЯ?</Title>
+      <Title>Выйти из ДомПульса?</Title>
       <p>Серверная сессия будет завершена. Войти снова можно через MAX.</p>
       <CommandError operation={operation} />
       <div className="actions">
@@ -329,7 +421,7 @@ export function LogoutPage() {
           Завершить сессию
         </Button>
         <Link className="button secondary" to="/access">
-          Остаться в КОРНЕ
+          Остаться в ДомПульсе
         </Link>
       </div>
     </section>

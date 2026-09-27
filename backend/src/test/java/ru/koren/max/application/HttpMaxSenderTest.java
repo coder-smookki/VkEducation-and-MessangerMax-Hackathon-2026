@@ -125,6 +125,24 @@ class HttpMaxSenderTest {
     }
 
     @Test
+    void aLinkedReportDoesNotClaimCompletionWithoutAWorkStatus() {
+        // Both PLANNED and REPORTED_DONE links produce this same payload. Only the case view
+        // knows which work status was saved; a notification must not turn a plan into completion.
+        sender().send(RESIDENT, "REPORT_LINK_CONFIRMED",
+            "{\"caseId\":\"" + CASE + "\",\"itemId\":\"" + UUID.randomUUID() + "\"}");
+
+        assertEquals(1, seen.size());
+        JsonNode body = json.readTree(seen.getFirst().body());
+        String text = body.get("text").asString();
+        assertTrue(text.contains("№124"), text);
+        assertTrue(text.contains("сведения о работах"), text);
+        assertFalse(text.contains("выполн"), "A planned report is not completed work: " + text);
+        assertFalse(text.contains("помогло"), "A planned report does not yet ask about the result: " + text);
+        JsonNode button = body.get("attachments").get(0).get("payload").get("buttons").get(0).get(0);
+        assertEquals("https://max.ru/" + BOT + "?startapp=" + CASE, button.get("url").asString());
+    }
+
+    @Test
     void aBotReplyIsSentAsWrittenWithoutAButton() {
         sender().send(RESIDENT, BotDialog.REPLY_EVENT, "{\"text\":\"Записал. Опишите пункт.\"}");
 

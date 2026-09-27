@@ -1,3 +1,4 @@
+import { StateIllustration } from "../components/brand";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useSession } from "../App";
@@ -9,7 +10,6 @@ import {
   DirtyGuard,
   ErrorPanel,
   Field,
-  Icon,
   Loading,
   Notice,
   Title,
@@ -142,9 +142,7 @@ function ItemForm({
   if (operation.isSuccess)
     return (
       <section className="card success-screen">
-        <span className="success-mark">
-          <Icon name="check" />
-        </span>
+        <StateIllustration kind="success" />
         <Title>
           {observation
             ? "Наблюдение сохранено"

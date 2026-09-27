@@ -2,6 +2,7 @@ import { useEffect, useId, useRef } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { useBlocker, useBeforeUnload } from "react-router-dom";
 import { ApiError, errorMessage } from "../api/client";
+import { BrandSplash, StateIllustration } from "./brand";
 import { closingConfirmation } from "../platform/max";
 
 export function Button({
@@ -35,15 +36,25 @@ export function Notice({
   children: ReactNode;
   tone?: "info" | "warning" | "success";
 }) {
-  return <aside className={`notice ${tone}`}>{children}</aside>;
+  return (
+    <aside className={`notice ${tone}`}>
+      <span className="notice-icon" aria-hidden="true">
+        <Icon
+          name={
+            tone === "success"
+              ? "check"
+              : tone === "warning"
+                ? "lighting"
+                : "other"
+          }
+        />
+      </span>
+      <div>{children}</div>
+    </aside>
+  );
 }
 export function Loading() {
-  return (
-    <p className="loading" role="status">
-      <span className="loading-dot" aria-hidden="true" />
-      Загружаем данные…
-    </p>
-  );
+  return <BrandSplash compact label="Загружаем данные…" />;
 }
 export function ErrorPanel({
   error,
@@ -54,7 +65,8 @@ export function ErrorPanel({
 }) {
   if (!error) return null;
   return (
-    <div className="notice error" role="alert">
+    <div className={`notice error ${retry ? "load-error" : ""}`} role="alert">
+      {retry && <StateIllustration kind="error" />}
       <p>{errorMessage(error)}</p>
       {error instanceof ApiError && error.requestId && (
         <p className="caption">
@@ -190,10 +202,10 @@ export function CreationSteps({ current }: { current: 1 | 2 | 3 }) {
           aria-current={index + 1 === current ? "step" : undefined}
           data-complete={index + 1 < current}
         >
-          <span className="step-line" aria-hidden="true" />
-          <span>
-            {index + 1}. {label}
+          <span className="step-dot" aria-hidden="true">
+            {index + 1 < current ? <Icon name="check" /> : index + 1}
           </span>
+          <span>{label}</span>
         </li>
       ))}
     </ol>
@@ -213,13 +225,26 @@ export function Icon({
     | "lighting"
     | "door"
     | "cleaning"
-    | "other";
+    | "other"
+    | "user"
+    | "lock"
+    | "search"
+    | "file"
+    | "clock"
+    | "pin";
 }) {
   const paths = {
     plus: "M12 5v14M5 12h14",
     refresh:
       "M20 7v5h-5M4 17v-5h5M6.3 6.3A8 8 0 0 1 20 12M4 12a8 8 0 0 0 13.7 5.7",
-    settings: "M4 7h6m4 0h6M4 17h10m4 0h2M10 4v6M14 14v6",
+    settings:
+      "M9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1 1-3ZM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0",
+    user: "M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM4 21v-2a7 7 0 0 1 7-7h2a7 7 0 0 1 7 7v2H4Z",
+    lock: "M7 10V7a5 5 0 0 1 10 0v3M5 10h14v11H5V10ZM12 14v3",
+    search: "m16 16 5 5M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0",
+    file: "M6 3h8l4 4v14H6V3ZM14 3v5h4M9 12h6M9 16h6",
+    clock: "M12 8v5l3 2M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0",
+    pin: "M19 10c0 5-7 12-7 12S5 15 5 10a7 7 0 0 1 14 0ZM15 10a3 3 0 1 1-6 0 3 3 0 0 1 6 0",
     arrow: "m9 5 7 7-7 7",
     home: "m3 10 9-7 9 7M5 9v12h14V9M9 21v-7h6v7",
     check: "m5 12 4 4L19 6",

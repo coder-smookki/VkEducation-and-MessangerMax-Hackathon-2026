@@ -118,8 +118,7 @@ public class HttpMaxSender implements MaxSender {
             case "CASE_CONFIRMED" -> "Новое обращение" + number + " подтверждено жителем и ждёт в очереди.";
             case "CASE_ACCEPTED" -> "Обращение" + number + " принято в работу.";
             case "ITEM_NEXT_ACTION_SET" -> "По обращению" + number + " назначен следующий шаг.";
-            case "REPORT_LINK_CONFIRMED" -> "По обращению" + number + " сообщили о выполненных работах."
-                + " Напишите «наблюдение», чтобы ответить, помогло ли.";
+            case "REPORT_LINK_CONFIRMED" -> "По обращению" + number + " появились новые сведения о работах.";
             case "OBSERVATION_RECORDED" -> "Житель ответил, помогли ли работы по обращению" + number + ".";
             case "ITEM_WITHDRAWN" -> "Житель отозвал пункт в обращении" + number + ".";
             case "ITEM_ARCHIVED" -> "Пункт в обращении" + number + " перенесён в архив.";
