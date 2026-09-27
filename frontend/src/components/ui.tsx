@@ -40,6 +40,7 @@ export function Notice({
 export function Loading() {
   return (
     <p className="loading" role="status">
+      <span className="loading-dot" aria-hidden="true" />
       Загружаем данные…
     </p>
   );
@@ -131,7 +132,7 @@ export function Field({
         <input {...props} type={type} />
       )}
       <div id={`${id}-help`} className={`caption ${invalid ? "invalid" : ""}`}>
-        {hint}
+        {hint && <span>{hint}</span>}
         {limit && (
           <span className="counter">
             {length} / {limit}
@@ -176,6 +177,72 @@ export const formatDate = (value: string | null | undefined) =>
         timeStyle: "short",
       }).format(new Date(value))
     : "Пока нет";
+
+export function CreationSteps({ current }: { current: 1 | 2 | 3 }) {
+  return (
+    <ol
+      className="creation-steps"
+      aria-label={`Создание обращения, шаг ${current} из 3`}
+    >
+      {["Описание", "Пункты", "Проверка"].map((label, index) => (
+        <li
+          key={label}
+          aria-current={index + 1 === current ? "step" : undefined}
+          data-complete={index + 1 < current}
+        >
+          <span className="step-line" aria-hidden="true" />
+          <span>
+            {index + 1}. {label}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+export function Icon({
+  name,
+}: {
+  name:
+    | "plus"
+    | "refresh"
+    | "settings"
+    | "arrow"
+    | "home"
+    | "check"
+    | "lighting"
+    | "door"
+    | "cleaning"
+    | "other";
+}) {
+  const paths = {
+    plus: "M12 5v14M5 12h14",
+    refresh:
+      "M20 7v5h-5M4 17v-5h5M6.3 6.3A8 8 0 0 1 20 12M4 12a8 8 0 0 0 13.7 5.7",
+    settings: "M4 7h6m4 0h6M4 17h10m4 0h2M10 4v6M14 14v6",
+    arrow: "m9 5 7 7-7 7",
+    home: "m3 10 9-7 9 7M5 9v12h14V9M9 21v-7h6v7",
+    check: "m5 12 4 4L19 6",
+    lighting: "M9 18h6M10 21h4M8 14a6 6 0 1 1 8 0c-1 1-1 2-1 2H9s0-1-1-2",
+    door: "M4 21h16M6 21V3h12v18M14 12h.01",
+    cleaning: "m16 3-6 10M4 21h13l-1-7-6-3-6 10ZM8 21l3-6",
+    other: "M12 8v5M12 17h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0",
+  };
+  return (
+    <svg
+      className="icon"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d={paths[name]} />
+    </svg>
+  );
+}
 
 export function Dialog({
   title,

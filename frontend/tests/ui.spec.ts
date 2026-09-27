@@ -146,6 +146,7 @@ test("theme, large text and denied storage preserve input; cancelled exit restor
   await expect(page.getByLabel("Текст обращения")).toHaveValue(
     "Дверь скрипит 🚪",
   );
+  await page.getByRole("button", { name: "Готово", exact: true }).click();
   await page.getByRole("link", { name: "Обращения", exact: true }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByRole("button", { name: "Остаться", exact: true }).click();
@@ -548,7 +549,7 @@ test("accessible editor and report forms at 320px with large text", async ({
   await page.getByText("Настройки вида", { exact: true }).click();
   await page.getByLabel("Крупный текст").check();
   await page.getByLabel("Тема", { exact: true }).selectOption("dark");
-  await page.getByText("Настройки вида", { exact: true }).click();
+  await page.getByRole("button", { name: "Готово", exact: true }).click();
   await page.getByLabel("Текст отчёта").fill("Свет заменили 🚪 ".repeat(50));
   expect(
     await page.evaluate(
@@ -582,4 +583,175 @@ test("accessible editor and report forms at 320px with large text", async ({
       () => document.documentElement.scrollWidth <= innerWidth + 1,
     ),
   ).toBeTruthy();
+});
+
+test("appearance dialog preserves input, restores focus, persists settings and respects reduced motion", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.setViewportSize({ width: 320, height: 844 });
+  await page.emulateMedia({
+    colorScheme: "light",
+    reducedMotion: "no-preference",
+  });
+  await page.goto("/#/new");
+  await page.getByLabel("Текст обращения").fill("Дверь не закрывается");
+  const trigger = page.getByRole("button", {
+    name: "Настройки вида",
+    exact: true,
+  });
+  await trigger.click();
+  const dialog = page.getByRole("dialog", { name: "Удобный вид" });
+  await expect(dialog).toBeVisible();
+  await page.getByLabel("Тема", { exact: true }).selectOption("dark");
+  await page.getByLabel("Крупный текст").check();
+  await page.getByLabel("Без анимации").check();
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-reduce-motion",
+    "true",
+  );
+  await page.evaluate(() => {
+    document.documentElement.style.fontSize = "36px";
+  });
+  expect(
+    await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth + 1),
+  ).toBeTruthy();
+  expect(
+    (
+      await new AxeBuilder({ page })
+        .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+        .analyze()
+    ).violations,
+  ).toEqual([]);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await expect(page.getByLabel("Текст обращения")).toHaveValue(
+    "Дверь не закрывается",
+  );
+  expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([
+    "koren:preferences",
+  ]);
+  await page.getByLabel("Текст обращения").fill("");
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.locator("html")).toHaveAttribute("data-large", "true");
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-reduce-motion",
+    "true",
+  );
+  expect(
+    await page
+      .locator(".page-content")
+      .evaluate((el) => getComputedStyle(el).animationName),
+  ).toBe("none");
+  await trigger.click();
+  await page.getByLabel("Без анимации").uncheck();
+  await page.getByLabel("Тема", { exact: true }).selectOption("system");
+  await page.getByRole("button", { name: "Готово", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  expect(
+    await page
+      .locator(".page-content")
+      .evaluate((el) => getComputedStyle(el).animationName),
+  ).toBe("none");
+});
+
+test("history is requested only on demand and rare item actions remain reachable", async ({
+  page,
+}) => {
+  await setup(page);
+  let historyRequests = 0;
+  await page.route("**/history?**", (route) => {
+    historyRequests++;
+    return route.fulfill({ json: { items: [], nextCursor: null } });
+  });
+  await page.goto(`/#/cases/${caseId}`);
+  await expect(
+    page.getByRole("heading", { name: /Обращение №/ }),
+  ).toBeVisible();
+  expect(historyRequests).toBe(0);
+  const action = page
+    .getByRole("link", { name: "Сообщить своё наблюдение" })
+    .first();
+  const size = await action.boundingBox();
+  expect(size!.height).toBeGreaterThanOrEqual(52);
+  expect(size!.height).toBeLessThan(100);
+  await page.getByText("История обращения", { exact: true }).click();
+  await expect.poll(() => historyRequests).toBe(1);
+  const item = page
+    .locator(".item-card")
+    .filter({ hasText: "Дверь не закрывается" });
+  await expect(item.getByRole("link", { name: "Отозвать пункт" })).toHaveCount(
+    0,
+  );
+  await item.getByText("Другие действия", { exact: true }).click();
+  await item.getByRole("link", { name: "Отозвать пункт", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Отозвать этот пункт?" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Действие нельзя отменить.", { exact: false }),
+  ).toBeVisible();
+});
+
+test("redesigned screen families remain accessible in both themes", async ({
+  page,
+}) => {
+  const { data } = await setup(page);
+  const capture = async (name: string) => {
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth + 1,
+      ),
+    ).toBeTruthy();
+    expect(
+      (
+        await new AxeBuilder({ page })
+          .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+          .analyze()
+      ).violations,
+    ).toEqual([]);
+    if (process.env.KOREN_DESIGN_CAPTURE)
+      await page.screenshot({
+        path: `../tmp/redesign/${name}.png`,
+        fullPage: !(await page.getByRole("dialog").isVisible()),
+        animations: "disabled",
+      });
+  };
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
+    for (const [name, path] of [
+      ["list", "/"],
+      ["case", `/cases/${caseId}`],
+      ["new", "/new"],
+      ["observation", `/cases/${caseId}/items/${data.items[1].itemId}/observe`],
+      ["access", "/access"],
+    ]) {
+      await page.goto(`/?screen=${name}-${theme}#${path}`);
+      await capture(`${name}-${theme}`);
+    }
+    await page
+      .getByRole("button", { name: "Настройки вида", exact: true })
+      .click();
+    await capture(`preferences-${theme}`);
+    await page.getByRole("button", { name: "Готово", exact: true }).click();
+  }
+  data.submissionStatus = "DRAFT";
+  await page.goto(`/?screen=draft#/cases/${caseId}/edit`);
+  await capture("draft-dark");
+  await page.goto(`/?screen=review#/cases/${caseId}/review`);
+  await capture("review-dark");
+  await setup(page, true);
+  for (const [name, path] of [
+    ["queue", "/"],
+    ["report", `/cases/${caseId}/reports/${reportFixture.reportId}`],
+  ]) {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(`/?screen=${name}#${path}`);
+    await capture(`${name}-desktop-dark`);
+  }
 });

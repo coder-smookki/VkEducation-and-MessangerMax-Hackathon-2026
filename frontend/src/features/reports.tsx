@@ -12,6 +12,7 @@ import {
   DirtyGuard,
   ErrorPanel,
   Field,
+  Icon,
   Loading,
   Notice,
   Select,
@@ -76,7 +77,10 @@ function ReportForm({
   );
   if (operation.isSuccess && operation.data)
     return (
-      <section className="card">
+      <section className="card success-screen">
+        <span className="success-mark">
+          <Icon name="check" />
+        </span>
         <Title>Текст отчёта сохранён</Title>
         <Notice tone="success">
           Пункты ещё не изменились. Отдельно укажите, с какими из них связан

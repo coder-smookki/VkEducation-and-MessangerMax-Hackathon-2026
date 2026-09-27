@@ -1,11 +1,17 @@
 import type { Case, Item } from "../api/client";
-import { formatDate } from "./ui";
+import { formatDate, Icon } from "./ui";
 export const categories: Record<Item["category"], string> = {
   LIGHTING: "Освещение",
   ENTRANCE_DOOR: "Дверь",
   CLEANING: "Уборка",
   OTHER: "Другая проблема",
 };
+const categoryIcons = {
+  LIGHTING: "lighting",
+  ENTRANCE_DOOR: "door",
+  CLEANING: "cleaning",
+  OTHER: "other",
+} as const;
 export const workLabels = {
   NOT_ASSIGNED: "Нет сведений о работах",
   PLANNED: "Работы запланированы",
@@ -28,14 +34,16 @@ export const relationLabels = {
 export function Progress({ value }: { value: Case["progress"] }) {
   return (
     <section className="progress-summary" aria-label="Результат по пунктам">
-      <p>
+      <div className="progress-copy">
         <strong>
           {value.confirmed} из {value.total}
-        </strong>{" "}
-        {value.allConfirmed
-          ? "- всё подтверждено автором"
-          : "- восстановление подтверждено автором"}
-      </p>
+        </strong>
+        <span>
+          {value.allConfirmed
+            ? "По всем пунктам автор подтвердил восстановление"
+            : "Восстановление подтверждено автором"}
+        </span>
+      </div>
       <div className="progress-track" aria-hidden="true">
         <span
           style={{
@@ -44,7 +52,7 @@ export function Progress({ value }: { value: Case["progress"] }) {
         />
       </div>
       <p className="caption">
-        Без положительного наблюдения: {value.remaining}.
+        Пока без подтверждения восстановления: {value.remaining}.
         {value.withdrawn > 0 &&
           ` Отозвано: ${value.withdrawn}. Отзыв не считается выполнением.`}
       </p>
@@ -55,18 +63,18 @@ export function ItemFacts({ item }: { item: Item }) {
   const active = item.administrativeStatus === "ACTIVE";
   return (
     <>
-      <div className="facts">
-        <p>
-          <span className="caption">Сведения о работах</span>
-          <strong>{workLabels[item.workStatus]}</strong>
-        </p>
-        <p>
-          <span className="caption">Наблюдение автора</span>
-          <strong className={item.observation === "RESTORED" ? "positive" : ""}>
+      <dl className="facts">
+        <div>
+          <dt>Работы</dt>
+          <dd>{workLabels[item.workStatus]}</dd>
+        </div>
+        <div>
+          <dt>Проверка автора</dt>
+          <dd className={item.observation === "RESTORED" ? "positive" : ""}>
             {observationLabels[item.observation]}
-          </strong>
-        </p>
-      </div>
+          </dd>
+        </div>
+      </dl>
       {!active && (
         <aside className="notice warning">
           <strong>
@@ -80,7 +88,7 @@ export function ItemFacts({ item }: { item: Item }) {
       )}
       {item.nextAction && (
         <div className="next-action">
-          <p className="eyebrow">
+          <p className="next-action-label">
             {active ? "Следующий шаг" : "Последний план до завершения"}
           </p>
           <p className="preserve">{item.nextAction.text}</p>
@@ -106,13 +114,18 @@ export function ItemFacts({ item }: { item: Item }) {
 }
 export function ItemHeading({ item, number }: { item: Item; number?: number }) {
   return (
-    <>
-      <p className="eyebrow">
-        {number && `${String(number).padStart(2, "0")} · `}
-        {categories[item.category]}
-      </p>
-      <h3>{item.symptom}</h3>
-      <p className="muted preserve">{item.location}</p>
-    </>
+    <div className="item-heading">
+      <span className="category-symbol">
+        <Icon name={categoryIcons[item.category]} />
+      </span>
+      <div>
+        <p className="eyebrow">
+          {number && `Пункт ${number} · `}
+          {categories[item.category]}
+        </p>
+        <h3>{item.symptom}</h3>
+        <p className="muted preserve">{item.location}</p>
+      </div>
+    </div>
   );
 }

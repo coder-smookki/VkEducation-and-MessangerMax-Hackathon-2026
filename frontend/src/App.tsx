@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Link,
+  NavLink,
   Outlet,
   useLocation,
   useNavigate,
@@ -18,6 +19,7 @@ import {
   Dialog,
   ErrorPanel,
   Field,
+  Icon,
   Loading,
   Notice,
   Title,
@@ -129,17 +131,26 @@ export function App() {
           >
             <path d="M12 21V3M12 8l6-4M12 13 6 9M12 18l-5 4M12 18l5 4" />
           </svg>
-          <span>
-            КОРЕНЬ<small>Обращения по пунктам</small>
-          </span>
+          <span>КОРЕНЬ</span>
         </Link>
         <PreferencesPanel />
       </header>
       {me && !signedOut && (
         <nav className="app-nav" aria-label="Основная навигация">
-          <Link to={house ? `/?house=${house.houseId}` : "/"}>Обращения</Link>
-          <Link to="/access">Доступ к дому</Link>
-          <Link to="/logout">Выйти</Link>
+          <NavLink
+            end
+            to={house ? `/?house=${house.houseId}` : "/"}
+            className={({ isActive }) =>
+              isActive ||
+              location.pathname.startsWith("/cases/") ||
+              location.pathname === "/new"
+                ? "active"
+                : ""
+            }
+          >
+            Обращения
+          </NavLink>
+          <NavLink to="/access">Доступ к дому</NavLink>
         </nav>
       )}
       <main id="main-content" tabIndex={-1}>
@@ -159,8 +170,10 @@ export function App() {
         ) : session.isPending ? (
           <Loading />
         ) : !me ? (
-          <section className="card welcome">
-            <p className="eyebrow">КОРЕНЬ в MAX</p>
+          <section className="welcome">
+            <span className="welcome-symbol">
+              <Icon name="home" />
+            </span>
             <Title>Каждая проблема остаётся на виду</Title>
             <p>
               Сообщите о проблеме в доме, следите за каждым пунктом и проверяйте
@@ -184,23 +197,26 @@ export function App() {
             ) : (
               <ErrorPanel error={session.error} />
             )}
-            <Button
-              kind="secondary"
-              onClick={() => {
-                resetCsrf();
-                void session.refetch();
-              }}
-            >
-              Проверить вход
-            </Button>
+            <div className="actions">
+              <Button
+                kind="secondary"
+                onClick={() => {
+                  resetCsrf();
+                  void session.refetch();
+                }}
+              >
+                Проверить вход
+              </Button>
+            </div>
           </section>
         ) : (
-          context && <Outlet context={context} />
+          context && (
+            <div className="page-content" key={location.pathname}>
+              <Outlet context={context} />
+            </div>
+          )
         )}
       </main>
-      <footer className="app-footer">
-        Отчёт о работах и ваше наблюдение учитываются отдельно.
-      </footer>
       {expired && me && (
         <Dialog title="Войдите снова" onCancel={() => setExpired(false)}>
           <p>Сессия завершилась. Несохранённый ввод остаётся на странице.</p>
@@ -238,20 +254,27 @@ export function AccessPage() {
   return (
     <>
       <Title>Доступ к дому</Title>
-      <section className="card">
-        <p>
-          Получите одноразовый код у диспетчера дома. Роль назначается на
-          сервере.
-        </p>
-        {me.memberships.length > 0 && (
-          <ul>
+      {me.memberships.length > 0 && (
+        <section className="card">
+          <h2>Подключённые дома</h2>
+          <ul className="membership-list">
             {me.memberships.map((m) => (
               <li key={m.houseId}>
-                {m.address} · {roleLabel(m.role)}
+                <Icon name="home" />
+                <span>
+                  <strong>{m.address}</strong>
+                  <small>{roleLabel(m.role)}</small>
+                </span>
               </li>
             ))}
           </ul>
-        )}
+        </section>
+      )}
+      <section className="card">
+        <h2>Подключить дом</h2>
+        <p className="muted">
+          Введите одноразовый код, который вам передал диспетчер дома.
+        </p>
         {success && (
           <Notice tone="success">
             Доступ обновлён. Можно перейти к обращениям.
@@ -273,13 +296,20 @@ export function AccessPage() {
           <CommandError operation={claim} />
           {claim.isPending && <p role="status">Проверяем код…</p>}
         </form>
+      </section>
+      <div className="actions">
         <Button kind="secondary" onClick={refreshAccess}>
           Обновить доступ
         </Button>
         <Link className="text-link" to="/">
           К обращениям
         </Link>
-      </section>
+      </div>
+      <div className="account-exit">
+        <Link className="text-link" to="/logout">
+          Выйти
+        </Link>
+      </div>
     </>
   );
 }
@@ -291,12 +321,17 @@ export function LogoutPage() {
       <Title>Выйти из КОРНЯ?</Title>
       <p>Серверная сессия будет завершена. Войти снова можно через MAX.</p>
       <CommandError operation={operation} />
-      <Button
-        disabled={operation.locked}
-        onClick={() => operation.run("/auth/logout", {})}
-      >
-        Завершить сессию
-      </Button>
+      <div className="actions">
+        <Button
+          disabled={operation.locked}
+          onClick={() => operation.run("/auth/logout", {})}
+        >
+          Завершить сессию
+        </Button>
+        <Link className="button secondary" to="/access">
+          Остаться в КОРНЕ
+        </Link>
+      </div>
     </section>
   );
 }

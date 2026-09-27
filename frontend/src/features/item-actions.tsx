@@ -9,6 +9,7 @@ import {
   DirtyGuard,
   ErrorPanel,
   Field,
+  Icon,
   Loading,
   Notice,
   Title,
@@ -140,7 +141,10 @@ function ItemForm({
   }
   if (operation.isSuccess)
     return (
-      <section className="card">
+      <section className="card success-screen">
+        <span className="success-mark">
+          <Icon name="check" />
+        </span>
         <Title>
           {observation
             ? "Наблюдение сохранено"
@@ -170,7 +174,10 @@ function ItemForm({
       </Title>
       <article className="card">
         <ItemHeading item={item} />
-        <ItemFacts item={item} />
+        <details className="context-details">
+          <summary>Текущее состояние пункта</summary>
+          <ItemFacts item={item} />
+        </details>
       </article>
       {!active && (
         <Notice tone="warning">

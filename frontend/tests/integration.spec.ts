@@ -350,7 +350,9 @@ test("real API: author → dispatcher → partial result → archive, with acces
     });
     await author.page.getByText("Настройки вида", { exact: true }).click();
     await author.page.getByLabel("Тема", { exact: true }).selectOption("dark");
-    await author.page.getByText("Настройки вида", { exact: true }).click();
+    await author.page
+      .getByRole("button", { name: "Готово", exact: true })
+      .click();
     await author.page.screenshot({
       path: "../tmp/kirill/partial-real-dark.png",
       fullPage: true,
@@ -398,6 +400,11 @@ test("real API: author → dispatcher → partial result → archive, with acces
     );
     await dispatcher.page
       .getByRole("link", { name: "← К обращению", exact: true })
+      .click();
+    await dispatcher.page
+      .locator(".item-card")
+      .filter({ hasText: "Дверь не закрывается" })
+      .getByText("Другие действия", { exact: true })
       .click();
     await dispatcher.page
       .locator(".item-card")
@@ -540,6 +547,11 @@ test("real API: one-time invitation, negative observations and withdrawal retain
         .getByRole("link", { name: "Вернуться к обращению" })
         .click();
     }
+    await resident.page
+      .locator(".item-card")
+      .filter({ hasText: "Дверь не закрывается" })
+      .getByText("Другие действия", { exact: true })
+      .click();
     await resident.page
       .locator(".item-card")
       .filter({ hasText: "Дверь не закрывается" })

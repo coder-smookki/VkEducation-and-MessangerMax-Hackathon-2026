@@ -13,9 +13,11 @@ import { useCase, useCaseSaved, useCommand } from "../api/queries";
 import {
   Button,
   CommandError,
+  CreationSteps,
   DirtyGuard,
   ErrorPanel,
   Field,
+  Icon,
   Loading,
   Notice,
   Select,
@@ -63,31 +65,32 @@ export function CasesPage() {
     <>
       <div className="page-heading">
         <div>
-          <p className="eyebrow">
-            {roleLabel(house.role)} · {house.address}
-          </p>
           <Title>
             {house.role === "DISPATCHER"
               ? "Очередь обращений"
               : "Мои обращения"}
           </Title>
+          <p className="page-description">{house.address}</p>
         </div>
         <Link className="button primary" to={`/new?house=${house.houseId}`}>
+          <Icon name="plus" />
           Новое обращение
         </Link>
       </div>
       <section className="toolbar" aria-label="Фильтры">
-        <Select
-          label="Дом"
-          value={house.houseId}
-          onChange={(value) => setSearch({ house: value })}
-        >
-          {me.memberships.map((m) => (
-            <option key={m.houseId} value={m.houseId}>
-              {m.address} · {roleLabel(m.role)}
-            </option>
-          ))}
-        </Select>
+        {me.memberships.length > 1 && (
+          <Select
+            label="Дом"
+            value={house.houseId}
+            onChange={(value) => setSearch({ house: value })}
+          >
+            {me.memberships.map((m) => (
+              <option key={m.houseId} value={m.houseId}>
+                {m.address} · {roleLabel(m.role)}
+              </option>
+            ))}
+          </Select>
+        )}
         {house.role === "DISPATCHER" && (
           <Select
             label="Показывать"
@@ -107,12 +110,13 @@ export function CasesPage() {
           </Select>
         )}
         <Button
-          kind="secondary"
+          kind="quiet"
           onClick={() => {
             void query.refetch();
           }}
           disabled={query.isFetching}
         >
+          <Icon name="refresh" />
           Обновить
         </Button>
       </section>
@@ -129,6 +133,9 @@ export function CasesPage() {
         <>
           {!all.length ? (
             <section className="card empty">
+              <span className="empty-symbol">
+                <Icon name="home" />
+              </span>
               <h2>
                 {queue
                   ? "Под этот фильтр пока ничего не подходит"
@@ -200,7 +207,7 @@ export function CasesPage() {
                           value.sourceText.slice(0, 100)}
                       </Link>
                     </h2>
-                    <p className="muted">
+                    <p className="case-status">
                       {value.submissionStatus === "DRAFT"
                         ? "Черновик · список ещё не подтверждён"
                         : value.receipt.acceptedAt
@@ -218,6 +225,9 @@ export function CasesPage() {
                         ` · отозвано ${value.progress.withdrawn}`}
                     </span>
                   </div>
+                  <span className="row-arrow">
+                    <Icon name="arrow" />
+                  </span>
                 </article>
               ))}
             </div>
@@ -266,17 +276,26 @@ export function CasePage() {
       </Link>
       <div className="page-heading">
         <div>
-          <p className="eyebrow">{membership?.address}</p>
           <Title>Обращение №{data.displayNumber}</Title>
-          <p className="muted">Создано {formatDate(data.createdAt)}</p>
+          <p className="page-description">{membership?.address}</p>
         </div>
+      </div>
+      <div className="case-meta">
+        <p className="receipt-status">
+          {data.submissionStatus === "DRAFT"
+            ? "Черновик"
+            : data.receipt.acceptedAt
+              ? `Принято диспетчером ${formatDate(data.receipt.acceptedAt)}`
+              : "Ждёт приёма диспетчером"}
+        </p>
         <Button
-          kind="secondary"
+          kind="quiet"
           onClick={() => {
             void query.refetch();
           }}
           disabled={query.isFetching}
         >
+          <Icon name="refresh" />
           Обновить карточку
         </Button>
       </div>
@@ -300,11 +319,6 @@ export function CasePage() {
         </section>
       ) : (
         <>
-          <p className="caption">
-            {data.receipt.acceptedAt
-              ? `Принято диспетчером ${formatDate(data.receipt.acceptedAt)}`
-              : "Обращение ждёт приёма диспетчером."}
-          </p>
           {dispatcher && !data.receipt.acceptedAt && (
             <>
               <CommandError operation={acceptance} />
@@ -320,13 +334,6 @@ export function CasePage() {
               </Button>
             </>
           )}
-          <details className="source-details">
-            <summary>Исходный текст и квитанция</summary>
-            <p className="preserve">{data.sourceText}</p>
-            <p className="caption">
-              Список подтверждён {formatDate(data.receipt.confirmedAt)}
-            </p>
-          </details>
         </>
       )}
       {data.submissionStatus === "CONFIRMED" && (
@@ -360,6 +367,16 @@ export function CasePage() {
             Добавить отчёт о работах
           </Link>
         )}
+      {data.submissionStatus === "CONFIRMED" && (
+        <details className="card source-details">
+          <summary>Исходный текст и квитанция</summary>
+          <p className="caption">Создано {formatDate(data.createdAt)}</p>
+          <p className="preserve">{data.sourceText}</p>
+          <p className="caption">
+            Список подтверждён {formatDate(data.receipt.confirmedAt)}
+          </p>
+        </details>
+      )}
       <History data={data} meId={me.userId} />
     </>
   );
@@ -397,20 +414,25 @@ function CaseItemCard({
                 Указать следующий шаг
               </Link>
             )}
-            <div className="minor-actions">
-              {author && (
-                <Link
-                  to={`/cases/${data.caseId}/items/${item.itemId}/withdraw`}
-                >
-                  Отозвать пункт
-                </Link>
-              )}
-              {dispatcher && (
-                <Link to={`/cases/${data.caseId}/items/${item.itemId}/archive`}>
-                  В архив
-                </Link>
-              )}
-            </div>
+            <details className="item-more">
+              <summary>Другие действия</summary>
+              <div className="minor-actions">
+                {author && (
+                  <Link
+                    to={`/cases/${data.caseId}/items/${item.itemId}/withdraw`}
+                  >
+                    Отозвать пункт
+                  </Link>
+                )}
+                {dispatcher && (
+                  <Link
+                    to={`/cases/${data.caseId}/items/${item.itemId}/archive`}
+                  >
+                    В архив
+                  </Link>
+                )}
+              </div>
+            </details>
           </div>
         )}
     </>
@@ -449,8 +471,10 @@ const eventLabels: Record<string, string> = {
   ITEM_ADMINISTRATIVE_DECISION: "Административное решение по пункту",
 };
 function History({ data, meId }: { data: Case; meId: string }) {
+  const [open, setOpen] = useState(false);
   const query = useInfiniteQuery({
     queryKey: ["history", data.caseId],
+    enabled: open,
     initialPageParam: null as string | null,
     queryFn: ({ signal, pageParam }) =>
       get<Page<HistoryEvent>>(
@@ -460,7 +484,10 @@ function History({ data, meId }: { data: Case; meId: string }) {
     getNextPageParam: (page) => page.nextCursor,
   });
   return (
-    <details className="card timeline">
+    <details
+      className="card timeline"
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
       <summary>История обращения</summary>
       {query.isPending ? (
         <Loading />
@@ -576,13 +603,17 @@ export function NewCasePage() {
     return <Notice>Сначала подключите дом на странице доступа.</Notice>;
   return (
     <>
+      <Link className="back-link" to={`/?house=${house.houseId}`}>
+        ← К обращениям
+      </Link>
+      <CreationSteps current={1} />
       <Title>Что случилось?</Title>
       <p className="muted">{house.address}</p>
-      <section className="card">
-        <p>
-          Опишите проблему своими словами. Если их несколько, на следующем шаге
-          разделите их на пункты.
-        </p>
+      <p className="page-description">
+        Опишите проблему своими словами. Если их несколько, на следующем шаге
+        разделите их на пункты.
+      </p>
+      <section className="card form-card">
         <form
           onSubmit={(e) =>
             submit(e, () =>
@@ -616,7 +647,10 @@ export function NewCasePage() {
 }
 function Created({ data, next }: { data: Case; next: () => void }) {
   return (
-    <section className="card">
+    <section className="card success-screen">
+      <span className="success-mark">
+        <Icon name="check" />
+      </span>
       <Title>Черновик сохранён</Title>
       <Notice tone="success">
         Обращение №{data.displayNumber}. Теперь составьте и проверьте отдельные
@@ -717,16 +751,17 @@ function DraftForm({
       <Link className="back-link" to={`/cases/${data.caseId}`}>
         ← К карточке
       </Link>
+      {!sourceOnly && <CreationSteps current={2} />}
       <Title>
         {sourceOnly
           ? "Уточните исходный текст"
           : "Проверьте отдельные проблемы"}
       </Title>
       {!sourceOnly && (
-        <Notice>
-          Добавьте каждый вопрос отдельно. Для каждого уточните: что случилось и
-          где именно. Автоматический разбор текста пока недоступен.
-        </Notice>
+        <p className="page-description">
+          Одна проблема - один пункт. Например, свет и дверь добавьте отдельно:
+          так можно проверить результат по каждому.
+        </p>
       )}
       {data.submissionStatus !== "DRAFT" && (
         <Notice tone="warning">
@@ -829,16 +864,18 @@ function DraftForm({
               </p>
             </>
           )}
-          <Button
-            type="submit"
-            disabled={
-              !valid ||
-              (operation.error instanceof ApiError &&
-                operation.error.status === 409)
-            }
-          >
-            Сохранить {sourceOnly ? "текст" : "список"}
-          </Button>
+          <div className="form-actions">
+            <Button
+              type="submit"
+              disabled={
+                !valid ||
+                (operation.error instanceof ApiError &&
+                  operation.error.status === 409)
+              }
+            >
+              Сохранить {sourceOnly ? "текст" : "список"}
+            </Button>
+          </div>
         </fieldset>
         <CommandError operation={operation} />
         {operation.isPending && <p role="status">Сохраняем…</p>}
@@ -952,7 +989,10 @@ export function ConfirmCasePage() {
   const data = query.data;
   if (data.submissionStatus === "CONFIRMED")
     return (
-      <section className="card">
+      <section className="card success-screen">
+        <span className="success-mark">
+          <Icon name="check" />
+        </span>
         <Title>Список подтверждён</Title>
         <p>
           Квитанция №{data.displayNumber} от{" "}
@@ -969,6 +1009,7 @@ export function ConfirmCasePage() {
     );
   return (
     <>
+      <CreationSteps current={3} />
       <Title>Всё верно?</Title>
       <p>
         Подтвердите, что этот список точно описывает ваше обращение. После
