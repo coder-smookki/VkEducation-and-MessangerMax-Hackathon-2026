@@ -40,7 +40,7 @@ with tempfile.TemporaryDirectory(prefix="koren-ui-check-") as directory:
         + "\nMAX_BOT_TOKEN=" + secrets.token_urlsafe(32)
         + "\nMAX_WEBHOOK_SECRET=" + secrets.token_urlsafe(32)
         + "\nMAX_WORKERS_ENABLED=false\nRELEASE_SHA=" + release_sha
-        + f"\nSESSION_COOKIE_SECURE=false\nWEB_PORT={port}\n",
+        + f"\nSESSION_COOKIE_SECURE=false\nSESSION_COOKIE_SAMESITE=Lax\nWEB_PORT={port}\n",
         encoding="utf-8",
     )
     env_file.chmod(0o600)

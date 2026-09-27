@@ -32,8 +32,17 @@ public class SecurityConfig {
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http, Environment environment) throws Exception {
         http.securityContext(context -> context.securityContextRepository(securityContextRepository()));
-        // Cookie commands stay CSRF protected; the token is readable by the Mini App script.
-        http.csrf(csrf -> csrf.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+        // MAX Web embeds the Mini App cross-site. Both cookies must follow the same policy;
+        // otherwise the browser drops the CSRF cookie before the signed login reaches us.
+        String sameSite = environment.getProperty("server.servlet.session.cookie.same-site", "Lax");
+        boolean secure = environment.getProperty("server.servlet.session.cookie.secure", Boolean.class, false);
+        if ("None".equalsIgnoreCase(sameSite) && !secure) {
+            throw new IllegalStateException("SameSite=None requires Secure cookies and HTTPS");
+        }
+        CookieCsrfTokenRepository csrfTokens = CookieCsrfTokenRepository.withHttpOnlyFalse();
+        csrfTokens.setCookieCustomizer(cookie -> cookie.sameSite(sameSite).secure(secure));
+        // Cross-site cookies do not authorize commands: a valid CSRF header is still required.
+        http.csrf(csrf -> csrf.csrfTokenRepository(csrfTokens)
             .ignoringRequestMatchers("/max/webhook"));
         http.exceptionHandling(handling -> handling
             .authenticationEntryPoint((request, response, e) -> ApiErrorController.write(response,

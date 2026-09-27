@@ -585,7 +585,16 @@ test("release proxy serves API failures as JSON and does not expose demo or priv
     "/actuator/metrics",
     "/actuator/configprops",
   ]) {
-    expect((await request.get(path)).status()).toBe(404);
+    const closed = await request.get(path);
+    expect(closed.status()).toBe(404);
+    expect(closed.headers()["content-type"]).toContain(
+      "application/problem+json",
+    );
+    expect(await closed.json()).toMatchObject({
+      status: 404,
+      code: "NOT_FOUND",
+      requestId: closed.headers()["x-request-id"],
+    });
   }
   expect((await request.post("/actuator/health")).status()).toBe(403);
   expect((await request.post("/max/webhook", { data: {} })).status()).toBe(401);
@@ -606,6 +615,9 @@ test("release proxy serves API failures as JSON and does not expose demo or priv
   const staticPage = await request.get("/");
   expect(staticPage.status()).toBe(200);
   expect(staticPage.headers()["cache-control"]).toContain("no-store");
+  expect(staticPage.headers()["content-security-policy"]).toContain(
+    "frame-ancestors 'self' https://web.max.ru https://max.ru",
+  );
   const page = await staticPage.text();
   expect(page).not.toContain(env.MAX_BOT_TOKEN);
   expect((await request.get("/any-client-route")).status()).toBe(200);

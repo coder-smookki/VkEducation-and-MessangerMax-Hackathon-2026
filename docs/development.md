@@ -14,7 +14,7 @@ python3 scripts/check_miniapp.py
 
 Для ручной разработки Vite: `npm --prefix frontend run dev`. `API_PROXY_TARGET` задаёт адрес разрешённого локального Java API; по умолчанию `http://127.0.0.1:8080`. Пользовательские маршруты требуют серверную сессию. У UI нет публичного обхода входа или переключателя роли; фикстуры и синтетический Bridge существуют только в Playwright.
 
-Отдельный постоянный стенд поднимается по [release](release.md). Для локального HTTP допустим `SESSION_COOKIE_SECURE=false` только в закрытом тестовом env; на HTTPS оставить true. Не открывать Vite или профили demo/no-db на публичном домене.
+Отдельный постоянный стенд поднимается по [release](release.md). Для локального HTTP задать `SESSION_COOKIE_SECURE=false` и `SESSION_COOKIE_SAMESITE=Lax` только в закрытом тестовом env. На HTTPS нужны `true` и `None`: MAX Web открывает Mini App в iframe с другого сайта. Эти настройки применяются и к session cookie, и к CSRF cookie; CSRF-заголовок всё равно обязателен. Не открывать Vite или профили demo/no-db на публичном домене.
 
 ## Исторический учебный Compose для smoke Java/Python
 
