@@ -50,6 +50,36 @@ function problem(route: Route, status: number, code: string) {
   });
 }
 
+for (const start of [caseId, "invalid", ""]) {
+  test(`MAX launch fragment routes safely: ${start || "no start parameter"}`, async ({
+    page,
+  }) => {
+    await setup(page);
+    await page.addInitScript((id) => {
+      window.WebApp = {
+        initData: new URLSearchParams({ start_param: id }).toString(),
+      };
+    }, start);
+    await page.goto("/#WebAppPlatform=web&WebAppData=synthetic-launch");
+    await expect(page).toHaveURL(
+      start === caseId ? new RegExp(`#/cases/${caseId}$`) : /#\/$/,
+    );
+    await expect(
+      page.getByRole("heading", { name: "Страница не найдена" }),
+    ).toHaveCount(0);
+    if (start !== caseId) {
+      await expect(
+        page.getByRole("link", { name: "Новое обращение" }),
+      ).toBeVisible();
+    }
+    await page.goto("/#/access");
+    await expect(
+      page.getByRole("heading", { name: "Доступ к дому", exact: true }),
+    ).toBeVisible();
+    await expect(page).toHaveURL(/#\/access$/);
+  });
+}
+
 test("outside MAX explains login and never invents a user or role", async ({
   page,
 }) => {

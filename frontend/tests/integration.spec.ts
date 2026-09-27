@@ -173,7 +173,8 @@ test("real API: author → dispatcher → partial result → archive, with acces
   author.page.on("pageerror", (error) => errors.push(error.message));
   dispatcher.page.on("pageerror", (error) => errors.push(error.message));
   try {
-    await author.page.goto("/");
+    // MAX supplies a launch fragment before the hash router starts; Bridge holds signed initData.
+    await author.page.goto("/#WebAppData=synthetic-launch&WebAppPlatform=web");
     await author.page.getByRole("link", { name: "Новое обращение" }).click();
     await author.page
       .getByLabel("Текст обращения")

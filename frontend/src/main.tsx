@@ -16,9 +16,15 @@ import { NewReportPage, ReportPage } from "./features/reports";
 import { startCaseId } from "./platform/max";
 import "./styles.css";
 
-// Preserve explicit browser links. start_param only selects a route; Java still checks access.
-if (!location.hash && startCaseId())
-  history.replaceState(null, "", `#/cases/${startCaseId()}`);
+// The blocking Bridge script has already read MAX's launch fragment. It is not an app route.
+// Preserve explicit browser links; start_param selects a route but never grants access.
+const maxLaunchHash = new URLSearchParams(location.hash.slice(1)).has(
+  "WebAppData",
+);
+if (!location.hash || maxLaunchHash) {
+  const caseId = startCaseId();
+  history.replaceState(null, "", caseId ? `#/cases/${caseId}` : "#/");
+}
 const router = createHashRouter([
   {
     element: <App />,
