@@ -11,6 +11,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -121,6 +123,75 @@ class InvitationHttpTest {
         assertEquals(403, claim(session, code));
         // An unknown code answers exactly like an expired one: guessing gets no hint.
         assertEquals(403, claim(session, uniqueCode("KOREN-NEVER-EXISTED")));
+    }
+
+    @ParameterizedTest(name = "existing {0}, revoked={1} joins as {2}")
+    @CsvSource({"RESIDENT,false,RESIDENT", "RESIDENT,true,RESIDENT",
+        "DISPATCHER,false,DISPATCHER", "DISPATCHER,true,RESIDENT"})
+    void newInvitationHandlesExistingMembershipWithoutRestoringRevokedPrivileges(
+            String role, boolean revoked, String expectedRole) throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        UUID user = login(session, AUTHOR_INIT_DATA);
+        String code = uniqueCode("KOREN-EXISTING");
+        UUID house = invitation(code, "7 days");
+        jdbc.update("""
+                INSERT INTO membership(user_id, house_id, role, revoked_at)
+                VALUES (?, ?, ?, CASE WHEN ? THEN now() ELSE NULL END)
+                """, user, house, role, revoked);
+
+        assertEquals(200, claim(session, code));
+        assertEquals(expectedRole, jdbc.queryForObject(
+            "SELECT role FROM membership WHERE user_id = ? AND house_id = ?", String.class, user, house));
+        assertEquals(1, jdbc.queryForObject("""
+                SELECT count(*) FROM membership WHERE user_id = ? AND house_id = ? AND revoked_at IS NULL
+                """, Integer.class, user, house));
+        assertEquals(user, jdbc.queryForObject(
+            "SELECT consumed_by FROM house_invitation WHERE code_hash = ?", UUID.class, InvitationService.hash(code)));
+        assertEquals(403, claim(session, code), "even an existing member cannot reuse a consumed code");
+    }
+
+    @Test
+    void expiredInvitationCannotReactivateRevokedDispatcher() throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        UUID user = login(session, AUTHOR_INIT_DATA);
+        String code = uniqueCode("KOREN-REVOKED-EXPIRED");
+        UUID house = invitation(code, "-1 hour");
+        jdbc.update("""
+                INSERT INTO membership(user_id, house_id, role, revoked_at)
+                VALUES (?, ?, 'DISPATCHER', now())
+                """, user, house);
+
+        assertEquals(403, claim(session, code));
+        assertEquals(1, jdbc.queryForObject("""
+                SELECT count(*) FROM membership
+                WHERE user_id = ? AND house_id = ? AND role = 'DISPATCHER' AND revoked_at IS NOT NULL
+                """, Integer.class, user, house));
+        assertEquals(1, jdbc.queryForObject("""
+                SELECT count(*) FROM house_invitation WHERE code_hash = ? AND consumed_at IS NULL
+                """, Integer.class, InvitationService.hash(code)));
+    }
+
+    @Test
+    void membershipFailureRollsBackInvitationConsumption() throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        UUID user = login(session, AUTHOR_INIT_DATA);
+        String code = uniqueCode("KOREN-ROLLBACK");
+        UUID house = invitation(code, "7 days");
+        String constraint = "qa_invitation_" + house.toString().replace("-", "");
+        // Reject only this test's house; other concurrent test fixtures remain unaffected.
+        jdbc.execute("ALTER TABLE membership ADD CONSTRAINT " + constraint
+            + " CHECK (house_id <> '" + house + "'::uuid)");
+        try {
+            assertEquals(500, claim(session, code));
+            assertEquals(1, jdbc.queryForObject("""
+                    SELECT count(*) FROM house_invitation WHERE code_hash = ? AND consumed_at IS NULL
+                    """, Integer.class, InvitationService.hash(code)));
+            assertEquals(0, jdbc.queryForObject(
+                "SELECT count(*) FROM membership WHERE user_id = ? AND house_id = ?", Integer.class, user, house));
+        } finally {
+            jdbc.execute("ALTER TABLE membership DROP CONSTRAINT " + constraint);
+        }
+        assertEquals(200, claim(session, code), "a failed membership write must not spend the code");
     }
 
     @Test

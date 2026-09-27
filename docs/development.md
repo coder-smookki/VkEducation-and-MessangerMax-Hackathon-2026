@@ -1,8 +1,8 @@
 # Разработка и запуск
 
-## Mini App с настоящим Java API (26.09)
+## Mini App с настоящим Java API (27.09)
 
-Основная проверка теперь `python3 scripts/check_miniapp.py` из корня после `npm --prefix frontend ci` и установки Chromium из README. Она создаёт отдельный Compose project со случайным тестовым ключом, PostgreSQL и release-сборкой frontend, запускает три сквозных теста и удаляет собственный project с volume. Рабочие базы не используются. Это настоящий HTTP/SQL и эмуляция только стартовых данных MAX, не проверка клиента MAX.
+Основная проверка теперь `python3 scripts/check_miniapp.py` из корня после `npm --prefix frontend ci` и установки Chromium из README. Она создаёт отдельный Compose project со случайным тестовым ключом, PostgreSQL и release-сборкой frontend, запускает четыре сквозных теста и удаляет собственный project с volume. Рабочие базы не используются. Это настоящий HTTP/SQL и эмуляция только стартовых данных MAX, не проверка клиента MAX. `KOREN_QA_CAPTURE=/absolute/path python3 scripts/check_miniapp.py` дополнительно сохраняет 48 снимков действующих маршрутов: указывать отдельный локальный каталог вне Git. Состав сценариев и пределы - [QA](qa/profile-visual-2026-09-27.md).
 
 ```sh
 npm --prefix frontend run api:check
@@ -18,7 +18,7 @@ python3 scripts/check_miniapp.py
 
 ## Исторический учебный Compose для smoke Java/Python
 
-Понадобится Docker с Compose; зависимости приложения собираются в контейнерах. Это среда разработки на loopback с PostgreSQL, Kafka, производным Chroma-индексом и включёнными demo API. React уже заменён на рабочее Mini App; обычное открытие в браузере потребует входа через MAX. `scripts/smoke.py` по-прежнему проверяет учебные API, а не полный пользовательский интерфейс.
+Понадобится Docker с Compose; зависимости приложения собираются в контейнерах. Это среда разработки на loopback с PostgreSQL и включёнными demo API; Kafka и производный Chroma-индекс подключаются отдельно профилем `similar`. React уже заменён на рабочее Mini App; обычное открытие в браузере потребует входа через MAX. `scripts/smoke.py` по-прежнему проверяет учебные API, а не полный пользовательский интерфейс.
 
 Из корня репозитория, только если `.env` ещё не создан:
 
@@ -108,7 +108,7 @@ npm run build
 
 1. Изменить схемы в `ml/app/features/inference/schemas/` или `ml/app/features/intake/contracts.py` и Java `InferenceContract`/`IntakeContract` совместно с владельцами. Каталог - [пять контрактов](../contracts/README.md).
 2. Выполнить `uv run --directory ml python -m scripts.export_openapi`.
-3. Обновить `contracts/examples`, документацию и тесты несовместимых случаев.
+3. Обновить `contracts/examples`, документацию и тесты несовместимых случаев. Проверить все примеры: `uv run --directory ml pytest -q tests/test_intake_contracts.py`. Изменение MeView требует синхронизировать и `me-response.json`, и `me-no-access.json`.
 4. Запустить Python, Java и smoke; изменение не завершено, пока один потребитель понимает старую схему.
 
 После изменения Java OpenAPI выполнить `npm --prefix frontend run api:generate`, закоммитить `frontend/src/api/schema.d.ts` и проверить `api:check`/build/UI. Не править generated TypeScript вручную.
@@ -168,6 +168,6 @@ python3 scripts/smoke.py
 
 ## Работа с БД и выпуск
 
-Flyway сам применяет миграции при обычном запуске Java. V1 и V2 уже есть и применялись; следующий свободный номер сейчас V3. Перед работой сверить актуальную интеграционную `dev` и номер с Семёном по [правилам параллельной работы](parallel-development.md). Применённые миграции не редактировать. `clean` выключен. Перед миграцией непустой среды сделать резервную копию и проверить восстановление; для отката запускать предыдущую совместимую сборку либо восстановление по плану, не удалять строки `flyway_schema_history`.
+Flyway сам применяет миграции при обычном запуске Java. В репозитории и на стенде применены V1..V11; на 27.09 следующий свободный номер V12. Перед работой сверить актуальную интеграционную `dev` и номер с Семёном по [правилам параллельной работы](parallel-development.md). Применённые миграции не редактировать. `clean` выключен. Перед миграцией непустой среды сделать резервную копию и проверить восстановление; для отката запускать предыдущую совместимую сборку либо восстановление по плану, не удалять строки `flyway_schema_history`.
 
-Публичный deployment готовится в S-07/K-07 по [release.md](release.md): статический `frontend/dist`, один HTTPS origin для web/API, настоящий вход, ограничение доступа к БД/Python, demo выключен. Vite dev server не является production-hosting. Для MAX нужны токен, роль/бот и проверенный HTTPS-домен; эти внешние ресурсы не создавались в ходе подготовки.
+Публичный стенд уже работает по [release.md](release.md): собранный `frontend/dist` в nginx, один HTTPS origin для web/API, настоящий MAX-вход, закрытые БД/Python и demo. Точный опубликованный SHA и ограничения HTTP/TLS - [журнал](operations-log.md). Vite dev server не является production-hosting. Не использовать действующие секреты/БД стенда для автотестов и не перезаписывать данные seed-скриптом при обычном обновлении.

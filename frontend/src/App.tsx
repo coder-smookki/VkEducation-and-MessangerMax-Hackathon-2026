@@ -277,13 +277,44 @@ export function App() {
 }
 export function AccessPage() {
   const { me, refreshAccess } = useSession();
+  const cache = useQueryClient();
   const [code, setCode] = useState("");
   const [success, setSuccess] = useState(false);
-  const claim = useCommand<Me>(() => {
+  const [checking, setChecking] = useState(false);
+  const [checkError, setCheckError] = useState<unknown>();
+  const [accessChecked, setAccessChecked] = useState(false);
+  function applyAccess(result: Me) {
+    if (result.userId !== me.userId) {
+      cache.clear();
+      window.location.replace("/");
+      return false;
+    }
+    cache.setQueryData(["session"], result);
+    return true;
+  }
+  const claim = useCommand<Me>((result) => {
+    if (!applyAccess(result)) return;
     setCode("");
     setSuccess(true);
-    refreshAccess();
   });
+  const unknownClaim =
+    claim.error instanceof ApiError && claim.error.unknownOutcome;
+  async function checkAccess() {
+    setChecking(true);
+    setCheckError(undefined);
+    try {
+      const current = await get<Me>("/me");
+      if (!applyAccess(current)) return;
+      claim.reset();
+      setAccessChecked(true);
+    } catch (error) {
+      setCheckError(error);
+      if (error instanceof ApiError && error.status === 401)
+        window.dispatchEvent(new Event("koren:session-expired"));
+    } finally {
+      setChecking(false);
+    }
+  }
   return (
     <>
       <Title>Доступ к дому</Title>
@@ -324,18 +355,51 @@ export function AccessPage() {
         )}
         <form
           onSubmit={(e) =>
-            submit(e, () =>
-              claim.run("/memberships/claim", { invitationCode: code.trim() }),
-            )
+            submit(e, () => {
+              setSuccess(false);
+              setAccessChecked(false);
+              claim.run("/memberships/claim", { invitationCode: code.trim() });
+            })
           }
         >
           <fieldset disabled={claim.locked}>
-            <Field label="Код приглашения" value={code} onChange={setCode} />
+            <Field
+              label="Код приглашения"
+              value={code}
+              onChange={(value) => {
+                setCode(value);
+                setSuccess(false);
+                setAccessChecked(false);
+              }}
+            />
             <Button type="submit" disabled={!code.trim()}>
               Подключить дом
             </Button>
           </fieldset>
-          <CommandError operation={claim} />
+          {unknownClaim ? (
+            <>
+              <Notice tone="warning">
+                Ответ не получен. Дом мог подключиться. Код одноразовый: сначала
+                проверьте список подключённых домов.
+              </Notice>
+              <ErrorPanel error={checkError} />
+              <Button
+                kind="secondary"
+                disabled={checking}
+                onClick={() => void checkAccess()}
+              >
+                {checking ? "Проверяем доступ…" : "Проверить подключённые дома"}
+              </Button>
+            </>
+          ) : (
+            <CommandError operation={claim} />
+          )}
+          {accessChecked && (
+            <Notice>
+              Доступ обновлён. Проверьте список домов выше. Если нужного дома
+              нет, запросите новый код у диспетчера.
+            </Notice>
+          )}
           {claim.isPending && <p role="status">Проверяем код…</p>}
         </form>
       </section>

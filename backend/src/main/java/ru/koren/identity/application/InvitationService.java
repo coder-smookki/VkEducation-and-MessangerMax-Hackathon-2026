@@ -6,7 +6,6 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.Objects;
 import java.util.UUID;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -48,14 +47,14 @@ public final class InvitationService {
             if (houseId == null) {
                 return null;
             }
-            try {
-                jdbc.update("INSERT INTO membership(user_id, house_id, role) VALUES (?, ?, 'RESIDENT')",
-                    userId, houseId);
-            } catch (DuplicateKeyException alreadyMember) {
-                // Re-joining a house the user already belongs to is not an error; the invitation is still spent.
-                jdbc.update("UPDATE membership SET revoked_at = NULL WHERE user_id = ? AND house_id = ?",
-                    userId, houseId);
-            }
+            // A uniqueness error would abort this PostgreSQL transaction before a catch could UPDATE.
+            // Preserve active privileges, but a resident invitation cannot restore revoked staff access.
+            jdbc.update("""
+                    INSERT INTO membership(user_id, house_id, role) VALUES (?, ?, 'RESIDENT')
+                    ON CONFLICT (user_id, house_id) DO UPDATE
+                    SET role = CASE WHEN membership.revoked_at IS NULL THEN membership.role ELSE 'RESIDENT' END,
+                        revoked_at = NULL
+                    """, userId, houseId);
             return houseId;
         });
         if (house == null) {

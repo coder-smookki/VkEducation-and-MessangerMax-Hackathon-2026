@@ -4,8 +4,10 @@ import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -56,10 +58,21 @@ class AcceptanceHttpTest {
     static class FixedClockConfig {
         @Bean
         @Primary
-        Clock testClock() {
-            return Clock.fixed(Instant.ofEpochSecond(1_800_000_000L), ZoneOffset.UTC);
+        MutableClock testClock() {
+            return new MutableClock();
         }
     }
+
+    static class MutableClock extends Clock {
+        private Instant now = Instant.ofEpochSecond(1_800_000_000L);
+        @Override public ZoneId getZone() { return ZoneOffset.UTC; }
+        @Override public Clock withZone(ZoneId zone) { return Clock.fixed(now, zone); }
+        @Override public Instant instant() { return now; }
+    }
+
+    @Autowired MutableClock clock;
+    @AfterEach
+    void resetClock() { clock.now = Instant.ofEpochSecond(1_800_000_000L); }
 
     @Autowired MockMvc mvc;
     @Autowired JdbcTemplate jdbc;
@@ -385,4 +398,30 @@ class AcceptanceHttpTest {
         }
         throw new AssertionError("case " + caseId + " is missing from the page");
     }
+    @Test
+    void nextActionRetryAfterItsDueDateReturnsTheStoredResult() throws Exception {
+        var f = newDraft("Дом шага: срок прошёл после успешного сохранения");
+        var confirmed = json.readTree(confirmWithOneItem(f));
+        var item = confirmed.get("items").get(0);
+        UUID itemId = UUID.fromString(item.get("itemId").asString());
+        String key = UUID.randomUUID().toString();
+        String body = plan(f.dispatcher(), confirmed.get("caseVersion").asLong(),
+            item.get("itemVersion").asLong(), "Уточнить время осмотра", clock.instant().plusSeconds(60).toString());
+        String saved = nextAction(f.dispatcherSession(), itemId, key, body).andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        long events = jdbc.queryForObject("SELECT count(*) FROM audit_event WHERE case_id = ?", Long.class, f.caseId());
+        clock.now = clock.instant().plusSeconds(120);
+        String replay = nextAction(f.dispatcherSession(), itemId, key, body).andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        assertEquals(saved, replay, "elapsed time cannot invalidate an already committed command");
+        assertEquals(events, jdbc.queryForObject("SELECT count(*) FROM audit_event WHERE case_id = ?", Long.class, f.caseId()));
+        assertEquals(json.readTree(saved).get("caseVersion").asLong(),
+            jdbc.queryForObject("SELECT version FROM service_case WHERE id = ?", Long.class, f.caseId()));
+        // A fresh intention with the same expired date must still be rejected.
+        nextAction(f.dispatcherSession(), itemId, UUID.randomUUID().toString(), body)
+            .andExpect(status().isUnprocessableContent());
+        jdbc.update("UPDATE membership SET revoked_at = now() WHERE user_id = ? AND house_id = ?", f.dispatcher(), f.house());
+        nextAction(f.dispatcherSession(), itemId, key, body).andExpect(status().isNotFound());
+    }
+
 }

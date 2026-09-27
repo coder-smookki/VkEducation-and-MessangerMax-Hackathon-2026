@@ -5,6 +5,8 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -16,6 +18,7 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import tools.jackson.databind.json.JsonMapper;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -185,4 +188,55 @@ class CaseHttpTest {
             "SELECT count(*) FROM membership WHERE user_id = ? AND role = 'DISPATCHER'",
             Integer.class, author), "a body field must not grant a dispatcher role");
     }
+    @ParameterizedTest(name = "revoked author cannot {0}, replay={1}")
+    @CsvSource({"source,false", "items,false", "confirm,false", "source,true", "items,true", "confirm,true"})
+    void revocationBlocksDraftCommandsAndTheirSavedResponses(String operation, boolean replay) throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        UUID author = login(session, AUTHOR_INIT_DATA);
+        UUID house = UUID.randomUUID();
+        jdbc.update("INSERT INTO house(id, address) VALUES (?, 'Проверка отзыва доступа')", house);
+        jdbc.update("INSERT INTO membership VALUES (?,?,'RESIDENT')", author, house);
+        String created = mvc.perform(post("/api/v1/cases").session(session).with(csrf())
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(java.util.Map.of("houseId", house, "sourceText", "Не горит свет"))))
+            .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        UUID caseId = UUID.fromString(json.readTree(created).get("caseId").asString());
+        String items = "[{\"category\":\"LIGHTING\",\"location\":\"Этаж 3\",\"symptom\":\"Темно\"}]";
+        mvc.perform(patch("/api/v1/cases/" + caseId + "/items").session(session).with(csrf())
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"expectedCaseVersion\":1,\"items\":" + items + "}"))
+            .andExpect(status().isOk());
+        String body = switch (operation) {
+            case "source" -> "{\"expectedCaseVersion\":2,\"sourceText\":\"Свет не работает второй день\"}";
+            case "items" -> "{\"expectedCaseVersion\":2,\"items\":" + items + "}";
+            case "confirm" -> "{\"expectedCaseVersion\":2,\"sourceRevision\":1}";
+            default -> throw new IllegalArgumentException(operation);
+        };
+        String key = UUID.randomUUID().toString();
+        if (replay) draftCommand(session, caseId, operation, key, body).andExpect(status().isOk());
+        long version = jdbc.queryForObject("SELECT version FROM service_case WHERE id = ?", Long.class, caseId);
+        long events = jdbc.queryForObject("SELECT count(*) FROM audit_event WHERE case_id = ?", Long.class, caseId);
+        long commands = jdbc.queryForObject("SELECT count(*) FROM processed_command WHERE actor_id = ?", Long.class, author);
+        jdbc.update("UPDATE membership SET revoked_at = now() WHERE user_id = ? AND house_id = ?", author, house);
+        String rejected = draftCommand(session, caseId, operation, key, body)
+            .andExpect(status().isNotFound()).andReturn().getResponse().getContentAsString();
+        assertEquals("RESOURCE_NOT_FOUND", json.readTree(rejected).get("code").asString());
+        var problem = json.readTree(rejected);
+        assertFalse(problem.has("caseId") || problem.has("sourceText") || problem.has("items"),
+            "refusal must contain only the problem, not the stored case projection");
+        assertEquals(version, jdbc.queryForObject("SELECT version FROM service_case WHERE id = ?", Long.class, caseId));
+        assertEquals(events, jdbc.queryForObject("SELECT count(*) FROM audit_event WHERE case_id = ?", Long.class, caseId));
+        assertEquals(commands, jdbc.queryForObject("SELECT count(*) FROM processed_command WHERE actor_id = ?", Long.class, author));
+    }
+
+    private org.springframework.test.web.servlet.ResultActions draftCommand(MockHttpSession session, UUID caseId,
+            String operation, String key, String body) throws Exception {
+        String path = "/api/v1/cases/" + caseId + "/" + operation;
+        MockHttpServletRequestBuilder request = operation.equals("confirm") ? post(path) : patch(path);
+        return mvc.perform(request.session(session).with(csrf()).header("Idempotency-Key", key)
+            .contentType(MediaType.APPLICATION_JSON).content(body));
+    }
+
 }

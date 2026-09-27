@@ -171,6 +171,95 @@ test("profile navigation shows the authenticated account and server memberships"
   ).toBeVisible();
 });
 
+test("invitation with a lost response recovers access by reading me without replaying its code", async ({
+  page,
+}) => {
+  const { me } = await setup(page);
+  const joined = copy(me);
+  joined.memberships.push({
+    ...me.memberships[0],
+    houseId: "00000000-0000-0000-0000-000000000099",
+    address: "Дом после потерянного ответа",
+  });
+  let claims = 0;
+  let committed = false;
+  let checkFails = true;
+  await page.route("**/api/v1/me", (route) => {
+    if (committed && checkFails)
+      return problem(route, 503, "SERVICE_UNAVAILABLE");
+    return route.fulfill({ json: committed ? joined : me });
+  });
+  await page.route("**/memberships/claim", (route) => {
+    claims++;
+    committed = true;
+    return route.abort("failed");
+  });
+  await page.goto("/#/access");
+  await page.getByLabel("Код приглашения").fill("one-time-code");
+  await page
+    .getByRole("button", { name: "Подключить дом", exact: true })
+    .click();
+  await expect(
+    page.getByText("Ответ не получен. Дом мог подключиться.", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Повторить ту же отправку" }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Проверить подключённые дома" })
+    .click();
+  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(page.getByLabel("Код приглашения")).toHaveValue("one-time-code");
+  checkFails = false;
+  await page
+    .getByRole("button", { name: "Проверить подключённые дома" })
+    .click();
+  await expect(
+    page.getByRole("link", { name: "Дом после потерянного ответа Житель" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Доступ обновлён. Проверьте список домов выше.", {
+      exact: false,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Дом успешно подключён!" }),
+  ).toHaveCount(0);
+  expect(claims).toBe(1);
+});
+
+test("invitation success is cleared before a different code can fail", async ({
+  page,
+}) => {
+  const { me } = await setup(page);
+  let claims = 0;
+  await page.route("**/memberships/claim", (route) => {
+    claims++;
+    return claims === 1
+      ? route.fulfill({ json: me })
+      : problem(route, 403, "ACTION_FORBIDDEN");
+  });
+  await page.goto("/#/access");
+  await page.getByLabel("Код приглашения").fill("valid-code");
+  await page
+    .getByRole("button", { name: "Подключить дом", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Дом успешно подключён!" }),
+  ).toBeVisible();
+  await page.getByLabel("Код приглашения").fill("different-invalid-code");
+  await expect(
+    page.getByRole("heading", { name: "Дом успешно подключён!" }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Подключить дом", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Дом успешно подключён!" }),
+  ).toHaveCount(0);
+});
+
 test("theme, large text and denied storage preserve input; cancelled exit restores focus", async ({
   page,
 }) => {

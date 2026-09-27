@@ -360,14 +360,14 @@ public class CaseService {
     }
 
     private CaseRow loadDraftForAuthor(UUID actorId, UUID caseId) {
-        var row = repo.findCase(caseId).orElseThrow(CaseException::notFound);
+        var row = loadVisible(actorId, caseId);
         if (!row.authorId().equals(actorId)) throw CaseException.notFound();
         if (!row.isDraft()) throw CaseException.alreadyConfirmed();
         return row;
     }
 
     private void requireAuthor(UUID actorId, UUID caseId) {
-        var row = repo.findCase(caseId).orElseThrow(CaseException::notFound);
+        var row = loadVisible(actorId, caseId);
         if (!row.authorId().equals(actorId)) throw CaseException.notFound();
     }
 
@@ -540,9 +540,6 @@ public class CaseService {
         validateVersion(expectedItemVersion);
         validateText("text", text, MAX_NEXT_ACTION_CODE_POINTS);
         if (ownerId == null) throw CaseException.invalidFields("ownerId is required");
-        if (updateDueAt != null && updateDueAt.isBefore(clock.instant())) {
-            throw CaseException.invalidFields("updateDueAt must not be in the past");
-        }
         String hash = hash("next-action", itemId, orderedMap(
             "expectedCaseVersion", expectedCaseVersion, "expectedItemVersion", expectedItemVersion,
             "text", text, "ownerId", ownerId,
@@ -550,6 +547,10 @@ public class CaseService {
         Runnable access = () -> requireDispatcherOfItem(actorId, itemId);
         return runCommand(actorId, "next-action", idempotencyKey, hash, 200, access, CaseView.class, () -> {
             var ctx = requireDispatcherOfItem(actorId, itemId);
+            // A replay returns its committed result even after the saved deadline has passed.
+            if (updateDueAt != null && updateDueAt.isBefore(clock.instant())) {
+                throw CaseException.invalidFields("updateDueAt must not be in the past");
+            }
             if (ctx.isDraft()) {
                 throw CaseException.invalidTransition("A next action needs a confirmed case");
             }
