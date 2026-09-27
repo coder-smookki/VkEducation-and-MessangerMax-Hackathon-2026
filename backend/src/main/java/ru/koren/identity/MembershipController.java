@@ -30,6 +30,6 @@ public class MembershipController {
     public MeView claim(Authentication authentication, @RequestBody ClaimRequest body) {
         UUID userId = (UUID) authentication.getPrincipal();
         invitations.claim(userId, body == null ? null : body.invitationCode());
-        return memberships.loadMe(userId, null);
+        return memberships.loadMe(userId, MaxProfile.from(authentication));
     }
 }

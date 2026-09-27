@@ -96,10 +96,16 @@ class InvitationHttpTest {
     @Test
     void validCodeGrantsResidentAndCannotBeUsedTwice() throws Exception {
         MockHttpSession session = new MockHttpSession();
-        login(session, AUTHOR_INIT_DATA);
+        login(session, SignedProfileFixtures.initData("profile"));
         String code = uniqueCode("KOREN-ONE-SHOT");
         UUID house = invitation(code, "7 days");
-        assertEquals(200, claim(session, code));
+        var result = mvc.perform(post("/api/v1/memberships/claim").session(session).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content("{\"invitationCode\":\"" + code + "\"}"))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        var profile = json.readTree(result);
+        assertEquals("Анна Иванова", profile.get("displayName").asString());
+        assertEquals("anna_max", profile.get("username").asString());
+        assertEquals("https://images.example.org/max/avatar.png", profile.get("avatarUrl").asString());
         assertEquals("RESIDENT", jdbc.queryForObject(
             "SELECT role FROM membership WHERE house_id = ?", String.class, house));
         // The same code must not work again, not even for the same user.

@@ -1,6 +1,5 @@
 package ru.koren.identity;
 
-import static org.junit.jupiter.api.Assertions.*;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -74,6 +73,72 @@ class AuthHttpTest {
         assertEquals(login.get("userId").asString(), json.readTree(meBody).get("userId").asString(),
             "the next request must resolve the same internal user id");
         assertTrue(json.readTree(meBody).get("memberships").isArray());
+        assertEquals("Max User", json.readTree(meBody).get("displayName").asString());
+        assertTrue(json.readTree(meBody).get("username").isNull());
+        assertTrue(json.readTree(meBody).get("avatarUrl").isNull());
+    }
+
+    private JsonNode login(MockHttpSession session, String initData) throws Exception {
+        return json.readTree(mvc.perform(post("/api/v1/auth/max").session(session).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(body(initData)))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+    }
+
+    private JsonNode me(MockHttpSession session) throws Exception {
+        return json.readTree(mvc.perform(get("/api/v1/me").session(session))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+    }
+
+    @Test
+    void verifiedProfileSurvivesFollowingSessionRequests() throws Exception {
+        var session = new MockHttpSession();
+        JsonNode accepted = login(session, SignedProfileFixtures.initData("profile"));
+        assertEquals("Анна Иванова", accepted.get("displayName").asString());
+        assertEquals("anna_max", accepted.get("username").asString());
+        assertEquals("https://images.example.org/max/avatar.png", accepted.get("avatarUrl").asString());
+        assertEquals(accepted, me(session));
+        var context = (org.springframework.security.core.context.SecurityContext) session.getAttribute(
+            org.springframework.security.web.context.HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY);
+        assertInstanceOf(java.util.UUID.class, context.getAuthentication().getPrincipal());
+        assertInstanceOf(MaxProfile.class, context.getAuthentication().getDetails());
+    }
+
+    @Test
+    void anotherLoginReplacesPreviousProfileAndOldSessionsHaveANullFallback() throws Exception {
+        var session = new MockHttpSession();
+        JsonNode first = login(session, SignedProfileFixtures.initData("profile"));
+        JsonNode second = login(session, SignedProfileFixtures.initData("other_account"));
+        assertNotEquals(first.get("userId"), second.get("userId"));
+        assertEquals("Другой аккаунт", me(session).get("displayName").asString());
+        assertTrue(me(session).get("username").isNull());
+        assertTrue(me(session).get("avatarUrl").isNull());
+
+        var context = (org.springframework.security.core.context.SecurityContext) session.getAttribute(
+            org.springframework.security.web.context.HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY);
+        ((org.springframework.security.authentication.UsernamePasswordAuthenticationToken)
+            context.getAuthentication()).setDetails(null);
+        JsonNode legacy = me(session);
+        assertEquals(second.get("userId"), legacy.get("userId"));
+        assertTrue(legacy.get("displayName").isNull());
+        assertTrue(legacy.get("username").isNull());
+        assertTrue(legacy.get("avatarUrl").isNull());
+    }
+
+    @Test
+    void logoutClearsProfileBeforeANewAccountSignsIn() throws Exception {
+        var firstSession = new MockHttpSession();
+        login(firstSession, SignedProfileFixtures.initData("profile"));
+        mvc.perform(post("/api/v1/auth/logout").session(firstSession).with(csrf()))
+            .andExpect(status().isNoContent());
+        assertTrue(firstSession.isInvalid());
+        mvc.perform(get("/api/v1/me")).andExpect(status().isUnauthorized());
+
+        var nextSession = new MockHttpSession();
+        login(nextSession, SignedProfileFixtures.initData("other_account"));
+        JsonNode nextProfile = me(nextSession);
+        assertEquals("Другой аккаунт", nextProfile.get("displayName").asString());
+        assertTrue(nextProfile.get("username").isNull());
+        assertTrue(nextProfile.get("avatarUrl").isNull());
     }
 
     @Test

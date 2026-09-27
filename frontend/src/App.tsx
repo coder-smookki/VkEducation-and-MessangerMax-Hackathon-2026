@@ -358,14 +358,15 @@ export function AccessPage() {
 }
 export function ProfilePage() {
   const { me } = useSession();
+  const handle = me.username ? `@${me.username.replace(/^@/, "")}` : null;
+  const name = me.displayName || handle || "Пользователь MAX";
   return (
     <>
       <Title>Профиль</Title>
       <section className="card profile-card">
-        <span className="profile-avatar">
-          <Icon name="user" />
-        </span>
-        <h2>{me.displayName || "Пользователь MAX"}</h2>
+        <ProfileAvatar key={me.avatarUrl} src={me.avatarUrl} name={name} />
+        <h2>{name}</h2>
+        {handle && me.displayName && <p className="profile-handle">{handle}</p>}
         <p className="muted">Вы вошли через MAX</p>
       </section>
       <section className="card">
@@ -403,6 +404,26 @@ export function ProfilePage() {
         Выйти
       </Link>
     </>
+  );
+}
+function ProfileAvatar({ src, name }: { src: string | null; name: string }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <span className="profile-avatar">
+      {src && !failed ? (
+        <img
+          src={src}
+          alt={`Фото профиля ${name}`}
+          width="64"
+          height="64"
+          decoding="async"
+          referrerPolicy="no-referrer"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <Icon name="user" />
+      )}
+    </span>
   );
 }
 export function LogoutPage() {

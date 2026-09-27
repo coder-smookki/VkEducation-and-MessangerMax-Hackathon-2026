@@ -10,6 +10,7 @@ import {
   DirtyGuard,
   ErrorPanel,
   Field,
+  Icon,
   Loading,
   Notice,
   Title,
@@ -159,7 +160,7 @@ function ItemForm({
   return (
     <>
       <Link className="back-link" to={`/cases/${data.caseId}`}>
-        ← К обращению
+        <Icon name="arrow" />К обращению
       </Link>
       <Title>
         {observation
@@ -173,7 +174,10 @@ function ItemForm({
       <article className="card">
         <ItemHeading item={item} />
         <details className="context-details">
-          <summary>Текущее состояние пункта</summary>
+          <summary>
+            <Icon name="arrow" />
+            <span>Текущее состояние пункта</span>
+          </summary>
           <ItemFacts item={item} />
         </details>
       </article>

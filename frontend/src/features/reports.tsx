@@ -13,6 +13,7 @@ import {
   DirtyGuard,
   ErrorPanel,
   Field,
+  Icon,
   Loading,
   Notice,
   Select,
@@ -98,7 +99,7 @@ function ReportForm({
   return (
     <>
       <Link className="back-link" to={`/cases/${data.caseId}`}>
-        ← К обращению
+        <Icon name="arrow" />К обращению
       </Link>
       <Title>Отчёт о работах</Title>
       <form
@@ -236,6 +237,7 @@ export function ReportPage() {
       data={data}
       report={reportQuery.data}
       analysis={analysis.data}
+      analysisPending={analysis.isPending}
       analysisError={analysis.error}
       retryAnalysis={() => {
         void analysis.refetch();
@@ -250,6 +252,7 @@ function LinkForm({
   data,
   report,
   analysis,
+  analysisPending,
   analysisError,
   retryAnalysis,
   dispatcher,
@@ -259,6 +262,7 @@ function LinkForm({
   data: Case;
   report: Report;
   analysis?: Suggestions;
+  analysisPending: boolean;
   analysisError: unknown;
   retryAnalysis: () => void;
   dispatcher: boolean;
@@ -303,7 +307,7 @@ function LinkForm({
   return (
     <>
       <Link className="back-link" to={`/cases/${data.caseId}`}>
-        ← К обращению
+        <Icon name="arrow" />К обращению
       </Link>
       <Title>
         {dispatcher ? "Связь отчёта с пунктами" : "Отчёт о работах"}
@@ -371,6 +375,27 @@ function LinkForm({
                           Можно проверить текст и выбрать связи вручную.
                         </Notice>
                       </>
+                    ) : analysisPending ||
+                      ["QUEUED", "RUNNING"].includes(analysis?.status || "") ? (
+                      <div className="analysis-pending" role="status">
+                        <StateIllustration kind="analysis" />
+                        <h3>
+                          {analysisPending
+                            ? "Проверяем готовность подсказки"
+                            : "Анализ в процессе"}
+                        </h3>
+                        <span
+                          className="brand-loading-track"
+                          aria-hidden="true"
+                        >
+                          <span />
+                        </span>
+                        <p className="muted">
+                          {analysisPending
+                            ? "Уточняем статус анализа. Можно продолжить вручную."
+                            : "Подсказка ещё готовится. Можно продолжить вручную."}
+                        </p>
+                      </div>
                     ) : !analysis || analysis.status === "MANUAL_REQUIRED" ? (
                       <Notice>
                         Автоматическая подсказка недоступна. Проверьте текст и
@@ -381,20 +406,6 @@ function LinkForm({
                         Подсказка устарела. Используйте актуальные сведения ниже
                         и проверьте текст вручную.
                       </Notice>
-                    ) : ["QUEUED", "RUNNING"].includes(analysis.status) ? (
-                      <div className="analysis-pending" role="status">
-                        <StateIllustration kind="analysis" />
-                        <h3>Анализ в процессе</h3>
-                        <span
-                          className="brand-loading-track"
-                          aria-hidden="true"
-                        >
-                          <span />
-                        </span>
-                        <p className="muted">
-                          Подсказка ещё готовится. Можно продолжить вручную.
-                        </p>
-                      </div>
                     ) : (
                       <Notice>
                         Подсказка анализа требует вашей проверки. Ничего не

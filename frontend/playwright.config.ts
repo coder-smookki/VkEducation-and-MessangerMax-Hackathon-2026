@@ -29,7 +29,15 @@ export default defineConfig({
         reuseExistingServer: !process.env.CI,
       },
   projects: [
-    { name: "ui", testMatch: ["ui.spec.ts", "dompulse.spec.ts"] },
+    {
+      name: "ui",
+      testMatch: [
+        "ui.spec.ts",
+        "dompulse.spec.ts",
+        "profile.spec.ts",
+        "icons.spec.ts",
+      ],
+    },
     { name: "integration", testMatch: "integration.spec.ts" },
   ],
 });

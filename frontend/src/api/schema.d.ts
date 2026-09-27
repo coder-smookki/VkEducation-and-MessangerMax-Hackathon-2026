@@ -441,12 +441,16 @@ export interface components {
             /** @enum {unknown} */
             role: "RESIDENT" | "DISPATCHER" | "EXECUTOR";
         };
-        /** @description Verified MAX user and currently active memberships. Empty memberships means a verified account without house access, not an implicit RESIDENT. */
+        /** @description Verified MAX user and currently active memberships. Profile displayName, username and avatarUrl come only from signed MAX initData, remain in the server session and grant no permissions. Optional profile data may be null. Empty memberships means a verified account without house access, not an implicit RESIDENT. */
         MeView: {
             /** Format: uuid */
             userId: string;
             displayName: string | null;
             memberships: components["schemas"]["Membership"][];
+            /** @description MAX username from signed initData, without an added @ prefix; null when unavailable. */
+            username: string | null;
+            /** @description Optional absolute HTTPS image URL from signed initData, without URL credentials. Java does not download this URL. */
+            avatarUrl: string | null;
         };
         /** @description One page of visible cases. nextCursor is opaque, bound to the filter it was issued for, and is not a credential: membership is re-checked on every page. */
         CasePage: {

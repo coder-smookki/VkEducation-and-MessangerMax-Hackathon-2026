@@ -1,5 +1,5 @@
 import type { Case, Item } from "../api/client";
-import { formatDate, Icon } from "./ui";
+import { formatDate, Icon, Notice } from "./ui";
 export const categories: Record<Item["category"], string> = {
   LIGHTING: "Освещение",
   ENTRANCE_DOOR: "Дверь",
@@ -97,7 +97,7 @@ export function ItemFacts({ item }: { item: Item }) {
         </div>
       </dl>
       {!active && (
-        <aside className="notice warning">
+        <Notice tone="warning">
           <strong>
             {item.administrativeStatus === "ARCHIVED"
               ? "В архиве"
@@ -105,7 +105,7 @@ export function ItemFacts({ item }: { item: Item }) {
           </strong>
           <p className="preserve">{item.administrativeReason}</p>
           <p className="caption">Это решение не подтверждает ремонт.</p>
-        </aside>
+        </Notice>
       )}
       {item.nextAction && (
         <div className="next-action">
@@ -125,7 +125,8 @@ export function ItemFacts({ item }: { item: Item }) {
             item.nextAction.updateDueAt &&
             Date.parse(item.nextAction.updateDueAt) < Date.now() && (
               <p className="warning-text">
-                Срок обновления прошёл. Новых сведений пока нет.
+                Срок обновления по этому шагу прошёл. Уточните актуальный план у
+                диспетчера.
               </p>
             )}
         </div>

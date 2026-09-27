@@ -8,7 +8,7 @@
 
 Release proxy добавляет JSON 503 `SERVICE_UNAVAILABLE` при недоступном upstream и JSON 413 при своём лимите тела. Это поведение nginx, не новые Java endpoints. `api:check` в CI запрещает расхождение generated TypeScript и OpenAPI.
 
-Известный долг backend: CaseService сейчас добавляет `ДЕМО-` к displayNumber независимо от профиля. UI показывает серверное значение без подмены; перед несинтетическим выпуском Семён должен определить корректную нумерацию.
+Нумерация использует серверный CASE_NUMBER_PREFIX (по умолчанию пустой); UI показывает displayNumber без самостоятельного добавления «ДЕМО».
 
 Обновлено 26.09.2026 (S-08). Всё, что ниже названо работающим, отвечает на PostgreSQL за настоящей сессией и покрыто тестами. Машинная схема - [author-review.openapi.json](../contracts/author-review.openapi.json): у каждой операции поле `x-implementation-status`. `ContractRoutesTest` при каждом прогоне сверяет её с маршрутами, которые реально регистрирует Spring, в обе стороны: маршрут без описания и описание без маршрута роняют сборку. Остальные контракты - [contracts/README](../contracts/README.md).
 
@@ -65,7 +65,7 @@ Release proxy добавляет JSON 503 `SERVICE_UNAVAILABLE` при недо�
 
 ## Проекции
 
-MeView: `{userId,displayName,memberships:[{houseId,address,role}]}`. displayName пока всегда null: колонки имени нет. Пустой memberships - проверенный аккаунт без доступа, не роль RESIDENT по умолчанию. Роль относится к одному дому.
+MeView: `{userId,displayName,username,avatarUrl,memberships:[{houseId,address,role}]}`. Имя, ник и фото извлекаются только после проверки подписи MAX initData и сохраняются в серверной сессии; login, `/me` и claim возвращают один профиль. `username`/`avatarUrl` nullable; имя составляется из first_name/last_name. При отсутствии имени UI использует ник, затем нейтральную подпись. Avatar URL - только абсолютный HTTPS без credentials; некорректное optional поле становится null. Java изображение не скачивает, raw user JSON в сессии не хранится. UUID principal и Membership остаются единственными источниками прав. Пустой memberships - проверенный аккаунт без доступа, не роль RESIDENT по умолчанию. Роль относится к одному дому.
 
 CaseView: `{caseId,houseId,authorId,submissionStatus,caseVersion,sourceRevision,sourceText,displayNumber,receipt,visibility,items,progress,createdAt}`. Пункт (в порядке ввода автора): `{itemId,itemVersion,contentVersion,category,location,symptom,workRound,workStatus,observation,administrativeStatus,administrativeReason,assignedExecutorId,nextAction}`. receipt: `{confirmedAt,acceptedAt,acceptedBy}`. nextAction: `{text,ownerId,ownerDisplayName,updateDueAt,updatedAt}` или null; ownerDisplayName пока null. progress: `{total,confirmed,withdrawn,remaining,allConfirmed}`. Точные поля и nullable - в схеме.
 

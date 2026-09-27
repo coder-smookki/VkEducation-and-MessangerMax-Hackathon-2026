@@ -214,7 +214,8 @@ summary {
   z-index: 10;
   inset: auto 0 0;
   display: flex;
-  justify-content: space-around;
+  justify-content: flex-start;
+  overflow-x: auto;
   gap: 4px;
   border-top: 1px solid var(--border);
   background: var(--surface);
@@ -224,12 +225,12 @@ summary {
 }
 .app-nav a {
   display: flex;
-  flex: 1 1 0;
+  flex: 1 0 min-content;
   align-items: center;
   justify-content: center;
   flex-direction: column;
   gap: 4px;
-  min-width: 0;
+  min-width: min-content;
   min-height: 56px;
   border-radius: 12px;
   padding: 6px;
@@ -238,6 +239,7 @@ summary {
   text-align: center;
   text-decoration: none;
   color: var(--muted);
+  overflow-wrap: normal;
 }
 .app-nav a.active {
   color: var(--accent);
@@ -403,8 +405,12 @@ fieldset:disabled .button {
   font-size: 0.89rem;
 }
 .back-link {
+  gap: 8px;
   margin: -12px 0 16px;
   text-decoration: none;
+}
+.back-link > .icon {
+  transform: rotate(180deg);
 }
 .notice {
   display: flex;
@@ -746,9 +752,32 @@ textarea[aria-invalid="true"] {
   white-space: pre-wrap;
 }
 summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   min-height: 48px;
   padding: 11px 0;
   font-weight: 500;
+  list-style: none;
+}
+summary::-webkit-details-marker {
+  display: none;
+}
+summary::marker {
+  content: "";
+}
+summary > .icon {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  color: var(--muted);
+  transition: transform 150ms var(--ease);
+}
+details[open] > summary > .icon {
+  transform: rotate(90deg);
+}
+.item-more > summary {
+  justify-content: center;
 }
 .card:has(> summary) {
   padding-block: 8px;
@@ -903,8 +932,9 @@ dialog .actions .button {
 }
 .creation-steps {
   display: flex;
+  overflow-x: auto;
   list-style: none;
-  padding: 0;
+  padding: 2px 0;
   margin: 0 0 24px;
   gap: 8px;
 }
@@ -913,10 +943,14 @@ dialog .actions .button {
   align-items: center;
   gap: 6px;
   position: relative;
-  flex: 1;
-  min-width: 0;
+  flex: 1 0 auto;
+  min-width: max-content;
   color: var(--muted);
   font-size: 0.75rem;
+  overflow-wrap: normal;
+}
+.creation-steps li > span:last-child {
+  white-space: nowrap;
 }
 .creation-steps li:not(:last-child)::after {
   content: "";
@@ -1151,11 +1185,25 @@ dialog .actions .button {
   text-align: center;
   padding: 28px;
 }
+.profile-card h2,
+.profile-handle {
+  overflow-wrap: anywhere;
+}
+.profile-handle {
+  color: var(--muted);
+}
 .profile-avatar {
   width: 64px;
   height: 64px;
   border-radius: 50%;
   margin-bottom: 16px;
+  overflow: hidden;
+}
+.profile-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 .profile-avatar .icon {
   width: 30px;
@@ -1224,14 +1272,16 @@ dialog .actions .button {
 }
 .case-search > .icon {
   position: absolute;
-  top: 13px;
-  left: 12px;
+  top: 50%;
+  inset-inline-start: 12px;
+  transform: translateY(-50%);
   color: var(--muted);
   width: 20px;
   height: 20px;
+  pointer-events: none;
 }
-.case-search input {
-  padding-left: 42px;
+.case-search > input[type="search"] {
+  padding-inline-start: 42px;
   border-color: var(--border);
   background: var(--surface);
 }
@@ -1570,8 +1620,11 @@ dialog .actions .button {
     gap: 4px;
   }
   .creation-steps li {
-    font-size: 0.6875rem;
+    flex-direction: column;
     gap: 4px;
+  }
+  .creation-steps li:not(:last-child)::after {
+    display: none;
   }
   .step-dot {
     width: 24px;

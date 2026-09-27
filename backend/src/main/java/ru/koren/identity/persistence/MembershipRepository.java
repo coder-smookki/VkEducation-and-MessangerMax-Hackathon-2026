@@ -5,6 +5,7 @@ import java.util.Objects;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import ru.koren.identity.MeView;
+import ru.koren.identity.MaxProfile;
 import ru.koren.identity.MembershipView;
 
 /** Reads the current memberships of one user. Roles never come from the client. */
@@ -16,7 +17,7 @@ public final class MembershipRepository {
         this.jdbc = Objects.requireNonNull(jdbc, "jdbc");
     }
 
-    public MeView loadMe(UUID userId, String displayName) {
+    public MeView loadMe(UUID userId, MaxProfile profile) {
         List<MembershipView> memberships = jdbc.query("""
             SELECT m.house_id, h.address, m.role
             FROM membership m
@@ -27,6 +28,6 @@ public final class MembershipRepository {
             (rs, rowNum) -> new MembershipView(
                 rs.getObject("house_id", UUID.class), rs.getString("address"),
                 rs.getString("role")), userId);
-        return new MeView(userId, displayName, memberships);
+        return new MeView(userId, profile.displayName(), profile.username(), profile.avatarUrl(), memberships);
     }
 }

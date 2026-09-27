@@ -66,3 +66,7 @@ python3 scripts/seed_stand.py dispatcher <houseId> <maxUserId>   # после п
 - Наружу только HTTPS. Порты 5432, 8000, 9092 закрыты: smoke проверяет и их.
 - Проверить заранее, что сервер стенда скачивает образы с Docker Hub - иначе выкладка 29.09 встанет на `docker pull`.
 - После выкладки: `python3 scripts/stand_smoke.py --expect-sha <SHA>` с любой машины, все строки PASS.
+
+## Профиль MAX - 27.09
+
+После HMAC/time проверки backend сохраняет displayName, username, avatarUrl в серверном Authentication.details. `/me` и claim больше не теряют имя после login. Frontend читает только этот MeView; initDataUnsafe не становится источником профиля или прав. Изображение имеет фиксированный круглый контейнер, object-fit:cover и referrerPolicy=no-referrer; при отсутствии/ошибке - SVG fallback. CSP разрешает текущий CDN фото MAX https://i.oneme.ru только для img-src. Смена CDN потребует явного пересмотра CSP; произвольные внешние источники не открыты. Отдельного username у пользователя может не быть, тогда показывается имя из MAX. Данные профиля обновляются при следующем проверенном входе.

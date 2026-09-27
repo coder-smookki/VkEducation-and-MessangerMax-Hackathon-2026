@@ -50,8 +50,9 @@ public class AuthController {
     public MeView login(@RequestBody LoginRequest body, HttpServletRequest request, HttpServletResponse response) {
         MaxVerifiedUser verified = validator.validate(body == null ? null : body.initData());
         UUID userId = provisioner.findOrCreate(verified.maxUserId());
-        Authentication authentication =
+        var authentication =
             new UsernamePasswordAuthenticationToken(userId, null, List.of());
+        authentication.setDetails(verified.profile());
         // A new session id on login closes session fixation.
         sessionStrategy.onAuthentication(authentication, request, response);
         SecurityContext context = SecurityContextHolder.createEmptyContext();
@@ -59,12 +60,12 @@ public class AuthController {
         SecurityContextHolder.setContext(context);
         // Without this the login survives only the current thread, not the next request.
         contextRepository.saveContext(context, request, response);
-        return memberships.loadMe(userId, verified.displayName());
+        return memberships.loadMe(userId, verified.profile());
     }
 
     @GetMapping("/me")
     public MeView me(Authentication authentication) {
-        return memberships.loadMe((UUID) authentication.getPrincipal(), null);
+        return memberships.loadMe((UUID) authentication.getPrincipal(), MaxProfile.from(authentication));
     }
 
     @PostMapping("/auth/logout")

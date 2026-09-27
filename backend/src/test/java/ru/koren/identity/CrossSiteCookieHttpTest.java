@@ -29,11 +29,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named = "DB_TEST_URL", matches = ".+")
 class CrossSiteCookieHttpTest {
     // Independent signed fixture shared in meaning with MaxInitDataValidatorTest.
-    private static final String INIT_DATA =
-        "user=%7B%22id%22%3A424242%2C%22first_name%22%3A%22Max%22%2C%22last_name%22%3A%22User%22"
-            + "%2C%22username%22%3Anull%2C%22language_code%22%3A%22ru%22%7D&ip=192.168.0.1"
-            + "&auth_date=1800000000&query_id=AAE1YmYAAAAANTmv4t3W0h01"
-            + "&hash=fa2ff9a4255c0e16b0e5be5a4bc6bded45aadad37b589cebb251fc95d7080ad4";
+    private static final String INIT_DATA = SignedProfileFixtures.initData("profile");
 
     @TestConfiguration
     static class Config {
@@ -89,6 +85,8 @@ class CrossSiteCookieHttpTest {
         var me = client.send(request("/api/v1/me").header("Cookie", session.split(";", 2)[0]).GET().build(),
             HttpResponse.BodyHandlers.ofString());
         assertEquals(200, me.statusCode());
-        assertEquals(json.readTree(accepted.body()).get("userId"), json.readTree(me.body()).get("userId"));
+        assertEquals(json.readTree(accepted.body()), json.readTree(me.body()));
+        assertEquals("anna_max", json.readTree(me.body()).get("username").asString());
+        assertEquals("https://images.example.org/max/avatar.png", json.readTree(me.body()).get("avatarUrl").asString());
     }
 }

@@ -66,7 +66,9 @@ class MaxInitDataValidatorTest {
     void validBasicVector() {
         MaxVerifiedUser user = validator.validate(BASIC);
         assertEquals(424242L, user.maxUserId());
-        assertEquals("Max User", user.displayName());
+        assertEquals("Max User", user.profile().displayName());
+        assertNull(user.profile().username());
+        assertNull(user.profile().avatarUrl());
         assertEquals("{\"id\":424242,\"first_name\":\"Max\",\"last_name\":\"User\",\"username\":null,"
                 + "\"language_code\":\"ru\"}", user.rawUserJson());
     }
@@ -75,7 +77,7 @@ class MaxInitDataValidatorTest {
     void validUnicodeEmojiVector() {
         MaxVerifiedUser user = validator.validate(UNICODE);
         assertEquals(777000111L, user.maxUserId());
-        assertEquals("Мария 🌟 Иванова", user.displayName());
+        assertEquals("Мария 🌟 Иванова", user.profile().displayName());
     }
 
     @Test
@@ -90,7 +92,44 @@ class MaxInitDataValidatorTest {
 
     @Test
     void displayNameFallsBackToFirstNameOnly() {
-        assertEquals("Time", validator.validate(TIME_NOW).displayName());
+        assertEquals("Time", validator.validate(TIME_NOW).profile().displayName());
+    }
+
+    @Test
+    void signedProfileIncludesNormalizedNameUsernameAndHttpsAvatar() {
+        MaxVerifiedUser user = validator.validate(SignedProfileFixtures.initData("profile"));
+        assertEquals(new MaxProfile("Анна Иванова", "anna_max", "https://images.example.org/max/avatar.png"),
+            user.profile());
+        assertEquals(424242L, user.maxUserId());
+    }
+
+    @Test
+    void optionalMissingMalformedAndOversizedProfileFieldsDoNotBlockLogin() {
+        for (String fixture : new String[] {"missing", "blank", "wrong_types", "oversized"}) {
+            MaxVerifiedUser user = validator.validate(SignedProfileFixtures.initData(fixture));
+            assertEquals(424242L, user.maxUserId());
+            assertEquals(new MaxProfile(null, null, null), user.profile(), fixture);
+        }
+    }
+
+    @Test
+    void unsafeOptionalAvatarIsIgnoredWithoutRejectingSignedIdentity() {
+        for (String kind : new String[] {"http", "relative", "scheme_relative", "javascript", "data",
+                "credentials", "no_host", "malformed"}) {
+            MaxVerifiedUser user = validator.validate(SignedProfileFixtures.initData("unsafe_" + kind));
+            assertEquals(424242L, user.maxUserId());
+            assertEquals("Анна", user.profile().displayName());
+            assertNull(user.profile().avatarUrl(), kind);
+        }
+    }
+
+    @Test
+    void changingDisplayFieldsWithoutAValidSignatureIsRejected() {
+        String signed = SignedProfileFixtures.initData("profile");
+        for (String forged : new String[] {signed.replace("anna_max", "mallory"),
+                signed.replace("avatar.png", "forged.png")}) {
+            assertReason(Reason.SIGNATURE, () -> validator.validate(forged));
+        }
     }
 
     @Test

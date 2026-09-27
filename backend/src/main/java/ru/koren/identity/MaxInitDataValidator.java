@@ -1,6 +1,8 @@
 package ru.koren.identity;
 
 import java.io.ByteArrayOutputStream;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
@@ -87,7 +89,9 @@ public final class MaxInitDataValidator {
         checkFreshness(authDate);
 
         long maxUserId = requireUserId(user);
-        return new MaxVerifiedUser(maxUserId, displayName(user), userJson);
+        MaxProfile profile = new MaxProfile(displayName(user), textOrNull(user.get("username"), 128),
+            avatarUrl(user.get("photo_url")));
+        return new MaxVerifiedUser(maxUserId, profile, userJson);
     }
 
     private Map<String, String> parsePairs(String raw) {
@@ -189,14 +193,29 @@ public final class MaxInitDataValidator {
     }
 
     private static String displayName(JsonNode user) {
-        String first = textOrNull(user.get("first_name"));
-        String last = textOrNull(user.get("last_name"));
+        String first = textOrNull(user.get("first_name"), 256);
+        String last = textOrNull(user.get("last_name"), 256);
         String joined = (first == null ? "" : first) + (first != null && last != null ? " " : "") + (last == null ? "" : last);
-        return joined.isBlank() ? null : joined;
+        return joined.isBlank() || joined.codePointCount(0, joined.length()) > 512 ? null : joined;
     }
 
-    private static String textOrNull(JsonNode node) {
-        return node != null && node.isString() ? node.asString() : null;
+    private static String textOrNull(JsonNode node, int maxLength) {
+        if (node == null || !node.isString()) return null;
+        String value = node.asString().strip();
+        return value.isBlank() || value.codePointCount(0, value.length()) > maxLength ? null : value;
+    }
+
+    /** The browser may load this URL as an image; Java never fetches it. Invalid optional data is ignored. */
+    private static String avatarUrl(JsonNode node) {
+        String value = textOrNull(node, 2048);
+        if (value == null) return null;
+        try {
+            URI uri = new URI(value);
+            return "https".equalsIgnoreCase(uri.getScheme()) && uri.getHost() != null
+                && uri.getRawUserInfo() == null ? value : null;
+        } catch (URISyntaxException invalid) {
+            return null;
+        }
     }
 
     private static byte[] decodeHex(String hex) {

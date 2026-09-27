@@ -8,13 +8,29 @@ import type {
   APIRequestContext,
 } from "@playwright/test";
 import { createHash, createHmac, randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { isAbsolute, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import AxeBuilder from "@axe-core/playwright";
 import type { Case, Me } from "../src/api/client";
 
 const root = resolve(import.meta.dirname, "../..");
+const composeProject = process.env.KOREN_E2E_PROJECT || "";
+const baseURL = process.env.KOREN_E2E_URL || "";
+// Fail at module load, before reading a token, authenticating, or issuing SQL.
+// This suite creates memberships and changes data and must never target a live stand.
+const target = baseURL ? new URL(baseURL) : null;
+if (
+  !composeProject.startsWith("koren-ui-check-") ||
+  !target ||
+  target.protocol !== "http:" ||
+  !["127.0.0.1", "localhost", "[::1]"].includes(target.hostname) ||
+  target.username ||
+  target.password
+)
+  throw new Error(
+    "Integration requires a disposable koren-ui-check-* project and its HTTP loopback URL; run scripts/check_miniapp.py",
+  );
 const envFile = process.env.KOREN_E2E_ENV
   ? resolve(process.env.KOREN_E2E_ENV)
   : "";
@@ -26,8 +42,148 @@ const env = envFile
         .map((s) => [s.slice(0, s.indexOf("=")), s.slice(s.indexOf("=") + 1)]),
     )
   : {};
-const composeProject = process.env.KOREN_E2E_PROJECT || "koren-kirill";
-const baseURL = process.env.KOREN_E2E_URL || "http://127.0.0.1:5173";
+const captureDirectory = process.env.KOREN_QA_CAPTURE;
+const capturedScreens: {
+  screen: string;
+  route: string;
+  viewport: { width: number; height: number } | null;
+  theme: string;
+  fontSize: string;
+  file: string;
+}[] = [];
+if (captureDirectory && !isAbsolute(captureDirectory))
+  throw new Error("KOREN_QA_CAPTURE must be an absolute directory path");
+
+// These screens use the disposable Java/PostgreSQL API. Only MAX launch data
+// is synthetic; no application API response is replaced for this audit.
+async function auditScreen(page: Page, screen: string) {
+  if (!composeProject.startsWith("koren-ui-check-"))
+    throw new Error(
+      "Screen audits require the disposable check_miniapp.py stand",
+    );
+  await expect(page.locator("main")).toBeVisible();
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    window.scrollTo(0, 0);
+  });
+  const layout = await page.evaluate(() => {
+    const root = document.documentElement;
+    const controls = Array.from(
+      document.querySelectorAll<HTMLElement>(
+        "main button, main .button, main input:not([type=checkbox]):not([type=radio]), main textarea, main select",
+      ),
+    ).filter((element) => element.getClientRects().length > 0);
+    return {
+      overflow: root.scrollWidth - root.clientWidth,
+      clippedControls: controls.flatMap((element) => {
+        const rect = element.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return [];
+        const label =
+          element.getAttribute("aria-label") ||
+          element.getAttribute("name") ||
+          element.tagName.toLowerCase();
+        // Filter chips and wide dispatcher tables intentionally scroll in
+        // their own bounded region; an offscreen chip is still reachable.
+        for (
+          let ancestor = element.parentElement;
+          ancestor;
+          ancestor = ancestor.parentElement
+        ) {
+          if (
+            ["auto", "scroll"].includes(getComputedStyle(ancestor).overflowX) &&
+            ancestor.scrollWidth > ancestor.clientWidth
+          )
+            return [];
+        }
+        return rect.left < -1 || rect.right > root.clientWidth + 1
+          ? [label]
+          : [];
+      }),
+      theme: root.dataset.theme || "system",
+      fontSize: getComputedStyle(root).fontSize,
+    };
+  });
+  if (captureDirectory) {
+    mkdirSync(captureDirectory, { recursive: true });
+    const file = `${String(capturedScreens.length + 1).padStart(2, "0")}-${screen}.png`;
+    await page.screenshot({
+      path: resolve(captureDirectory, file),
+      fullPage: true,
+    });
+    capturedScreens.push({
+      screen,
+      route: new URL(page.url()).hash
+        .split("?")[0]
+        .replace(/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/gi, ":id"),
+      viewport: page.viewportSize(),
+      theme: layout.theme,
+      fontSize: layout.fontSize,
+      file,
+    });
+    writeFileSync(
+      resolve(captureDirectory, "manifest.json"),
+      JSON.stringify(
+        {
+          source: "disposable real Java/PostgreSQL; synthetic users and cases",
+          screens: capturedScreens,
+        },
+        null,
+        2,
+      ),
+    );
+  }
+  expect(layout.overflow, `${screen}: horizontal overflow`).toBeLessThanOrEqual(
+    1,
+  );
+  expect(
+    layout.clippedControls,
+    `${screen}: controls outside viewport`,
+  ).toEqual([]);
+  const accessibility = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+    .analyze();
+  expect(accessibility.violations, `${screen}: accessibility`).toEqual([]);
+  const targets = page.locator(
+    "main :is(button:not(:disabled), a.button, input:not([type=checkbox]):not([type=radio]):not(:disabled), textarea:not(:disabled), select:not(:disabled)):visible",
+  );
+  const count = await targets.count();
+  for (const index of new Set([0, Math.floor(count / 2), count - 1])) {
+    if (index < 0 || index >= count) continue;
+    const target = targets.nth(index);
+    await target.scrollIntoViewIfNeeded();
+    await expect
+      .poll(
+        () =>
+          target.evaluate((element) => {
+            const rect = element.getBoundingClientRect();
+            const hit = document.elementFromPoint(
+              rect.x + rect.width / 2,
+              rect.y + rect.height / 2,
+            );
+            return !!hit && (hit === element || element.contains(hit));
+          }),
+        { message: `${screen}: visible control receives a pointer` },
+      )
+      .toBe(true);
+  }
+  await page.evaluate(() => window.scrollTo(0, 0));
+}
+
+async function appearance(page: Page, theme: "light" | "dark", large = false) {
+  await page
+    .getByRole("button", { name: "Настройки вида", exact: true })
+    .click();
+  await page
+    .getByRole("radio", {
+      name: theme === "light" ? "Светлая" : "Тёмная",
+      exact: true,
+    })
+    .check();
+  await page
+    .getByRole("switch", { name: "Крупный текст", exact: true })
+    .setChecked(large);
+  await page.getByRole("button", { name: "Готово", exact: true }).click();
+}
 function sql(text: string) {
   const result = spawnSync(
     "docker",
@@ -80,7 +236,11 @@ function lifecycle(action: "stop" | "start") {
   if (result.status !== 0)
     throw new Error(`Synthetic lifecycle failed: ${result.stderr}`);
 }
-function signedLaunch(userId: number, start?: string) {
+function signedLaunch(
+  userId: number,
+  start?: string,
+  profile?: { username: string; photo_url: string },
+) {
   const fields = {
     auth_date: String(Math.floor(Date.now() / 1000)),
     query_id: randomUUID(),
@@ -89,6 +249,7 @@ function signedLaunch(userId: number, start?: string) {
       first_name: "Синтетический",
       last_name: "тест",
       language_code: "ru",
+      ...profile,
     }),
     ...(start ? { start_param: start } : {}),
   };
@@ -105,6 +266,56 @@ function signedLaunch(userId: number, start?: string) {
     .digest("hex");
   return new URLSearchParams({ ...fields, hash }).toString();
 }
+test("verified MAX profile survives reload through the release proxy and its image policy", async ({
+  page,
+}) => {
+  const avatarUrl = "https://i.oneme.ru/synthetic-profile-test.svg";
+  const initData = signedLaunch(Date.now() * 100 + 99, undefined, {
+    username: "synthetic_profile",
+    photo_url: avatarUrl,
+  });
+  await page.addInitScript((raw) => {
+    window.WebApp = { initData: raw };
+  }, initData);
+  await page.route("https://st.max.ru/**", (route) =>
+    route.fulfill({ contentType: "application/javascript", body: "" }),
+  );
+  await page.route(avatarUrl, (route) =>
+    route.fulfill({
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><circle cx="32" cy="32" r="32" fill="#126bff"/></svg>',
+    }),
+  );
+  await page.goto("/#/profile");
+  const name = page.getByRole("heading", {
+    name: "Синтетический тест",
+    exact: true,
+  });
+  const photo = page.getByRole("img", {
+    name: "Фото профиля Синтетический тест",
+  });
+  await expect(name).toBeVisible();
+  await expect(
+    page.getByText("@synthetic_profile", { exact: true }),
+  ).toBeVisible();
+  await expect
+    .poll(() =>
+      photo.evaluate(
+        (image: HTMLImageElement) => image.complete && image.naturalWidth > 0,
+      ),
+    )
+    .toBe(true);
+  await page.reload();
+  await expect(name).toBeVisible();
+  await expect(photo).toBeVisible();
+  const me = await page.request.get(`${baseURL}/api/v1/me`);
+  expect(me.status()).toBe(200);
+  expect(await me.json()).toMatchObject({
+    displayName: "Синтетический тест",
+    username: "synthetic_profile",
+    avatarUrl,
+  });
+});
 async function mutate(
   request: APIRequestContext,
   path: string,
@@ -151,8 +362,9 @@ async function snapshot(context: BrowserContext, id: string): Promise<Case> {
   expect(response.status()).toBe(200);
   return response.json();
 }
-async function submitReview(page: Page) {
+async function submitReview(page: Page, screen?: string) {
   await page.getByRole("button", { name: "Проверить перед отправкой" }).click();
+  if (screen) await auditScreen(page, screen);
   await page
     .getByRole("button", { name: "Подтвердить отправку", exact: true })
     .click();
@@ -161,7 +373,7 @@ async function submitReview(page: Page) {
 test("real API: author → dispatcher → partial result → archive, with access and idempotency", async ({
   browser,
 }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(360_000);
   const house = randomUUID();
   sql(
     `INSERT INTO house(id,address) VALUES ('${house}','Синтетический дом frontend E2E');`,
@@ -174,8 +386,19 @@ test("real API: author → dispatcher → partial result → archive, with acces
   dispatcher.page.on("pageerror", (error) => errors.push(error.message));
   try {
     // MAX supplies a launch fragment before the hash router starts; Bridge holds signed initData.
+    await author.page.setViewportSize({ width: 320, height: 844 });
     await author.page.goto("/#WebAppData=synthetic-launch&WebAppPlatform=web");
+    await expect(
+      author.page.getByRole("heading", {
+        name: "Пока нет обращений",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await appearance(author.page, "light");
+    await auditScreen(author.page, "resident-empty-mobile");
     await author.page.getByRole("link", { name: "Новое обращение" }).click();
+    await expect(author.page.getByLabel("Текст обращения")).toBeVisible();
+    await auditScreen(author.page, "resident-new-mobile");
     await author.page
       .getByLabel("Текст обращения")
       .fill("На третьем этаже не горит свет, и входная дверь не закрывается.");
@@ -190,9 +413,35 @@ test("real API: author → dispatcher → partial result → archive, with acces
     const created = await createdResponse;
     expect(created.status()).toBe(201);
     const initial = (await created.json()) as Case;
+    await expect(
+      author.page.getByRole("heading", { name: "Черновик сохранён" }),
+    ).toBeVisible();
+    await auditScreen(author.page, "resident-draft-saved-mobile");
+    await author.page.goto(`/#/cases/${initial.caseId}/source`);
+    await expect(
+      author.page.getByRole("heading", { name: "Уточните исходный текст" }),
+    ).toBeVisible();
+    await auditScreen(author.page, "resident-source-mobile");
     await author.page
-      .getByRole("button", { name: "Перейти к пунктам" })
+      .getByLabel("Текст обращения")
+      .fill(
+        "В подъезде на третьем этаже не горит свет, и входная дверь не закрывается.",
+      );
+    await author.page
+      .getByRole("button", { name: "Сохранить текст", exact: true })
       .click();
+    await expect(
+      author.page.getByText("Текст сохранён.", { exact: false }),
+    ).toBeVisible();
+    await author.page
+      .getByRole("link", { name: "К пунктам", exact: true })
+      .click();
+    await expect(
+      author.page.getByRole("heading", {
+        name: "Проверьте отдельные проблемы",
+      }),
+    ).toBeVisible();
+    await auditScreen(author.page, "resident-items-empty-mobile");
     await author.page.getByLabel("Тема проблемы").selectOption("LIGHTING");
     await author.page
       .getByLabel("Где это произошло?")
@@ -215,18 +464,24 @@ test("real API: author → dispatcher → partial result → archive, with acces
       .getByLabel("Что не работает или мешает?")
       .nth(1)
       .fill("Дверь не закрывается");
+    await auditScreen(author.page, "resident-items-filled-mobile");
     await author.page
       .getByRole("button", { name: "Сохранить список", exact: true })
       .click();
     await author.page
       .getByRole("link", { name: "Проверить и подтвердить" })
       .click();
+    await expect(
+      author.page.getByRole("heading", { name: "Всё верно?" }),
+    ).toBeVisible();
+    await auditScreen(author.page, "resident-review-mobile");
     await author.page
       .getByRole("button", { name: "Подтвердить список", exact: true })
       .click();
     await expect(
       author.page.getByRole("heading", { name: "Список подтверждён" }),
     ).toBeVisible();
+    await auditScreen(author.page, "resident-confirmed-mobile");
     await author.page
       .getByRole("link", { name: "Открыть обращение", exact: true })
       .click();
@@ -234,13 +489,44 @@ test("real API: author → dispatcher → partial result → archive, with acces
     expect(confirmed.submissionStatus).toBe("CONFIRMED");
     expect(confirmed.items).toHaveLength(2);
     const [light, door] = confirmed.items;
+    await expect(
+      author.page.getByRole("heading", {
+        name: `Обращение №${confirmed.displayNumber}`,
+        exact: true,
+      }),
+    ).toBeVisible();
+    await auditScreen(author.page, "resident-card-mobile");
+    await author.page.goto("/");
+    await expect(
+      author.page.getByRole("link", { name: "Не горит свет", exact: true }),
+    ).toBeVisible();
+    await auditScreen(author.page, "resident-list-mobile");
+    await author.page.goto(`/#/cases/${initial.caseId}`);
+    await dispatcher.page.setViewportSize({ width: 1440, height: 1000 });
+    await dispatcher.page.goto("/");
+    await expect(
+      dispatcher.page.getByRole("heading", {
+        name: "Очередь обращений",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await appearance(dispatcher.page, "light");
+    await auditScreen(dispatcher.page, "dispatcher-queue-desktop");
     await dispatcher.page.goto(`/#/cases/${initial.caseId}`);
+    await expect(
+      dispatcher.page.getByRole("button", {
+        name: "Принять обращение",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await auditScreen(dispatcher.page, "dispatcher-accept-desktop");
     await dispatcher.page
       .getByRole("button", { name: "Принять обращение", exact: true })
       .click();
     await expect(
       dispatcher.page.getByText("Принято диспетчером", { exact: true }),
     ).toBeVisible();
+    await auditScreen(dispatcher.page, "dispatcher-accepted-desktop");
     await dispatcher.page
       .locator(".item-card")
       .filter({ hasText: "Дверь не закрывается" })
@@ -258,10 +544,15 @@ test("real API: author → dispatcher → partial result → archive, with acces
     await dispatcher.page
       .getByLabel("Когда будет следующее обновление?")
       .fill(local);
-    await submitReview(dispatcher.page);
+    await auditScreen(dispatcher.page, "dispatcher-next-action-desktop");
+    await submitReview(
+      dispatcher.page,
+      "dispatcher-next-action-review-desktop",
+    );
     await expect(
       dispatcher.page.getByRole("heading", { name: "Следующий шаг сохранён" }),
     ).toBeVisible();
+    await auditScreen(dispatcher.page, "dispatcher-next-action-saved-desktop");
     await dispatcher.page
       .getByRole("link", { name: "Вернуться к обращению" })
       .click();
@@ -273,12 +564,14 @@ test("real API: author → dispatcher → partial result → archive, with acces
       .fill("Лампу на третьем этаже заменили.");
     await dispatcher.page.getByRole("checkbox").nth(0).check();
     await dispatcher.page.getByRole("checkbox").nth(1).check();
+    await auditScreen(dispatcher.page, "dispatcher-report-new-desktop");
     await dispatcher.page
       .getByRole("button", { name: "Сохранить текст отчёта" })
       .click();
     await expect(
       dispatcher.page.getByRole("heading", { name: "Текст отчёта сохранён" }),
     ).toBeVisible();
+    await auditScreen(dispatcher.page, "dispatcher-report-saved-desktop");
     const afterReport = await snapshot(author.context, initial.caseId);
     expect(
       afterReport.items.map((i) => [i.workRound, i.workStatus, i.observation]),
@@ -293,23 +586,28 @@ test("real API: author → dispatcher → partial result → archive, with acces
     await expect(
       dispatcher.page.getByRole("checkbox").first(),
     ).not.toBeChecked();
+    await auditScreen(dispatcher.page, "dispatcher-report-links-desktop");
     await dispatcher.page
       .getByRole("checkbox", { name: /Не горит свет/ })
       .check();
     await dispatcher.page
       .getByRole("button", { name: "Проверить выбранные связи" })
       .click();
+    await auditScreen(dispatcher.page, "dispatcher-report-review-desktop");
     await dispatcher.page
       .getByRole("button", { name: "Подтвердить выбранные связи" })
       .click();
     await expect(
       dispatcher.page.getByText("Связь сохранена.", { exact: false }),
     ).toBeVisible();
+    await auditScreen(dispatcher.page, "dispatcher-report-linked-desktop");
     const afterLink = await snapshot(author.context, initial.caseId);
     expect(afterLink.items[0].workRound).toBe(1);
     expect(afterLink.items[0].observation).toBe("NOT_RECEIVED");
     expect(afterLink.items[1].workRound).toBe(0);
+    await author.page.setViewportSize({ width: 390, height: 844 });
     await author.page.reload();
+    await appearance(author.page, "dark", true);
     await author.page
       .locator(".item-card")
       .filter({ hasText: "Не горит свет" })
@@ -318,10 +616,12 @@ test("real API: author → dispatcher → partial result → archive, with acces
     await author.page
       .getByRole("radio", { name: "Восстановилось", exact: true })
       .check();
-    await submitReview(author.page);
+    await auditScreen(author.page, "resident-observe-dark-large");
+    await submitReview(author.page, "resident-observation-review-dark-large");
     await expect(
       author.page.getByRole("heading", { name: "Наблюдение сохранено" }),
     ).toBeVisible();
+    await auditScreen(author.page, "resident-observation-saved-dark-large");
     await author.page
       .getByRole("link", { name: "Вернуться к обращению" })
       .click();
@@ -337,6 +637,28 @@ test("real API: author → dispatcher → partial result → archive, with acces
     await expect(author.page.getByLabel("Результат по пунктам")).toContainText(
       "1 из 2",
     );
+    await auditScreen(author.page, "resident-partial-dark-large");
+    await author.page.getByText("История обращения", { exact: true }).click();
+    await expect(
+      author.page.getByText("Автор сообщил наблюдение", { exact: true }),
+    ).toBeVisible();
+    await author.page
+      .getByText("Исходный текст и квитанция", { exact: true })
+      .click();
+    await auditScreen(author.page, "resident-history-source-dark-large");
+    await author.page.goto(reportUrl);
+    await expect(
+      author.page.getByRole("heading", {
+        name: "Отчёт о работах",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await auditScreen(author.page, "resident-report-dark-large");
+    await author.page.goto(`/#/cases/${initial.caseId}`);
+    await expect(author.page.getByLabel("Результат по пунктам")).toContainText(
+      "1 из 2",
+    );
+    await appearance(author.page, "light");
     expect(
       (
         await new AxeBuilder({ page: author.page })
@@ -403,7 +725,7 @@ test("real API: author → dispatcher → partial result → archive, with acces
       },
     );
     await dispatcher.page
-      .getByRole("link", { name: "← К обращению", exact: true })
+      .getByRole("link", { name: "К обращению", exact: true })
       .click();
     await dispatcher.page
       .locator(".item-card")
@@ -418,13 +740,19 @@ test("real API: author → dispatcher → partial result → archive, with acces
     await dispatcher.page
       .getByLabel("Причина решения")
       .fill("Передано в план обследования. Ремонт не подтверждён.");
-    await submitReview(dispatcher.page);
+    await appearance(dispatcher.page, "dark");
+    await auditScreen(dispatcher.page, "dispatcher-archive-dark-desktop");
+    await submitReview(
+      dispatcher.page,
+      "dispatcher-archive-review-dark-desktop",
+    );
     await dispatcher.page
       .getByRole("button", { name: "Повторить ту же отправку" })
       .click();
     await expect(
       dispatcher.page.getByRole("heading", { name: "Решение сохранено" }),
     ).toBeVisible();
+    await auditScreen(dispatcher.page, "dispatcher-archive-saved-dark-desktop");
     expect(writes).toHaveLength(2);
     expect(writes[0]).toBe(writes[1]);
     const archived = await snapshot(author.context, initial.caseId);
@@ -444,10 +772,21 @@ test("real API: author → dispatcher → partial result → archive, with acces
     await dispatcher.page
       .getByRole("link", { name: "Вернуться к обращению" })
       .click();
+    await expect(
+      dispatcher.page.getByRole("heading", {
+        name: `Обращение №${confirmed.displayNumber}`,
+        exact: true,
+      }),
+    ).toBeVisible();
+    await auditScreen(dispatcher.page, "dispatcher-archived-card-dark-desktop");
     await dispatcher.page.goto(reportUrl);
     await expect(
       dispatcher.page.getByRole("heading", { name: "Подтверждённые связи" }),
     ).toBeVisible();
+    await auditScreen(
+      dispatcher.page,
+      "dispatcher-report-history-dark-desktop",
+    );
     expect(errors).toEqual([]);
   } finally {
     await author.context.close();
@@ -466,6 +805,7 @@ function randomHouse() {
 test("real API: one-time invitation, negative observations and withdrawal retain the denominator", async ({
   browser,
 }) => {
+  test.setTimeout(180_000);
   const house = randomHouse();
   const resident = await actor(browser, house, null, 4);
   try {
@@ -474,15 +814,33 @@ test("real API: one-time invitation, negative observations and withdrawal retain
     sql(
       `INSERT INTO house_invitation(id,house_id,code_hash,expires_at) VALUES ('${randomUUID()}','${house}','${hash}',now()+interval '1 hour');`,
     );
+    await resident.page.setViewportSize({ width: 320, height: 844 });
     await resident.page.goto("/");
+    await expect(
+      resident.page.getByRole("heading", {
+        name: "Подключите свой дом",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await appearance(resident.page, "light");
+    await auditScreen(resident.page, "resident-no-house-mobile");
     await resident.page
       .getByRole("link", { name: "Ввести код приглашения" })
       .click();
+    await expect(resident.page.getByLabel("Код приглашения")).toBeVisible();
+    await auditScreen(resident.page, "resident-access-mobile");
+    await resident.page
+      .getByLabel("Код приглашения")
+      .fill("invalid-synthetic-code");
+    await resident.page.getByRole("button", { name: "Подключить дом" }).click();
+    await expect(resident.page.getByRole("alert")).toBeVisible();
+    await auditScreen(resident.page, "resident-invitation-invalid-mobile");
     await resident.page.getByLabel("Код приглашения").fill(invitation);
     await resident.page.getByRole("button", { name: "Подключить дом" }).click();
     await expect(
       resident.page.getByText("Доступ обновлён.", { exact: false }),
     ).toBeVisible();
+    await auditScreen(resident.page, "resident-access-connected-mobile");
     expect(
       (
         await mutate(resident.context.request, "/memberships/claim", {
@@ -539,6 +897,10 @@ test("real API: one-time invitation, negative observations and withdrawal retain
       await resident.page
         .getByRole("radio", { name: label, exact: true })
         .check();
+      await auditScreen(
+        resident.page,
+        `resident-observation-${value.toLowerCase()}-mobile`,
+      );
       await submitReview(resident.page);
       await expect(
         resident.page.getByRole("heading", { name: "Наблюдение сохранено" }),
@@ -564,10 +926,12 @@ test("real API: one-time invitation, negative observations and withdrawal retain
     await resident.page
       .getByLabel("Причина решения")
       .fill("Ошибся местом, обращение отзываю.");
-    await submitReview(resident.page);
+    await auditScreen(resident.page, "resident-withdraw-mobile");
+    await submitReview(resident.page, "resident-withdraw-review-mobile");
     await expect(
       resident.page.getByRole("heading", { name: "Решение сохранено" }),
     ).toBeVisible();
+    await auditScreen(resident.page, "resident-withdraw-saved-mobile");
     const withdrawn = await snapshot(resident.context, created.caseId);
     expect(withdrawn.progress).toEqual({
       total: 2,
@@ -577,6 +941,65 @@ test("real API: one-time invitation, negative observations and withdrawal retain
       allConfirmed: false,
     });
     expect(withdrawn.items[1].administrativeStatus).toBe("WITHDRAWN");
+    await resident.page
+      .getByRole("link", { name: "Вернуться к обращению" })
+      .click();
+    await expect(
+      resident.page.getByRole("heading", {
+        name: `Обращение №${withdrawn.displayNumber}`,
+        exact: true,
+      }),
+    ).toBeVisible();
+    await auditScreen(resident.page, "resident-withdrawn-card-mobile");
+    await resident.page.goto("/#/profile");
+    await expect(
+      resident.page.getByRole("heading", { name: "Профиль", exact: true }),
+    ).toBeVisible();
+    await appearance(resident.page, "dark", true);
+    await auditScreen(resident.page, "resident-profile-dark-large-mobile");
+    await resident.page.goto("/#/access");
+    await expect(
+      resident.page.getByRole("heading", {
+        name: "Доступ к дому",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await auditScreen(resident.page, "resident-houses-dark-large-mobile");
+    await resident.page.goto("/#/not-a-route");
+    await expect(
+      resident.page.getByRole("heading", {
+        name: "Страница не найдена",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await auditScreen(
+      resident.page,
+      "resident-route-not-found-dark-large-mobile",
+    );
+    await resident.page.goto(`/#/cases/${randomUUID()}`);
+    await expect(resident.page.getByRole("alert")).toBeVisible();
+    await auditScreen(
+      resident.page,
+      "resident-case-not-found-dark-large-mobile",
+    );
+    await resident.page.goto("/#/logout");
+    await expect(
+      resident.page.getByRole("heading", {
+        name: "Выйти из ДомПульса?",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await auditScreen(resident.page, "resident-logout-dark-large-mobile");
+    await resident.page
+      .getByRole("button", { name: "Завершить сессию", exact: true })
+      .click();
+    await expect(
+      resident.page.getByRole("heading", { name: "Вы вышли", exact: true }),
+    ).toBeVisible();
+    await auditScreen(resident.page, "resident-logged-out-dark-large-mobile");
+    expect(
+      (await resident.context.request.get(`${baseURL}/api/v1/me`)).status(),
+    ).toBe(401);
   } finally {
     await resident.context.close();
   }

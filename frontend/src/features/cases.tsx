@@ -398,7 +398,7 @@ export function CasePage() {
   return (
     <>
       <Link className="back-link" to={`/?house=${data.houseId}`}>
-        ← К обращениям
+        <Icon name="arrow" />К обращениям
       </Link>
       <section className="card case-intro">
         <div className="case-intro-summary">
@@ -500,7 +500,10 @@ export function CasePage() {
         )}
       {data.submissionStatus === "CONFIRMED" && (
         <details className="card source-details">
-          <summary>Исходный текст и квитанция</summary>
+          <summary>
+            <Icon name="arrow" />
+            <span>Исходный текст и квитанция</span>
+          </summary>
           <p className="caption">Создано {formatDate(data.createdAt)}</p>
           <p className="preserve">{data.sourceText}</p>
           <p className="caption">
@@ -546,7 +549,10 @@ function CaseItemCard({
               </Link>
             )}
             <details className="item-more">
-              <summary>Другие действия</summary>
+              <summary>
+                <Icon name="arrow" />
+                <span>Другие действия</span>
+              </summary>
               <div className="minor-actions">
                 {author && (
                   <Link
@@ -579,7 +585,10 @@ function CaseItemCard({
         <>
           <p className="positive">По наблюдению автора - восстановилось</p>
           <details>
-            <summary>Сведения и действия</summary>
+            <summary>
+              <Icon name="arrow" />
+              <span>Сведения и действия</span>
+            </summary>
             {details}
           </details>
         </>
@@ -619,7 +628,10 @@ function History({ data, meId }: { data: Case; meId: string }) {
       className="card timeline"
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
-      <summary>История обращения</summary>
+      <summary>
+        <Icon name="arrow" />
+        <span>История обращения</span>
+      </summary>
       {query.isPending ? (
         <Loading />
       ) : query.error ? (
@@ -735,7 +747,7 @@ export function NewCasePage() {
   return (
     <>
       <Link className="back-link" to={`/?house=${house.houseId}`}>
-        ← К обращениям
+        <Icon name="arrow" />К обращениям
       </Link>
       <CreationSteps current={1} />
       <div className={`creation-intro ${text ? "has-text" : ""}`}>
@@ -887,7 +899,7 @@ function DraftForm({
   return (
     <>
       <Link className="back-link" to={`/cases/${data.caseId}`}>
-        ← К карточке
+        <Icon name="arrow" />К карточке
       </Link>
       {!sourceOnly && <CreationSteps current={2} />}
       <Title>
@@ -941,7 +953,10 @@ function DraftForm({
           ) : (
             <>
               <details className="card">
-                <summary>Исходный текст обращения</summary>
+                <summary>
+                  <Icon name="arrow" />
+                  <span>Исходный текст обращения</span>
+                </summary>
                 <p className="preserve">{data.sourceText}</p>
               </details>
               {items.map((item, index) => (

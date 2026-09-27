@@ -2283,7 +2283,7 @@
       "MeView": {
         "type": "object",
         "additionalProperties": false,
-        "description": "Verified MAX user and currently active memberships. Empty memberships means a verified account without house access, not an implicit RESIDENT.",
+        "description": "Verified MAX user and currently active memberships. Profile displayName, username and avatarUrl come only from signed MAX initData, remain in the server session and grant no permissions. Optional profile data may be null. Empty memberships means a verified account without house access, not an implicit RESIDENT.",
         "properties": {
           "userId": {
             "type": "string",
@@ -2293,7 +2293,8 @@
             "anyOf": [
               {
                 "type": "string",
-                "minLength": 1
+                "minLength": 1,
+                "maxLength": 512
               },
               {
                 "type": "null"
@@ -2305,11 +2306,40 @@
             "items": {
               "$ref": "#/components/schemas/Membership"
             }
+          },
+          "username": {
+            "description": "MAX username from signed initData, without an added @ prefix; null when unavailable.",
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "avatarUrl": {
+            "description": "Optional absolute HTTPS image URL from signed initData, without URL credentials. Java does not download this URL.",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uri",
+                "pattern": "^[Hh][Tt][Tt][Pp][Ss]://",
+                "maxLength": 2048
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
           "userId",
           "displayName",
+          "username",
+          "avatarUrl",
           "memberships"
         ]
       },

@@ -24,6 +24,128 @@ async function session(page: Page) {
   return me;
 }
 
+test("step and navigation labels keep whole words at narrow widths and enlarged text", async ({
+  page,
+}) => {
+  await session(page);
+  await page.setViewportSize({ width: 320, height: 844 });
+  await page.goto(`/#/new?house=${firstHouse}`);
+  await expect(
+    page.getByRole("heading", { name: "Что случилось?", exact: true }),
+  ).toBeVisible();
+  for (const fontSize of [16, 20, 36]) {
+    await page.evaluate((size) => {
+      document.documentElement.style.fontSize = `${size}px`;
+    }, fontSize);
+    const wrappedWords = await page.evaluate(() => {
+      const issues: string[] = [];
+      const labels = document.querySelectorAll(
+        ".creation-steps li > span:last-child, .app-nav a > span",
+      );
+      for (const label of labels) {
+        const text = label.firstChild;
+        if (!text || text.nodeType !== Node.TEXT_NODE) continue;
+        for (const word of text.textContent!.matchAll(/\S+/g)) {
+          const range = document.createRange();
+          range.setStart(text, word.index!);
+          range.setEnd(text, word.index! + word[0].length);
+          const lines = new Set(
+            Array.from(range.getClientRects(), (rect) => Math.round(rect.top)),
+          );
+          if (lines.size > 1) issues.push(word[0]);
+        }
+      }
+      return issues;
+    });
+    expect(wrappedWords, `font ${fontSize}px`).toEqual([]);
+    expect(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth -
+          document.documentElement.clientWidth,
+      ),
+    ).toBeLessThanOrEqual(1);
+    for (const label of ["Обращения", "Доступ к дому", "Профиль"]) {
+      const link = page
+        .locator(".app-nav")
+        .getByRole("link", { name: label, exact: true });
+      await link.scrollIntoViewIfNeeded();
+      await expect
+        .poll(() =>
+          link.evaluate((element) => {
+            const rect = element.getBoundingClientRect();
+            const hit = document.elementFromPoint(
+              rect.x + rect.width / 2,
+              rect.y + rect.height / 2,
+            );
+            return !!hit && element.contains(hit);
+          }),
+        )
+        .toBe(true);
+    }
+  }
+});
+
+test("search text clears its icon at narrow widths and enlarged text", async ({
+  page,
+}) => {
+  await session(page);
+  const data = caseData(26, "Не работает освещение");
+  await page.route("**/api/v1/cases?**", (route) =>
+    route.fulfill({ json: { items: [data], nextCursor: null } }),
+  );
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "Поиск обращений", exact: true })
+    .click();
+  const search = page.getByRole("searchbox", {
+    name: "Поиск по загруженным обращениям",
+  });
+  await expect(search).toHaveAttribute("placeholder", "Номер, тема или место");
+
+  for (const width of [320, 390, 1440]) {
+    await page.setViewportSize({ width, height: 844 });
+    for (const fontSize of [16, 20, 36]) {
+      await page.evaluate((size) => {
+        document.documentElement.style.fontSize = `${size}px`;
+      }, fontSize);
+      await search.scrollIntoViewIfNeeded();
+      const geometry = await search.evaluate((element) => {
+        const input = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        const icon = element
+          .parentElement!.querySelector("svg")!
+          .getBoundingClientRect();
+        return {
+          gap:
+            input.left +
+            parseFloat(style.borderLeftWidth) +
+            parseFloat(style.paddingLeft) -
+            icon.right,
+          centerOffset: Math.abs(
+            icon.top + icon.height / 2 - (input.top + input.height / 2),
+          ),
+          right: input.right,
+        };
+      });
+      expect(
+        geometry.gap,
+        `${width}px, font ${fontSize}px`,
+      ).toBeGreaterThanOrEqual(8);
+      expect(geometry.centerOffset).toBeLessThanOrEqual(1);
+      expect(geometry.right).toBeLessThanOrEqual(width);
+    }
+  }
+
+  await search.fill("освещение");
+  await expect(search).toBeFocused();
+  await expect(
+    page.getByRole("link", { name: "Не работает освещение", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Обновить", exact: true }).click();
+  await expect(search).toHaveValue("освещение");
+});
+
 test("local search keeps pagination reachable and counts only loaded cases", async ({
   page,
 }) => {

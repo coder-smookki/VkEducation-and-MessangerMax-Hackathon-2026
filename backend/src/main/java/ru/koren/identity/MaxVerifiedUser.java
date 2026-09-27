@@ -2,7 +2,8 @@ package ru.koren.identity;
 
 /**
  * User identity proven by a valid MAX initData signature.
- * displayName may be null; rawUserJson is the exact user JSON as signed by MAX.
+ * Profile fields may be null; rawUserJson is the exact user JSON as signed by MAX.
+ * The raw JSON is not stored in the session or exposed through the API.
  */
-public record MaxVerifiedUser(long maxUserId, String displayName, String rawUserJson) {
+public record MaxVerifiedUser(long maxUserId, MaxProfile profile, String rawUserJson) {
 }
