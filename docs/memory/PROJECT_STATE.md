@@ -1,6 +1,14 @@
 # Текущее состояние ДомПульса (ядро КОРЕНЬ)
 
-## Действующий выпуск 28.09, 01:42 МСК
+## Действующий выпуск 28.09, 02:22 МСК - PR #15
+
+На сервере `894243ac5c137affd908bb2992c1ee9be1dd4bd7` из `dev`. [Протокол](../qa/pr15-release-2026-09-28.md), [CI](https://github.com/coder-smookki/VkEducation-and-MessangerMax-Hackathon-2026/actions/runs/36358029171) **6/6 jobs SUCCESS**, Java integration **238/238**, UI **71/71**, miniapp **6 RULES / 4 manual + 2 SKIP**; Python **195 PASS + 1 SKIP** и отдельный Kafka **1 PASS**. DATA-API **81/81** в двух настоящих изолированных HTTP-сценариях; **17/17** тестов исправленного runner. RequestId добавлен в доменные ошибки.
+
+Public smoke **16/16 PASS**, все 3 обращения и аудит сохранены. Обновлён только backend, DB/ml/web контейнеры прежние; fresh backup/restore-check PASS. Внешний HTTPS доверенный; серверный self-route HTTPS получил чужой самоподписанный сертификат и остаётся FAIL сетевой проверки. Подробности и первый FAIL в протоколе.
+
+PR #15 принят с сохранением истории. Удалены 14 слитых веток после ancestry/PR/worktree проверки; остались dev/main. DAPI-01..03 закрыты локальным runner, **DAPI-04/05, реальный G2 и остальные QA-остатки открыты**. [Обновлённая инструкция](../qa/readiness-update-2026-09-28.md) не выдаёт Chromium за телефоны. Следующий документационный HEAD не меняет SHA runtime.
+
+## Предыдущий выпуск 28.09, 01:42 МСК
 
 Опубликован `57924c61cfe26fe5dfc3a3ec64e79f831f08fefc` из `dev`; [протокол](../qa/release-2026-09-28.md), [CI 36355478065](https://github.com/coder-smookki/VkEducation-and-MessangerMax-Hackathon-2026/actions/runs/36355478065) **6/6 jobs PASS**, public smoke **16/16 PASS**. История `09bd804`, `431cc9c`, `309df50` сохранена; при проверке перед выпуском более новых коммитов origin не было. Java integration **237/237, 0 SKIP**, с настоящими Python/Kafka; Python основной suite **195 PASS + 1 Kafka SKIP**, отдельный Kafka **1/1 PASS**; UI **71 PASS**; miniapp **6 RULES PASS** и **4 manual PASS + 2 analysis SKIP**.
 
@@ -51,11 +59,11 @@ PR13 Семёна (`7ff53dd`) уже в dev. Добавлены публична
 ## Текущий сервер и данные
 
 - Mini App **https://hackathon.lumnex.ru/**, бот [t109_hakaton_max_bot](https://max.ru/t109_hakaton_max_bot), [запуск в MAX](https://max.ru/t109_hakaton_max_bot?startapp).
-- Опубликован `57924c61cfe26fe5dfc3a3ec64e79f831f08fefc`, проверен 28.09 в 01:42 МСК: CI 6/6 и public smoke 16/16. Это кандидат, не подтверждение финальной заморозки.
+- Опубликован `894243ac5c137affd908bb2992c1ee9be1dd4bd7`, проверен 28.09 в 02:22 МСК: CI 6/6 и public smoke 16/16. Это кандидат, не подтверждение финальной заморозки.
 - Java/PostgreSQL17/web/Python RULES v3 в `koren-release`; host nginx → `127.0.0.1:8091`, текущие исходники `/srv/koren/current`, секреты `/etc/koren/release.env` вне Git. Kafka выключена; Python сообщает Chroma, пользовательский поиск дублей отсутствует.
 - По решению пользователя тестовый дом и 3 обращения сохраняются. Снимок после выпуска: 0 draft / 3 confirmed; outbox pending/failed/sent 0/0/13, inbox pending/parked 0/0, analysis queued/ready/manual 0/0/0. Очереди могут меняться после снимка.
-- Backup `koren-20260927T222953Z.dump` (66 147 байт, 0,9 с), restore-check в отдельной БД (1,7 с): 20 таблиц, V11, аудит и количества совпали. Рабочая БД не перезаписывалась, её контейнер не пересоздавался. Старые образы/env/исходники защищены; runtime rollback к `2833443` выполнен при первой активации и проверен.
-- Настоящие MAX Web и /start подтверждались 27.09 на прежних выпусках. На `57924c6` проверены публичные гостевые страницы и Python без предметных записей; новый MAX/G2 не засчитан. [Текущий протокол](../qa/release-2026-09-28.md), [история 27.09](../qa/backend-polish-2026-09-27.md), [журнал](../operations-log.md).
+- Backup `koren-20260927T231524Z.dump` (66 147 байт, 1,2 с), restore-check в отдельной БД (1,8 с): 20 таблиц, V11, аудит и количества совпали. Рабочая БД не перезаписывалась, её контейнер не пересоздавался. Старые образы/env/исходники защищены; runtime rollback к `2833443` выполнен при первой активации и проверен.
+- Настоящие MAX Web и /start подтверждались 27.09 на прежних выпусках. На `57924c6` проверены публичные гостевые страницы и Python без предметных записей; новый MAX/G2 не засчитан. [Текущий протокол](../qa/pr15-release-2026-09-28.md), [история 27.09](../qa/backend-polish-2026-09-27.md), [журнал](../operations-log.md).
 
 ## Проверка и интеграция 27.09
 
