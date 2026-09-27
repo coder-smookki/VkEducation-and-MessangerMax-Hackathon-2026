@@ -5,6 +5,11 @@
 Runs on the stand host next to docker compose and reads PostgreSQL directly, so it adds no public endpoint.
 Prints only counts and ages: no text, no user ids. Paste the output into docs/operations-log.md when
 something looks wrong; the questions it answers are "is work stuck" and "did something stop being sent".
+
+The last lines are checks, and they decide the exit code, so the script can guard a release step:
+0 - nothing stuck and no recent failure; 1 - something needs attention (ATTENTION lines say what);
+2 - the database could not be read at all. Old failures that were already explained stop counting
+once they leave the --window-minutes window.
 """
 
 import argparse
@@ -17,6 +22,8 @@ parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.R
 parser.add_argument("--db-service", default="db")
 parser.add_argument("--db-user", default="koren")
 parser.add_argument("--db-name", default="koren")
+parser.add_argument("--stuck-minutes", type=int, default=10, help="pending longer than this is stuck")
+parser.add_argument("--window-minutes", type=int, default=60, help="failures newer than this count")
 args = parser.parse_args()
 
 QUERIES = [
@@ -82,6 +89,33 @@ QUERIES = [
 ]
 
 
+STUCK = f"now() - make_interval(mins => {args.stuck_minutes})"
+RECENT = f"now() - make_interval(mins => {args.window_minutes})"
+OUTBOX_PENDING = "sent_at IS NULL AND failed_at IS NULL AND available_at < now() + interval '1 year'"
+CHECKS = [
+    (
+        f"outbox pending > {args.stuck_minutes} min",
+        f"SELECT count(*) FROM outbox_event WHERE {OUTBOX_PENDING} AND created_at < {STUCK}",
+    ),
+    (
+        f"outbox failed in {args.window_minutes} min",
+        f"SELECT count(*) FROM outbox_event WHERE failed_at > {RECENT}",
+    ),
+    (
+        f"inbox pending > {args.stuck_minutes} min",
+        f"SELECT count(*) FROM inbox_event WHERE processed_at IS NULL AND attempts < 5 AND created_at < {STUCK}",
+    ),
+    (
+        f"inbox parked in {args.window_minutes} min",
+        f"SELECT count(*) FROM inbox_event WHERE processed_at IS NULL AND attempts >= 5 AND created_at > {RECENT}",
+    ),
+    (
+        f"analysis queued > {args.stuck_minutes} min",
+        f"SELECT count(*) FROM report_analysis WHERE status = 'QUEUED' AND created_at < {STUCK}",
+    ),
+]
+
+
 def psql(sql):
     command = [
         "docker",
@@ -107,5 +141,31 @@ def psql(sql):
     )
 
 
-for label, sql in QUERIES:
-    print(f"{label:34} {psql(sql)}")
+def main():
+    if not 1 <= args.stuck_minutes <= 1440 or not 1 <= args.window_minutes <= 10080:
+        raise SystemExit("--stuck-minutes must be 1..1440 and --window-minutes 1..10080")
+    unreadable = 0
+    for label, sql in QUERIES:
+        value = psql(sql)
+        unreadable += value.startswith("ERROR")
+        print(f"{label:34} {value}")
+    attention = 0
+    print()
+    for label, sql in CHECKS:
+        value = psql(sql)
+        if value.startswith("ERROR"):
+            unreadable += 1
+            print(f"CHECK      {label:34} {value}")
+        elif value != "0":
+            attention += 1
+            print(f"ATTENTION  {label:34} {value}")
+        else:
+            print(f"OK         {label:34} 0")
+    if unreadable:
+        print(f"RESULT ERROR: {unreadable} query(ies) failed; is the database up and are the variables set?")
+        raise SystemExit(2)
+    print("RESULT " + (f"ATTENTION: {attention} check(s) above" if attention else "OK"))
+    raise SystemExit(1 if attention else 0)
+
+
+main()
