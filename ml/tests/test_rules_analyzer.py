@@ -145,13 +145,12 @@ DOOR = {
 }
 
 # QA-A08: the first three are the constructions it names; the rest are the same class in other shapes.
-# "Всё ещё сломана" abstains rather than reporting persistence: "сломана" is in no marker list, and
-# adding it after seeing this phrase would be tuning to the test, not fixing the class.
+# v3 recognises an explicit present malfunction; these are known regression examples, not holdout.
 MIXED_SUBJECTS = [
     ("Лампу заменили, дверь заменим завтра.", Relation.REPORTED_DONE, Relation.PLANNED),
     ("Дверь заменим завтра, лампу заменили.", Relation.REPORTED_DONE, Relation.PLANNED),
-    ("Лампу заменили, дверь всё ещё сломана.", Relation.REPORTED_DONE, Relation.INSUFFICIENT_INFORMATION),
-    ("Лампу заменили, дверь не закрывается.", Relation.REPORTED_DONE, Relation.INSUFFICIENT_INFORMATION),
+    ("Лампу заменили, дверь всё ещё сломана.", Relation.REPORTED_DONE, Relation.SYMPTOM_PERSISTS),
+    ("Лампу заменили, дверь не закрывается.", Relation.REPORTED_DONE, Relation.SYMPTOM_PERSISTS),
     ("Лампу заменили и дверь починим.", Relation.REPORTED_DONE, Relation.PLANNED),
     ("Освещение у двери восстановили.", Relation.INSUFFICIENT_INFORMATION, Relation.INSUFFICIENT_INFORMATION),
 ]

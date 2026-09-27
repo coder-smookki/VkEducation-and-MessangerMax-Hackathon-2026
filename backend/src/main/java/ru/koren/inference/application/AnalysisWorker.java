@@ -10,9 +10,9 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import ru.koren.cases.persistence.CaseRepository;
 import ru.koren.inference.InferenceClient;
+import ru.koren.inference.AnalysisPolicy;
 import ru.koren.inference.InferenceContract.Category;
 import ru.koren.inference.InferenceContract.Item;
-import ru.koren.inference.InferenceContract.Mode;
 import ru.koren.inference.InferenceContract.Request;
 import ru.koren.inference.InferenceContract.Response;
 import ru.koren.inference.persistence.AnalysisRepository;
@@ -93,7 +93,7 @@ public class AnalysisWorker {
         Optional<Response> answer = inference.tryCompare(request);
         if (answer.isEmpty()) return retryOrGiveUp(row, leaseToken);
         Response response = answer.get();
-        boolean substantive = response.mode() == Mode.RULES || response.mode() == Mode.NLI;
+        boolean substantive = AnalysisPolicy.supports(response);
         boolean kept = Boolean.TRUE.equals(tx.execute(status -> {
             UUID suggestionId = UUID.randomUUID();
             analyses.insertSuggestion(suggestionId, row.caseId(), row.reportId(), row.sourceRevision(),

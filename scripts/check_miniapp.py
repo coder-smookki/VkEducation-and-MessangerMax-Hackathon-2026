@@ -1,11 +1,15 @@
-"""Build and test the Mini App against a disposable real Java/PostgreSQL stand.
+"""Test the Mini App on disposable Java/PostgreSQL, optionally with real RULES.
 
 Run after `npm --prefix frontend ci` and `npx --prefix frontend playwright install chromium`.
-Creates only synthetic data and a random test-only signing token. Never points at a live database.
-The unique Compose project and its volumes are removed in finally, including on a failed test.
-Requires Docker Compose and Node.js. Does not exercise a real MAX client or send messages.
+Only synthetic data and random test-only secrets are used. Results survive in a private
+temporary directory; the unique Compose project, volumes and secret env file do not.
+This does not exercise a real MAX client, send messages, or contact a production stand.
 """
 
+import argparse
+from datetime import datetime, timezone
+import hashlib
+import json
 import os
 from pathlib import Path
 import secrets
@@ -17,51 +21,145 @@ import urllib.error
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
-project = "koren-ui-check-" + secrets.token_hex(4)
-started = time.monotonic()
-# Shell settings must not activate HTTPS or replace the disposable signing key.
-overrides = {
-    "DB_PASSWORD", "MAX_BOT_TOKEN", "MAX_WEBHOOK_SECRET", "MAX_WORKERS_ENABLED",
-    "RELEASE_SHA", "ANALYSIS_ENABLED", "TRAINING_MODE", "CASE_NUMBER_PREFIX",
-    "SESSION_COOKIE_SECURE", "SESSION_COOKIE_SAMESITE", "WEB_PORT", "SITE_ADDRESS",
-}
-stand_env = {
-    key: value for key, value in os.environ.items()
-    if not key.startswith("COMPOSE_") and key not in overrides
-}
-release_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
-with tempfile.TemporaryDirectory(prefix="koren-ui-check-") as directory:
-    env_file = Path(directory) / "stand.env"
-    with socket.socket() as listener:
-        listener.bind(("127.0.0.1", 0))
-        port = listener.getsockname()[1]
-    env_file.write_text(
-        "DB_PASSWORD=" + secrets.token_urlsafe(32)
-        + "\nMAX_BOT_TOKEN=" + secrets.token_urlsafe(32)
-        + "\nMAX_WEBHOOK_SECRET=" + secrets.token_urlsafe(32)
-        + "\nMAX_WORKERS_ENABLED=false\nRELEASE_SHA=" + release_sha
-        + "\nTRAINING_MODE=true\nCASE_NUMBER_PREFIX=ДЕМО-"
-        + f"\nSESSION_COOKIE_SECURE=false\nSESSION_COOKIE_SAMESITE=Lax\nWEB_PORT={port}\n",
-        encoding="utf-8",
-    )
-    env_file.chmod(0o600)
-    compose = ["docker", "compose", "--env-file", str(env_file), "-p", project, "-f", "compose.release.yaml"]
-    try:
-        print(f"Synthetic stand: {project}, loopback port {port}", flush=True)
-        subprocess.run(compose + ["up", "--build", "--wait", "--wait-timeout", "180"], cwd=ROOT, env=stand_env, check=True)
-        url = f"http://127.0.0.1:{port}"
-        for attempt in range(60):
-            try:
-                with urllib.request.urlopen(url + "/api/v1/csrf", timeout=3) as response:
-                    if response.status == 200:
-                        break
-            except (urllib.error.URLError, TimeoutError):
-                time.sleep(1)
+
+
+def source_snapshot():
+    """Hash working-tree bytes, including dirty/untracked sources, without copying them."""
+    names = subprocess.check_output(
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"], cwd=ROOT,
+    ).decode().split("\0")
+    files = []
+    for name in sorted(set(names) - {""}):
+        path = ROOT / name
+        entry = {"path": name}
+        if path.is_symlink():
+            entry["symlink"] = os.readlink(path)
+        elif path.is_file():
+            entry["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+            entry["executable"] = bool(path.stat().st_mode & 0o111)
         else:
-            raise SystemExit("Backend did not become ready; no integration PASS claimed")
-        env = {**stand_env, "KOREN_E2E_ENV": str(env_file), "KOREN_E2E_PROJECT": project, "KOREN_E2E_URL": url}
-        subprocess.run(["npm", "run", "test:integration"], cwd=ROOT / "frontend", env=env, check=True)
-        print(f"Build, startup and real HTTP browser checks passed in {time.monotonic() - started:.1f}s", flush=True)
-    finally:
-        # These are only the uniquely named disposable fixtures created above, never an existing stand.
-        subprocess.run(compose + ["down", "--volumes", "--remove-orphans"], cwd=ROOT, env=stand_env, check=False)
+            entry["missing"] = True
+        files.append(entry)
+    encoded = json.dumps(files, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    return {
+        "head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
+        "dirty": bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT)),
+        "sha256": hashlib.sha256(encoded).hexdigest(),
+        "scope": "git tracked and non-ignored untracked paths; working-tree bytes, executable bits and symlinks; ignored artifacts excluded",
+        "files": files,
+    }
+
+
+def save_json(path, value):
+    path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--analysis", action="store_true",
+        help="start the analysis Compose profile and test Python RULES through Java and UI",
+    )
+    args = parser.parse_args()
+    project = "koren-ui-check-" + secrets.token_hex(4)
+    started = time.monotonic()
+    artifacts = Path(tempfile.mkdtemp(prefix="koren-ui-results-"))
+    before = source_snapshot()
+    save_json(artifacts / "source-before.json", before)
+    result = {
+        "project": project,
+        "startedAt": datetime.now(timezone.utc).isoformat(),
+        "analysisEnabled": args.analysis,
+        "releaseSha": before["head"],
+        "sourceDigest": before["sha256"],
+        "dirty": before["dirty"],
+        "result": "FAILED",
+        "checks": {},
+        "limitations": "Synthetic signed MAX launch; Chromium; no real MAX, messages, physical devices or production changes. Build may use local caches.",
+    }
+    # Parent-shell settings must not activate HTTPS or replace disposable secrets/config.
+    overrides = {
+        "DB_PASSWORD", "MAX_BOT_TOKEN", "MAX_WEBHOOK_SECRET", "MAX_WORKERS_ENABLED",
+        "RELEASE_SHA", "ANALYSIS_ENABLED", "TRAINING_MODE", "CASE_NUMBER_PREFIX",
+        "SESSION_COOKIE_SECURE", "SESSION_COOKIE_SAMESITE", "WEB_PORT", "SITE_ADDRESS",
+    }
+    stand_env = {
+        key: value for key, value in os.environ.items()
+        if not key.startswith(("COMPOSE_", "KOREN_E2E_")) and key not in overrides
+    }
+    with tempfile.TemporaryDirectory(prefix="koren-ui-check-") as directory:
+        env_file = Path(directory) / "stand.env"
+        with socket.socket() as listener:
+            listener.bind(("127.0.0.1", 0))
+            port = listener.getsockname()[1]
+        env_file.write_text(
+            "DB_PASSWORD=" + secrets.token_urlsafe(32)
+            + "\nMAX_BOT_TOKEN=" + secrets.token_urlsafe(32)
+            + "\nMAX_WEBHOOK_SECRET=" + secrets.token_urlsafe(32)
+            + "\nMAX_WORKERS_ENABLED=false\nRELEASE_SHA=" + before["head"]
+            + f"\nANALYSIS_ENABLED={str(args.analysis).lower()}"
+            + "\nTRAINING_MODE=true\nCASE_NUMBER_PREFIX=ДЕМО-"
+            + f"\nSESSION_COOKIE_SECURE=false\nSESSION_COOKIE_SAMESITE=Lax\nWEB_PORT={port}\n",
+            encoding="utf-8",
+        )
+        env_file.chmod(0o600)
+        compose = ["docker", "compose", "--env-file", str(env_file), "-p", project, "-f", "compose.release.yaml"]
+        if args.analysis:
+            compose += ["--profile", "analysis"]
+        result["url"] = url = f"http://127.0.0.1:{port}"
+        print(f"Synthetic stand: {project}, {url}, analysis={args.analysis}", flush=True)
+        print(f"Private results: {artifacts}", flush=True)
+        try:
+            subprocess.run(compose + ["up", "--build", "--wait", "--wait-timeout", "180"], cwd=ROOT, env=stand_env, check=True)
+            result["checks"]["buildAndStart"] = "PASS"
+            result["buildAndStartSeconds"] = round(time.monotonic() - started, 1)
+            for attempt in range(60):
+                try:
+                    with urllib.request.urlopen(url + "/api/v1/csrf", timeout=3) as response:
+                        if response.status == 200:
+                            break
+                except (urllib.error.URLError, TimeoutError):
+                    time.sleep(1)
+            else:
+                raise RuntimeError("Backend did not become ready; no integration PASS claimed")
+            env = {
+                **stand_env,
+                "KOREN_E2E_ENV": str(env_file), "KOREN_E2E_PROJECT": project, "KOREN_E2E_URL": url,
+                "KOREN_E2E_ANALYSIS": str(args.analysis).lower(),
+                "KOREN_QA_CAPTURE": str(artifacts / "screens"),
+                "PLAYWRIGHT_JSON_OUTPUT_FILE": str(artifacts / "playwright.json"),
+            }
+            subprocess.run(
+                ["npm", "run", "test:integration", "--", "--reporter=list,json", "--output", str(artifacts / "test-results")],
+                cwd=ROOT / "frontend", env=env, check=True,
+            )
+            result["checks"]["integration"] = "PASS"
+            result["result"] = "PASS"
+        except (OSError, subprocess.CalledProcessError, RuntimeError) as error:
+            # Do not persist command/env contents; browser JSON carries individual failures.
+            result["failureType"] = type(error).__name__
+            print(f"Local playground failed: {type(error).__name__}; see results and command output", flush=True)
+        except KeyboardInterrupt:
+            result["result"] = "INTERRUPTED"
+        finally:
+            # Only the uniquely named disposable fixtures above, never another stand.
+            try:
+                cleanup = subprocess.run(compose + ["down", "--volumes", "--remove-orphans"], cwd=ROOT, env=stand_env, check=False)
+                result["checks"]["cleanup"] = "PASS" if cleanup.returncode == 0 else "FAIL"
+            except OSError:
+                result["checks"]["cleanup"] = "FAIL"
+            after = source_snapshot()
+            save_json(artifacts / "source-after.json", after)
+            result["sourceConsistent"] = before["sha256"] == after["sha256"]
+            if result["result"] == "PASS" and not result["sourceConsistent"]:
+                result["result"] = "INCONCLUSIVE_SOURCE_CHANGED"
+            if result["checks"]["cleanup"] != "PASS":
+                result["result"] = "FAILED_CLEANUP"
+            result["elapsedSeconds"] = round(time.monotonic() - started, 1)
+            save_json(artifacts / "result.json", result)
+    print(f"{result['result']}: {artifacts / 'result.json'} ({result['elapsedSeconds']}s)", flush=True)
+    return 0 if result["result"] == "PASS" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

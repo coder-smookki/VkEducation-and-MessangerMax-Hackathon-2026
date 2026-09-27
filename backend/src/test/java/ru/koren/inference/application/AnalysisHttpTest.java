@@ -21,6 +21,9 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.util.ReflectionTestUtils;
+import ru.koren.cases.application.CaseService;
+import ru.koren.inference.AnalysisPolicy;
 import ru.koren.inference.InferenceClient;
 import ru.koren.inference.InferenceContract.Evidence;
 import ru.koren.inference.InferenceContract.Mode;
@@ -90,8 +93,11 @@ class AnalysisHttpTest {
                     stub ? Reason.MODEL_NOT_CONFIGURED : Reason.ANALYZED));
             }
             return Optional.of(SuggestionValidator.validate(request, new Response(request.caseId(),
-                request.sourceRevision(), request.reportId(), stub ? "stub-v1" : "rules-test",
-                stub ? Mode.STUB : Mode.RULES, suggestions)));
+                request.sourceRevision(), request.reportId(), stub ? "stub-v1"
+                    : "OLD".equals(behaviour) ? "rules-baseline-v2"
+                    : "UNKNOWN".equals(behaviour) ? "rules-future" : AnalysisPolicy.RULES_VERSION,
+                stub ? Mode.STUB : "WRONG_MODE".equals(behaviour) ? Mode.NLI : Mode.RULES,
+                suggestions)));
         }
     }
 
@@ -114,6 +120,7 @@ class AnalysisHttpTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired AnalysisWorker worker;
     @Autowired FakeInference inference;
+    @Autowired CaseService cases;
 
     private final JsonMapper json = JsonMapper.builder().build();
     private MockHttpSession authorSession;
@@ -211,6 +218,7 @@ class AnalysisHttpTest {
         assertEquals("READY", view.get("status").asString());
         JsonNode result = view.get("result");
         assertEquals("RULES", result.get("mode").asString());
+        assertEquals(AnalysisPolicy.RULES_VERSION, result.get("modelVersion").asString());
         assertEquals(2, result.get("suggestions").size(), "the door stays in the list even if unmentioned");
         assertEquals("REPORTED_DONE", result.get("suggestions").get(0).get("relation").asString());
     }
@@ -224,6 +232,82 @@ class AnalysisHttpTest {
         JsonNode view = suggestions(dispatcherSession, reportId);
         assertEquals("MANUAL_REQUIRED", view.get("status").asString());
         assertTrue(view.get("result").isNull(), "a well-formed STUB still says nothing");
+    }
+
+    @Test
+    void retiredUnknownAndWrongModeAnalyzersCannotCreateReadyAdvice() throws Exception {
+        for (String behaviour : List.of("OLD", "UNKNOWN", "WRONG_MODE")) {
+            inference.behaviour = behaviour;
+            String reportId = report(confirmedCase()).get("report").get("reportId").asString();
+            var drained = worker.drainOnce();
+            assertEquals(1, drained.manual());
+            assertEquals(0, drained.ready());
+            assertEquals(0, drained.retried(), "unsupported identities do not need transient retries");
+            JsonNode view = suggestions(dispatcherSession, reportId);
+            assertEquals("MANUAL_REQUIRED", view.get("status").asString());
+            assertTrue(view.get("result").isNull());
+        }
+    }
+
+    @Test
+    void aPersistedSupportedVersionInAnUnapprovedModeIsWithheld() throws Exception {
+        String reportId = report(confirmedCase()).get("report").get("reportId").asString();
+        worker.drainOnce();
+        jdbc.update("UPDATE model_suggestion SET payload = jsonb_set(payload, '{mode}', '\"NLI\"'::jsonb)"
+            + " WHERE report_id = ?::uuid", reportId);
+        JsonNode view = suggestions(authorSession, reportId);
+        assertEquals("STALE", view.get("status").asString(),
+            "a supported version name does not authorize a different analyzer mode");
+        assertTrue(view.get("result").isNull());
+    }
+
+    @Test
+    void aPersistedV2ResultIsWithheldEvenWhenItsItemVersionsMatch() throws Exception {
+        String reportId = report(confirmedCase()).get("report").get("reportId").asString();
+        worker.drainOnce();
+        jdbc.update("UPDATE model_suggestion SET model_version = 'rules-baseline-v2',"
+            + " payload = jsonb_set(payload, '{modelVersion}', '\"rules-baseline-v2\"'::jsonb)"
+            + " WHERE report_id = ?::uuid", reportId);
+        JsonNode view = suggestions(authorSession, reportId);
+        assertEquals("STALE", view.get("status").asString());
+        assertTrue(view.get("result").isNull());
+        assertEquals("READY", jdbc.queryForObject(
+            "SELECT status FROM report_analysis WHERE report_id = ?::uuid", String.class, reportId),
+            "reading hides retired advice without rewriting history or queueing another job");
+    }
+
+    @Test
+    void disablingAnalysisHidesQueuedAndReadyResultsButStillChecksAccess() throws Exception {
+        String ready = report(confirmedCase()).get("report").get("reportId").asString();
+        worker.drainOnce();
+        String queued = report(confirmedCase()).get("report").get("reportId").asString();
+        int callsBeforeReading = inference.calls.get();
+        // Simulate the read policy after restart with ANALYSIS_ENABLED=false without a second context.
+        ReflectionTestUtils.setField(cases, "analysisEnabled", false);
+        try {
+            for (String reportId : List.of(ready, queued)) {
+                JsonNode view = suggestions(authorSession, reportId);
+                assertEquals("MANUAL_REQUIRED", view.get("status").asString());
+                assertTrue(view.get("analysisId").isNull());
+                assertTrue(view.get("result").isNull());
+                send(get("/api/v1/reports/" + reportId + "/suggestions"), 401);
+            }
+            jdbc.update("UPDATE membership SET revoked_at = now() WHERE user_id = ? AND house_id = ?",
+                dispatcher, house);
+            for (String reportId : List.of(ready, queued)) {
+                send(get("/api/v1/reports/" + reportId + "/suggestions").session(dispatcherSession), 404);
+            }
+            send(get("/api/v1/reports/" + UUID.randomUUID() + "/suggestions").session(authorSession), 404);
+            assertEquals("READY", jdbc.queryForObject(
+                "SELECT status FROM report_analysis WHERE report_id = ?::uuid", String.class, ready));
+            assertEquals("QUEUED", jdbc.queryForObject(
+                "SELECT status FROM report_analysis WHERE report_id = ?::uuid", String.class, queued));
+            assertEquals(callsBeforeReading, inference.calls.get(), "reads never restart analysis");
+        } finally {
+            ReflectionTestUtils.setField(cases, "analysisEnabled", true);
+        }
+        assertEquals("READY", suggestions(authorSession, ready).get("status").asString());
+        assertEquals("QUEUED", suggestions(authorSession, queued).get("status").asString());
     }
 
     @Test

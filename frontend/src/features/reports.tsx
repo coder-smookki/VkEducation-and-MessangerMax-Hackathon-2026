@@ -210,11 +210,15 @@ export function ReportPage() {
     enabled: !!reportQuery.data,
     queryFn: ({ signal }) =>
       get<Suggestions>(`/reports/${reportId}/suggestions`, signal),
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
     refetchInterval: (query) =>
       ["QUEUED", "RUNNING"].includes(query.state.data?.status || "") &&
       query.state.dataUpdateCount < 30
         ? 2000
-        : false,
+        : query.state.data?.status === "READY"
+          ? 30000
+          : false,
   });
   if (
     caseQuery.isPending ||
@@ -255,8 +259,14 @@ export function ReportPage() {
       key={reportId}
       data={data}
       report={reportQuery.data}
-      analysis={analysis.data}
-      analysisPending={analysis.isPending}
+      analysis={
+        analysis.isFetchedAfterMount &&
+        analysis.isSuccess &&
+        !analysis.isFetching
+          ? analysis.data
+          : undefined
+      }
+      analysisPending={analysis.isPending || analysis.isFetching}
       analysisError={analysis.error}
       retryAnalysis={() => {
         void analysis.refetch();
@@ -449,7 +459,8 @@ function LinkForm({
                       analysis.result?.sourceRevision === data.sourceRevision &&
                       analysis.result.caseId === data.caseId &&
                       analysis.result.reportId === report.reportId &&
-                      ["RULES", "NLI"].includes(analysis.result.mode)
+                      analysis.result.mode === "RULES" &&
+                      analysis.result.modelVersion === "rules-baseline-v3"
                         ? analysis.result.suggestions.find(
                             (s) =>
                               s.itemId === item.itemId &&

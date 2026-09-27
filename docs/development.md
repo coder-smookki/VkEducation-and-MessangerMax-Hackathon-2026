@@ -1,8 +1,10 @@
 # Разработка и запуск
 
+Для сквозной проверки нового RULES: `python3 scripts/check_miniapp.py --analysis`. Это отдельный временный стек Java/PostgreSQL/Python/браузер на loopback. Команды, доказательства и ограничения автоматизации - [QA-полигон](qa/playground.md); человеческий вход в настоящий MAX этим не заменяется.
+
 ## Mini App с настоящим Java API (27.09)
 
-Основная проверка теперь `python3 scripts/check_miniapp.py` из корня после `npm --prefix frontend ci` и установки Chromium из README. Она создаёт отдельный Compose project со случайным тестовым ключом, PostgreSQL и release-сборкой frontend, запускает четыре сквозных теста и удаляет собственный project с volume. Рабочие базы не используются. Runner сам задаёт `TRAINING_MODE=true` и `CASE_NUMBER_PREFIX=ДЕМО-` для временной среды и удаляет одноимённые внешние env overrides: интеграционные проверки сверяют учебный баннер и серверный displayNumber. Это настоящий HTTP/SQL и эмуляция только стартовых данных MAX, не проверка клиента MAX. `KOREN_QA_CAPTURE=/absolute/path python3 scripts/check_miniapp.py` дополнительно сохраняет 48 снимков действующих маршрутов: указывать отдельный локальный каталог вне Git. Состав сценариев и пределы - [QA](qa/profile-visual-2026-09-27.md).
+Основная проверка теперь `python3 scripts/check_miniapp.py` из корня после `npm --prefix frontend ci` и установки Chromium из README. Она создаёт отдельный Compose project со случайным тестовым ключом, PostgreSQL и release-сборкой frontend, запускает четыре сквозных теста и удаляет собственный project с volume. Рабочие базы не используются. Runner сам задаёт `TRAINING_MODE=true` и `CASE_NUMBER_PREFIX=ДЕМО-` для временной среды и удаляет одноимённые внешние env overrides: интеграционные проверки сверяют учебный баннер и серверный displayNumber. Это настоящий HTTP/SQL и эмуляция только стартовых данных MAX, не проверка клиента MAX. Текущий runner автоматически сохраняет снимки действующих маршрутов и JSON-результаты в приватную системную tmp-папку вне Git; путь печатается перед запуском. Для долгого хранения скопировать артефакты отдельно. Состав сценариев и пределы - [QA](qa/profile-visual-2026-09-27.md).
 
 ```sh
 npm --prefix frontend run api:check

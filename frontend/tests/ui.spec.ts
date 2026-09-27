@@ -664,6 +664,12 @@ test("valid evidence is shown verbatim; stale or mismatched evidence is hidden",
   await expect(
     page.getByRole("heading", { name: "Связь отчёта с пунктами" }),
   ).toBeVisible();
+  // The heading also renders while suggestions are still pending.
+  await expect(
+    page.getByText("Подсказка анализа требует вашей проверки.", {
+      exact: false,
+    }),
+  ).toBeVisible();
   await expect(page.locator(".evidence q")).toHaveCount(0);
   analysis.result.suggestions[0].workRound = 0;
   analysis.result.suggestions[0].evidence!.quote = "Неправильная цитата";
@@ -671,7 +677,83 @@ test("valid evidence is shown verbatim; stale or mismatched evidence is hidden",
   await expect(
     page.getByRole("heading", { name: "Связь отчёта с пунктами" }),
   ).toBeVisible();
+  await expect(
+    page.getByText("Подсказка анализа требует вашей проверки.", {
+      exact: false,
+    }),
+  ).toBeVisible();
   await expect(page.locator(".evidence q")).toHaveCount(0);
+});
+
+test("retired analysis is hidden and a refetch failure cannot revive cached advice", async ({
+  page,
+}) => {
+  await setup(page, true);
+  const report = {
+    ...reportFixture,
+    links: [],
+    reportText: "Лампу на третьем этаже заменили.",
+  };
+  const analysis = copy(suggestionsFixture);
+  analysis.result.reportId = report.reportId;
+  analysis.result.suggestions[0].evidence = {
+    start: 0,
+    end: Array.from(report.reportText).length,
+    quote: report.reportText,
+  };
+  await page.route(`**/api/v1/reports/${report.reportId}`, (r) =>
+    r.fulfill({ json: report }),
+  );
+  await page.route("**/suggestions", (r) => r.fulfill({ json: analysis }));
+  const route = `#/cases/${caseId}/reports/${report.reportId}`;
+  for (const version of ["rules-baseline-v2", "rules-future"]) {
+    analysis.result.modelVersion = version;
+    await page.goto(`/${route}`);
+    await expect(
+      page.getByRole("heading", { name: "Связь отчёта с пунктами" }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Подсказка анализа требует вашей проверки.", {
+        exact: false,
+      }),
+    ).toBeVisible();
+    await expect(page.locator(".evidence q")).toHaveCount(0);
+    await expect(page.getByRole("checkbox").first()).toBeEnabled();
+    await page.goto("/#/");
+    await expect(
+      page.getByRole("heading", { name: "Связь отчёта с пунктами" }),
+    ).toHaveCount(0);
+  }
+  analysis.result.modelVersion = "rules-baseline-v3";
+  await page.goto(`/${route}`);
+  await expect(page.locator(".evidence q")).toHaveText(report.reportText);
+  await page.getByRole("link", { name: "К обращению", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`#/cases/${caseId}$`));
+  await expect(
+    page.getByRole("heading", { name: "Связь отчёта с пунктами" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "Добавить отчёт о работах", exact: true }),
+  ).toBeVisible();
+  let finish!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  let requested = false;
+  await page.route("**/suggestions", async (r) => {
+    requested = true;
+    await pending;
+    await problem(r, 503, "SERVICE_UNAVAILABLE");
+  });
+  await page.goBack();
+  await expect.poll(() => requested).toBe(true);
+  await expect(page.locator(".evidence q")).toHaveCount(0);
+  finish();
+  await expect(
+    page.getByText("Можно проверить текст и выбрать связи вручную."),
+  ).toBeVisible();
+  await expect(page.locator(".evidence q")).toHaveCount(0);
+  await expect(page.getByRole("checkbox").first()).toBeEnabled();
 });
 
 test("accessible editor and report forms at 320px with large text", async ({

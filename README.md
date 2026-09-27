@@ -8,6 +8,10 @@
 
 ## С чего начать
 
+Задачи от 28.09: [план Семёна по DATA-API](docs/team/semyon-data-api.md), [план Кирилла по RULES](docs/team/kirill-rules.md), [локальный полигон для Claude/Codex](docs/qa/playground.md). Исправления RULES v3 и защита старых подсказок описаны в [протоколе](docs/qa/rules-v3-2026-09-28.md); они не считаются опубликованными на домене без отдельного выпуска.
+
+Последняя локальная QA: [проверки, найденные дефекты и исправления 28.09](docs/qa/local-playground-2026-09-28.md). Java 235 PASS + 2 SKIP, Python 195 PASS + 1 SKIP, UI 71/71; настоящий изолированный стек 6/6 с Python и 4 PASS + 2 SKIP без него. Это не приёмка физического MAX/G2; артефакты и снимки сохранены вне Git.
+
 1. Человеку или агенту: [AGENTS.md](AGENTS.md), затем [навигатор документации](docs/README.md).
 2. Выбрать задачу и владельца в [плане](docs/plan.md). Команда: [Семён - Java/Python](docs/team/semyon.md), [Кирилл - frontend](docs/team/kirill.md), [София - качество](docs/team/sofia.md).
 3. Перед кодом прочитать [предметные правила](docs/domain.md), [API](docs/api.md), [пять контрактов](contracts/README.md).
@@ -54,7 +58,7 @@ docker compose logs -f backend # журнал Java, в каждой строке
 docker compose down -v         # остановить и УДАЛИТЬ данные базы
 ```
 
-Боевой бот: [max.ru/t109_hakaton_max_bot](https://max.ru/t109_hakaton_max_bot) - `/start` показывает команды, предупреждение про 112 и кнопку открытия Mini App. Проверка публичного API по формату организаторов - [DATA-API.yaml](DATA-API.yaml).
+Боевой бот: [max.ru/t109_hakaton_max_bot](https://max.ru/t109_hakaton_max_bot) - `/start` показывает команды, предупреждение про 112 и кнопку открытия Mini App. Описание текущих 11 проверок API - [DATA-API.yaml](DATA-API.yaml). Это пока неполный комплект; расширение и сверка синтаксиса runner описаны в [плане Семёна](docs/team/semyon-data-api.md).
 
 ## Технологии и границы
 
@@ -70,6 +74,8 @@ Java - единственный владелец команд, прав и Postg
 npm --prefix frontend ci
 (cd frontend && npx playwright install chromium)
 python3 scripts/check_miniapp.py
+# Тот же изолированный стенд с настоящим Python RULES и проверкой анализа:
+python3 scripts/check_miniapp.py --analysis
 ```
 
 Команда собирает отдельный стенд Java/PostgreSQL/static frontend без demo, проходит четыре браузерных сценария и удаляет только свои временные контейнеры и данные. Использует случайный **тестовый** ключ для подписи initData; настоящего пользователя MAX не подменяет на публичном сервере. На Linux для Chromium могут понадобиться зависимости: `npx playwright install --with-deps chromium` из `frontend/`.

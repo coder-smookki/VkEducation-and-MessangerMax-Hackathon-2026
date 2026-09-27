@@ -665,6 +665,8 @@ public class CaseService {
         return readTx.execute(status -> {
             var report = reports.findReport(reportId).orElseThrow(CaseException::notFound);
             var caseRow = loadVisible(actorId, report.caseId());
+            // Authorize first. Disabling analysis also hides results persisted before the restart.
+            if (!analysisEnabled) return new ReportSuggestionsView("MANUAL_REQUIRED", null, null);
             var analysis = analyses.findByReport(reportId).orElse(null);
             if (analysis == null) return new ReportSuggestionsView("MANUAL_REQUIRED", null, null);
             return switch (analysis.status()) {
@@ -682,7 +684,8 @@ public class CaseService {
         var result = json.readValue(stored.payload(), InferenceContract.Response.class);
         var current = new java.util.HashMap<UUID, CaseRepository.ItemRow>();
         repo.findItems(caseRow.id()).forEach(item -> current.put(item.id(), item));
-        boolean fresh = stored.sourceRevision() == caseRow.sourceRevision()
+        boolean fresh = ru.koren.inference.AnalysisPolicy.supports(result)
+            && stored.sourceRevision() == caseRow.sourceRevision()
             && result.suggestions().stream().allMatch(suggestion -> {
             var item = current.get(suggestion.itemId());
             return item != null && item.contentVersion() == suggestion.contentVersion()
