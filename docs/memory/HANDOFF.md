@@ -2,6 +2,8 @@
 
 ## Проверка профиля и экранов 27.09
 
+Опубликован `0635314`: CI5/5, public16/16, живой MAX profile/search/SVG PASS; все3 обращения сохранены, outbox0/0/7, inbox0/0. Backup/verify и rollback готовы. Runtime-SHA после документационных коммитов не меняется.
+
 Работа K-05/K-06: signed MAX profile → session → `/me`/claim → frontend, SVG вместо символов, геометрия поиска/навигации, читабельный архив/отзыв и честный pending анализа. Подробности, команды и пределы - [протокол](../qa/profile-visual-2026-09-27.md). MeView расширен nullable username/avatarUrl, generated TypeScript синхронизирован; миграций нет. Существующие записи стенда сохраняются.
 
 Для повторения всех маршрутов: `KOREN_QA_CAPTURE=/absolute/path python3 scripts/check_miniapp.py`. Используется одноразовый настоящий Java/PostgreSQL, а не публичная БД. PNG не коммитить; live MAX отдельно от локального подписанного тестового запуска. Следующее после выпуска - независимая приёмка Софии на Android/iOS и два MAX-аккаунта/G2. Настоящий username может отсутствовать: тогда показываем имя MAX, не придумываем @handle.
