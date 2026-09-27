@@ -21,13 +21,15 @@ project = "koren-ui-check-" + secrets.token_hex(4)
 started = time.monotonic()
 # Shell settings must not activate HTTPS or replace the disposable signing key.
 overrides = {
-    "DB_PASSWORD", "MAX_BOT_TOKEN", "MAX_WEBHOOK_SECRET", "ANALYSIS_ENABLED",
+    "DB_PASSWORD", "MAX_BOT_TOKEN", "MAX_WEBHOOK_SECRET", "MAX_WORKERS_ENABLED",
+    "RELEASE_SHA", "ANALYSIS_ENABLED",
     "SESSION_COOKIE_SECURE", "SESSION_COOKIE_SAMESITE", "WEB_PORT", "SITE_ADDRESS",
 }
 stand_env = {
     key: value for key, value in os.environ.items()
     if not key.startswith("COMPOSE_") and key not in overrides
 }
+release_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
 with tempfile.TemporaryDirectory(prefix="koren-ui-check-") as directory:
     env_file = Path(directory) / "stand.env"
     with socket.socket() as listener:
@@ -36,6 +38,8 @@ with tempfile.TemporaryDirectory(prefix="koren-ui-check-") as directory:
     env_file.write_text(
         "DB_PASSWORD=" + secrets.token_urlsafe(32)
         + "\nMAX_BOT_TOKEN=" + secrets.token_urlsafe(32)
+        + "\nMAX_WEBHOOK_SECRET=" + secrets.token_urlsafe(32)
+        + "\nMAX_WORKERS_ENABLED=false\nRELEASE_SHA=" + release_sha
         + f"\nSESSION_COOKIE_SECURE=false\nWEB_PORT={port}\n",
         encoding="utf-8",
     )

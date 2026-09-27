@@ -568,6 +568,27 @@ test("real API: one-time invitation, negative observations and withdrawal retain
 test("release proxy serves API failures as JSON and does not expose demo or private services", async ({
   request,
 }) => {
+  const health = await request.get("/actuator/health");
+  expect(health.status()).toBe(200);
+  const healthBody = await health.json();
+  expect(healthBody.status).toBe("UP");
+  expect(healthBody).not.toHaveProperty("details");
+  expect(healthBody).not.toHaveProperty("components");
+  expect(health.headers()["x-request-id"]).toBeTruthy();
+  expect(health.headers()["cache-control"]).toContain("no-store");
+  const info = await request.get("/actuator/info");
+  expect(info.status()).toBe(200);
+  expect((await info.json()).app.sha).toBe(env.RELEASE_SHA);
+  for (const path of [
+    "/actuator",
+    "/actuator/env",
+    "/actuator/metrics",
+    "/actuator/configprops",
+  ]) {
+    expect((await request.get(path)).status()).toBe(404);
+  }
+  expect((await request.post("/actuator/health")).status()).toBe(403);
+  expect((await request.post("/max/webhook", { data: {} })).status()).toBe(401);
   const anonymous = await request.get("/api/v1/cases");
   expect(anonymous.status()).toBe(401);
   expect(anonymous.headers()["content-type"]).toContain(
