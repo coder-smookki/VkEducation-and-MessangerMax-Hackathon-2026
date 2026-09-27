@@ -77,6 +77,11 @@ class BotDialogTest {
         assertEquals(1, worker.drainOnce().handled());
         assertEquals(1, replies().size());
         assertTrue(replies().getFirst().contains("КОРЕНЬ"), replies().getFirst());
+        assertTrue(replies().getFirst().contains("112"), "the greeting says it is not an emergency service");
+        assertEquals(Boolean.TRUE, jdbc.queryForObject("""
+                SELECT (payload->>'openApp')::boolean FROM outbox_event
+                 WHERE event_type = 'BOT_REPLY' AND recipient_id = ?
+                """, Boolean.class, actor()), "the greeting offers the app");
         assertEquals("IDLE", jdbc.queryForObject(
             "SELECT state FROM bot_dialog WHERE user_id = ?", String.class, actor()));
     }

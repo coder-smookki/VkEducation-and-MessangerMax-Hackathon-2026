@@ -37,12 +37,15 @@ public class ApiErrorController implements ErrorController {
     }
 
     /** For security handlers, which answer before any controller runs. Titles are constants: no escaping. */
-    static void write(HttpServletResponse response, HttpStatus status, String code, String title)
-        throws IOException {
+    static void write(HttpServletRequest request, HttpServletResponse response, HttpStatus status, String code,
+                      String title) throws IOException {
         response.setStatus(status.value());
         response.setContentType("application/problem+json;charset=UTF-8");
+        // RequestIdFilter keeps only a short safe id, so it needs no escaping either.
+        Object requestId = request.getAttribute(RequestIdFilter.ATTRIBUTE);
+        String id = requestId instanceof String value ? ",\"requestId\":\"" + value + "\"" : "";
         response.getWriter().write("{\"type\":\"about:blank\",\"title\":\"" + title + "\",\"status\":"
-            + status.value() + ",\"code\":\"" + code + "\"}");
+            + status.value() + ",\"code\":\"" + code + "\"" + id + "}");
     }
 
     private static HttpStatus statusOf(Object attribute) {

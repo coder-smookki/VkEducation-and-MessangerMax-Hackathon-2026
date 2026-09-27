@@ -126,6 +126,9 @@ class ErrorResponsesHttpTest {
         assertTrue(answer.contentType().startsWith("application/problem+json"),
             "an API error is problem+json, never an HTML page: " + answer.contentType());
         assertEquals(code, answer.json(json).get("code").asString());
+        // Every refusal, including 401/403/411/413 written before any controller, names its request in the body.
+        assertNotNull(answer.json(json).get("requestId"), "no requestId in " + answer.body());
+        assertEquals(answer.requestId(), answer.json(json).get("requestId").asString());
     }
 
     @Test
