@@ -29,7 +29,7 @@ python3 scripts/seed_stand.py dispatcher <houseId> <maxUserId>   # после п
 3. Дальше каждый POST/PUT/PATCH - с тем же заголовком CSRF. Вход токен не меняет. Запросы с `credentials: "same-origin"` (или `include`, если API на другом origin - но по плану origin один).
 4. GET `/api/v1/me` при открытии - есть ли сессия и какие дома и роли. Пустой `memberships` - вошёл, но доступа нет: показать ввод приглашения.
 
-403 `CSRF_TOKEN_INVALID` → заново взять токен и повторить ту же команду с тем же Idempotency-Key. 401 `AUTH_REQUIRED` → войти заново, сохранив ввод.
+403 `CSRF_TOKEN_INVALID` → заново взять токен и повторить ту же команду с тем же Idempotency-Key. 401 `AUTH_REQUIRED` → предложить повторный вход, сохранив ввод на странице. Если initData старше пяти минут или сервер ответил INVALID_MAX_INIT_DATA, нужен новый запуск из MAX. В диалоге доступно read-only поле для копирования ввода, даже когда исходная форма заблокирована; закрытие Mini App само по себе не сохраняет форму. Проверка подписи и срока остаётся в Java.
 
 ## Команды
 
@@ -51,7 +51,8 @@ python3 scripts/seed_stand.py dispatcher <houseId> <maxUserId>   # после п
 | Ответ автора по пункту | POST `/items/{itemId}/observations` |
 | Отозвать (автор) / архив (диспетчер) | POST `/items/{itemId}/administrative-decisions` с причиной |
 | История | GET `/cases/{id}/history`, следующая страница по cursor; первый запрос при раскрытии |
-| Доступ / профиль | GET `/me`, POST `/memberships/claim`, POST `/auth/logout` |
+| Доступ / профиль | GET `/me`, POST `/memberships/claim`, POST `/auth/logout`; отказ приглашения INVITATION_REJECTED |
+| О сервисе (`/#/about`) | Статическая справка до входа, 112, удаление по smookki@yandex.ru; mailto, не API-команда |
 
 Сохранение отчёта ничего не меняет в пунктах - только подтверждённая диспетчером связь. Подсказки анализа читаются GET `/reports/{id}/suggestions`: QUEUED/RUNNING показывают загрузку, READY даёт точные цитаты, STALE/MANUAL_REQUIRED сохраняют ручной выбор. В выпуске 27.09 analysis и Python RULES включены; по умолчанию в новой release-конфигурации ANALYSIS_ENABLED=false. Готовая подсказка не выбирает и не отправляет связь автоматически.
 
@@ -62,6 +63,7 @@ python3 scripts/seed_stand.py dispatcher <houseId> <maxUserId>   # после п
 ## Для стенда (K-07)
 
 - Использовать отдельный `compose.release.yaml` и приватный env по [release.md](release.md), не объединять его с dev `compose.yaml`, включающим demo. `RELEASE_SHA` обязателен; SHA виден в `/actuator/info`.
+- Учебный стенд: `TRAINING_MODE=true` при сборке web и `CASE_NUMBER_PREFIX=ДЕМО-` для Java. Данные и права по-прежнему приходят из API.
 - HTTPS: `SESSION_COOKIE_SECURE=true`, `SESSION_COOKIE_SAMESITE=None` одновременно для session и CSRF cookie. Эта конфигурация проверена в MAX Web iframe. Рабочий web-порт привязывается к loopback; публичный HTTPS обслуживает существующий reverse proxy.
 - Прокси: `/api/v1`, `/max/webhook` и ровно GET `/actuator/health`/`/actuator/info` - на backend; остальной `/actuator` возвращает JSON 404; пользовательские маршруты - статика. Ошибка API не должна подменяться index.html: `stand_smoke.py` это проверяет.
 - Наружу только HTTPS. Порты 5432, 8000, 9092 закрыты: smoke проверяет и их.
