@@ -28,3 +28,6 @@ backups/
 
 frontend/test-results/
 frontend/playwright-report/
+
+# Real MAX ids of test accounts for scripts/seed_stand.py apply
+**/accounts.private.json

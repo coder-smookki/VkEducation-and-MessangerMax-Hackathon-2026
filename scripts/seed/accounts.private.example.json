@@ -1,0 +1,6 @@
+{
+  "comment": "Скопировать в accounts.private.json (он в .gitignore) и вписать MAX user id тестовых аккаунтов. Каждый аккаунт один раз открывает Mini App до seed.",
+  "author": 0,
+  "dispatcher": 0,
+  "stranger": 0
+}
