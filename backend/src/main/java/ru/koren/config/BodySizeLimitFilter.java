@@ -37,12 +37,12 @@ public class BodySizeLimitFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
         throws ServletException, IOException {
         if (request.getHeader("Transfer-Encoding") != null && request.getContentLengthLong() < 0) {
-            ApiErrorController.write(response, HttpStatus.LENGTH_REQUIRED, "LENGTH_REQUIRED",
+            ApiErrorController.write(request, response, HttpStatus.LENGTH_REQUIRED, "LENGTH_REQUIRED",
                 "Нужен заголовок Content-Length");
             return;
         }
         if (request.getContentLengthLong() > maxBytes) {
-            ApiErrorController.write(response, HttpStatus.CONTENT_TOO_LARGE, "PAYLOAD_TOO_LARGE",
+            ApiErrorController.write(request, response, HttpStatus.CONTENT_TOO_LARGE, "PAYLOAD_TOO_LARGE",
                 "Слишком большой запрос");
             return;
         }

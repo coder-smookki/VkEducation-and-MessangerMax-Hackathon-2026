@@ -1,0 +1,238 @@
+# DATA-API 1.0 — КОРЕНЬ 2.0
+# Секретов в файле нет. Вход в API — только через подписанный MAX initData и серверную сессию,
+# поэтому для ролей resident и dispatcher среда проверки подставляет готовую сессию и CSRF-токен:
+#   ${residentCookie}, ${residentCsrf}, ${dispatcherCookie}, ${dispatcherCsrf}.
+# Их выдаёт команда через защищённый канал проекта оценки. houseId берётся из ответа /me.
+# Idempotency-Key у команд постоянный: повторный прогон получает сохранённый ответ, а не дубль.
+
+schemaVersion: "1.0"
+
+solution:
+  name: "КОРЕНЬ 2.0"
+  teamId: "t109"
+
+api:
+  baseUrl: "https://hackathon.lumnex.ru"
+  openapi: "./contracts/author-review.openapi.json"
+  defaultHeaders:
+    Accept: "application/json"
+
+checks:
+  - id: "csrf-token"
+    name: "Доступность API и выдача CSRF-токена"
+    description: "Публичный метод: сервер отвечает JSON и выдаёт токен для защищённых команд."
+    method: "GET"
+    path: "/api/v1/csrf"
+    role: "public"
+    expected:
+      statusCodes: [200]
+      contentType: "application/json"
+      requiredFields: ["headerName", "token"]
+    timeoutMs: 5000
+    repeatable: true
+
+  - id: "me-anonymous"
+    name: "Без входа данные пользователя недоступны"
+    description: "Защищённый метод без сессии отвечает 401 в формате problem+json с постоянным кодом AUTH_REQUIRED."
+    method: "GET"
+    path: "/api/v1/me"
+    role: "public"
+    expected:
+      statusCodes: [401]
+      contentType: "application/problem+json"
+      requiredFields: ["status", "code"]
+    timeoutMs: 5000
+    repeatable: true
+
+  - id: "cases-anonymous"
+    name: "Без входа список обращений недоступен"
+    method: "GET"
+    path: "/api/v1/cases"
+    role: "public"
+    expected:
+      statusCodes: [401]
+      contentType: "application/problem+json"
+      requiredFields: ["code"]
+    timeoutMs: 5000
+    repeatable: true
+
+  - id: "me-resident"
+    name: "Жилец видит свой дом и роль"
+    method: "GET"
+    path: "/api/v1/me"
+    role: "resident"
+    request:
+      headers:
+        Cookie: "${residentCookie}"
+    expected:
+      statusCodes: [200]
+      contentType: "application/json"
+      requiredFields: ["userId", "memberships"]
+    timeoutMs: 5000
+    repeatable: true
+    extract:
+      houseId: "$.memberships[0].houseId"
+
+  - id: "create-case"
+    name: "Жилец создаёт черновик обращения"
+    method: "POST"
+    path: "/api/v1/cases"
+    role: "resident"
+    dependsOn: ["me-resident"]
+    request:
+      headers:
+        Content-Type: "application/json"
+        Cookie: "${residentCookie}"
+        X-XSRF-TOKEN: "${residentCsrf}"
+        Idempotency-Key: "data-api-v1-create-case"
+      body:
+        houseId: "${houseId}"
+        sourceText: "Синтетическая проверка: на третьем этаже не горит свет, входная дверь не закрывается."
+    expected:
+      statusCodes: [201]
+      contentType: "application/json"
+      requiredFields: ["caseId", "caseVersion", "submissionStatus", "displayNumber"]
+    timeoutMs: 5000
+    repeatable: true
+    extract:
+      caseId: "$.caseId"
+      caseVersion: "$.caseVersion"
+
+  - id: "patch-items"
+    name: "Жилец задаёт два отдельных пункта"
+    method: "PATCH"
+    path: "/api/v1/cases/{caseId}/items"
+    role: "resident"
+    dependsOn: ["create-case"]
+    request:
+      path:
+        caseId: "${caseId}"
+      headers:
+        Content-Type: "application/json"
+        Cookie: "${residentCookie}"
+        X-XSRF-TOKEN: "${residentCsrf}"
+        Idempotency-Key: "data-api-v1-patch-items"
+      body:
+        expectedCaseVersion: "${caseVersion}"
+        items:
+          - category: "LIGHTING"
+            location: "Подъезд 1, этаж 3"
+            symptom: "Не горит свет"
+          - category: "ENTRANCE_DOOR"
+            location: "Подъезд 1, вход"
+            symptom: "Дверь не закрывается"
+    expected:
+      statusCodes: [200]
+      contentType: "application/json"
+      requiredFields: ["caseId", "caseVersion", "sourceRevision", "items", "progress"]
+    timeoutMs: 5000
+    repeatable: true
+    extract:
+      caseVersion: "$.caseVersion"
+      sourceRevision: "$.sourceRevision"
+
+  - id: "confirm-case"
+    name: "Жилец подтверждает список пунктов"
+    method: "POST"
+    path: "/api/v1/cases/{caseId}/confirm"
+    role: "resident"
+    dependsOn: ["patch-items"]
+    request:
+      path:
+        caseId: "${caseId}"
+      headers:
+        Content-Type: "application/json"
+        Cookie: "${residentCookie}"
+        X-XSRF-TOKEN: "${residentCsrf}"
+        Idempotency-Key: "data-api-v1-confirm-case"
+      body:
+        expectedCaseVersion: "${caseVersion}"
+        sourceRevision: "${sourceRevision}"
+    expected:
+      statusCodes: [200]
+      contentType: "application/json"
+      requiredFields: ["caseId", "caseVersion", "submissionStatus", "progress"]
+    timeoutMs: 5000
+    repeatable: true
+    extract:
+      caseVersion: "$.caseVersion"
+
+  - id: "read-case"
+    name: "Жилец читает карточку: пункты и прогресс раздельно"
+    method: "GET"
+    path: "/api/v1/cases/{caseId}"
+    role: "resident"
+    dependsOn: ["confirm-case"]
+    request:
+      path:
+        caseId: "${caseId}"
+      headers:
+        Cookie: "${residentCookie}"
+    expected:
+      statusCodes: [200]
+      contentType: "application/json"
+      requiredFields: ["caseId", "submissionStatus", "items", "progress", "receipt"]
+    timeoutMs: 5000
+    repeatable: true
+
+  - id: "dispatcher-queue"
+    name: "Диспетчер видит обращения, ожидающие приёма"
+    method: "GET"
+    path: "/api/v1/cases"
+    role: "dispatcher"
+    dependsOn: ["confirm-case"]
+    request:
+      query:
+        houseId: "${houseId}"
+        queueState: "NEEDS_ACCEPTANCE"
+      headers:
+        Cookie: "${dispatcherCookie}"
+    expected:
+      statusCodes: [200]
+      contentType: "application/json"
+      requiredFields: ["items", "nextCursor"]
+    timeoutMs: 5000
+    repeatable: true
+
+  - id: "accept-case"
+    name: "Диспетчер принимает обращение"
+    method: "POST"
+    path: "/api/v1/cases/{caseId}/acceptance"
+    role: "dispatcher"
+    dependsOn: ["dispatcher-queue"]
+    request:
+      path:
+        caseId: "${caseId}"
+      headers:
+        Content-Type: "application/json"
+        Cookie: "${dispatcherCookie}"
+        X-XSRF-TOKEN: "${dispatcherCsrf}"
+        Idempotency-Key: "data-api-v1-accept-case"
+      body:
+        expectedCaseVersion: "${caseVersion}"
+    expected:
+      statusCodes: [200]
+      contentType: "application/json"
+      requiredFields: ["caseId", "receipt"]
+    timeoutMs: 5000
+    repeatable: true
+
+  - id: "case-history"
+    name: "История обращения без текста и причин"
+    method: "GET"
+    path: "/api/v1/cases/{caseId}/history"
+    role: "dispatcher"
+    dependsOn: ["accept-case"]
+    request:
+      path:
+        caseId: "${caseId}"
+      query:
+        limit: 50
+      headers:
+        Cookie: "${dispatcherCookie}"
+    expected:
+      statusCodes: [200]
+      contentType: "application/json"
+      requiredFields: ["items", "nextCursor"]
+    timeoutMs: 5000
+    repeatable: true

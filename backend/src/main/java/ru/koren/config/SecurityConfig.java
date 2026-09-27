@@ -45,16 +45,16 @@ public class SecurityConfig {
         http.csrf(csrf -> csrf.csrfTokenRepository(csrfTokens)
             .ignoringRequestMatchers("/max/webhook"));
         http.exceptionHandling(handling -> handling
-            .authenticationEntryPoint((request, response, e) -> ApiErrorController.write(response,
+            .authenticationEntryPoint((request, response, e) -> ApiErrorController.write(request, response,
                 HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "Нужен вход через MAX"))
             // Only two things reach here: a failed CSRF check, and a route this API does not have.
             // Object-level refusals are CaseException 403s with their own codes and never come this way.
             .accessDeniedHandler((request, response, e) -> {
                 if (e instanceof CsrfException) {
-                    ApiErrorController.write(response, HttpStatus.FORBIDDEN, "CSRF_TOKEN_INVALID",
+                    ApiErrorController.write(request, response, HttpStatus.FORBIDDEN, "CSRF_TOKEN_INVALID",
                         "Проверка запроса не пройдена, обновите страницу");
                 } else {
-                    ApiErrorController.write(response, HttpStatus.NOT_FOUND, "NOT_FOUND", "Не найдено");
+                    ApiErrorController.write(request, response, HttpStatus.NOT_FOUND, "NOT_FOUND", "Не найдено");
                 }
             }));
         http.authorizeHttpRequests(auth -> {

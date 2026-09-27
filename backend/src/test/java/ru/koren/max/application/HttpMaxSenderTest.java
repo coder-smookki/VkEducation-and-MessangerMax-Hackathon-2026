@@ -152,6 +152,17 @@ class HttpMaxSenderTest {
     }
 
     @Test
+    void theGreetingCarriesAButtonThatOpensTheApp() {
+        sender().send(RESIDENT, BotDialog.REPLY_EVENT, "{\"text\":\"Привет\",\"openApp\":true}");
+
+        JsonNode body = json.readTree(seen.getFirst().body());
+        assertEquals("Привет", body.get("text").asString());
+        JsonNode button = body.get("attachments").get(0).get("payload").get("buttons").get(0).get(0);
+        assertEquals("link", button.get("type").asString());
+        assertEquals("https://max.ru/" + BOT + "?startapp", button.get("url").asString());
+    }
+
+    @Test
     void aTooLongReplyIsClippedToWhatMaxAccepts() {
         String longText = "а".repeat(HttpMaxSender.MAX_TEXT + 500);
         sender().send(RESIDENT, BotDialog.REPLY_EVENT, json.writeValueAsString(java.util.Map.of("text", longText)));

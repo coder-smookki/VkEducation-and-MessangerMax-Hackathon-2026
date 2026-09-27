@@ -184,9 +184,10 @@ class CaseHttpTest {
             .andReturn().getResponse().getContentAsString();
         assertEquals(author.toString(), json.readTree(created).get("authorId").asString(),
             "the author must come from the session, never from the body");
+        // Scoped to this house: other tests log in as the same MAX user and make it a dispatcher elsewhere.
         assertEquals(0, (int) jdbc.queryForObject(
-            "SELECT count(*) FROM membership WHERE user_id = ? AND role = 'DISPATCHER'",
-            Integer.class, author), "a body field must not grant a dispatcher role");
+            "SELECT count(*) FROM membership WHERE user_id = ? AND house_id = ? AND role = 'DISPATCHER'",
+            Integer.class, author, ownHouse), "a body field must not grant a dispatcher role");
     }
     @ParameterizedTest(name = "revoked author cannot {0}, replay={1}")
     @CsvSource({"source,false", "items,false", "confirm,false", "source,true", "items,true", "confirm,true"})
@@ -232,7 +233,7 @@ class CaseHttpTest {
     }
 
     private org.springframework.test.web.servlet.ResultActions draftCommand(MockHttpSession session, UUID caseId,
-            String operation, String key, String body) throws Exception {
+                                                                            String operation, String key, String body) throws Exception {
         String path = "/api/v1/cases/" + caseId + "/" + operation;
         MockHttpServletRequestBuilder request = operation.equals("confirm") ? post(path) : patch(path);
         return mvc.perform(request.session(session).with(csrf()).header("Idempotency-Key", key)

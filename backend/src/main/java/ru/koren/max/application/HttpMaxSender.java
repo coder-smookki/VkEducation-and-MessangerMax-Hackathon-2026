@@ -96,6 +96,10 @@ public class HttpMaxSender implements MaxSender {
         if (BotDialog.REPLY_EVENT.equals(eventType)) {
             // The bot's own answer, already worded for this person.
             message.put("text", clip(string(payload, "text")));
+            JsonNode openApp = payload.get("openApp");
+            if (openApp != null && openApp.isBoolean() && openApp.booleanValue() && !botName.isEmpty()) {
+                message.put("attachments", keyboard("Открыть приложение", "https://max.ru/" + botName + "?startapp"));
+            }
             return message;
         }
         UUID caseId = caseId(payload);
@@ -104,12 +108,16 @@ public class HttpMaxSender implements MaxSender {
             .orElse("");
         message.put("text", clip(textFor(eventType, number) + " Подробности - в приложении."));
         if (caseId != null && !botName.isEmpty()) {
-            var button = Map.of("type", "link", "text", "Открыть обращение",
-                "url", "https://max.ru/" + botName + "?startapp=" + caseId);
-            message.put("attachments", List.of(Map.of("type", "inline_keyboard",
-                "payload", Map.of("buttons", List.of(List.of(button))))));
+            message.put("attachments", keyboard("Открыть обращение",
+                "https://max.ru/" + botName + "?startapp=" + caseId));
         }
         return message;
+    }
+
+    /** One link button under the message; MAX opens the Mini App from a ?startapp link. */
+    private static List<Map<String, Object>> keyboard(String text, String url) {
+        var button = Map.of("type", "link", "text", text, "url", url);
+        return List.of(Map.of("type", "inline_keyboard", "payload", Map.of("buttons", List.of(List.of(button)))));
     }
 
     /** One line per event CaseService queues; an unknown type still tells the person to look. */

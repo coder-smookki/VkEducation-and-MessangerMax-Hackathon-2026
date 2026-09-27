@@ -43,7 +43,8 @@ public class BotDialog implements UpdateHandler {
             «наблюдение» - ответить, помогли ли работы;
             «мои обращения» - сколько у вас обращений;
             «/start» - это сообщение.
-            История и подробности - в приложении.""";
+            История и подробности - в приложении, кнопка ниже.
+            Я не аварийная служба: при угрозе жизни, пожаре, запахе газа или затоплении звоните 112.""";
 
     private static final String ITEM_FORMAT = """
             Опишите один пункт одним сообщением в виде: категория; место; что не так.
@@ -92,6 +93,8 @@ public class BotDialog implements UpdateHandler {
         var dialog = dialogs.find(actor);
         String state = dialog.map(DialogRepository.DialogRow::state).orElse("IDLE");
         String answer;
+        // The greeting is the one answer that also offers the app: every other reply stays text only.
+        boolean greeting = text.toLowerCase(Locale.ROOT).startsWith("/start");
         try {
             answer = route(eventKey, actor, state, dialog.orElse(null), text);
         } catch (CaseException refused) {
@@ -99,7 +102,7 @@ public class BotDialog implements UpdateHandler {
             answer = "Не получилось выполнить это сейчас. Проверьте обращение в приложении.";
             dialogs.setIdle(actor);
         }
-        reply(eventKey, actor, answer);
+        reply(eventKey, actor, answer, greeting);
     }
 
     private String route(String eventKey, UUID actor, String state,
@@ -228,8 +231,12 @@ public class BotDialog implements UpdateHandler {
     }
 
     private void reply(String eventKey, UUID recipient, String text) {
-        outbox.enqueueReply(eventKey + ":reply", recipient, REPLY_EVENT,
-            json.writeValueAsString(Map.of("text", text)));
+        reply(eventKey, recipient, text, false);
+    }
+
+    private void reply(String eventKey, UUID recipient, String text, boolean openApp) {
+        Map<String, Object> payload = openApp ? Map.of("text", text, "openApp", true) : Map.of("text", text);
+        outbox.enqueueReply(eventKey + ":reply", recipient, REPLY_EVENT, json.writeValueAsString(payload));
     }
 
     /**

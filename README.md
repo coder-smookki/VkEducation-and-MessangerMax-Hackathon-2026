@@ -14,6 +14,48 @@
 4. Перед интерфейсом: [действующий дизайн](docs/design.md), [экраны и backend](docs/screens.md). [Каталог 22.09](design/index.html) сохранён как исторический прототип.
 5. Запуск и команды: [разработка](docs/development.md). Приёмка: [сценарии](docs/acceptance.md), [проверки](docs/testing.md).
 
+## Запуск одной командой
+
+Нужен только Docker с Compose (Java, Node и Python собираются в контейнерах). Из корня репозитория:
+
+```sh
+cp .env.example .env && docker compose up --build -d
+```
+
+Первая сборка скачивает зависимости и занимает несколько минут; повторная - быстрее. Секреты в `.env.example` - только учебные (`DB_PASSWORD=koren_local_only`), токена бота там нет и для локального запуска он не нужен.
+
+| Что | Адрес | Ожидаемый ответ |
+|---|---|---|
+| Mini App (Vite) | http://127.0.0.1:5173 | страница приложения; рабочие экраны просят вход через MAX |
+| Java API, здоровье | http://127.0.0.1:8080/actuator/health | `{"status":"UP"}` |
+| Java API без входа | http://127.0.0.1:8080/api/v1/me | `401`, problem+json с `code: AUTH_REQUIRED` и `requestId` |
+| PostgreSQL | 127.0.0.1:5432 | база `koren`, пользователь `koren` |
+
+Все порты открыты только на `127.0.0.1`. Python-сервис анализа доступен лишь внутри сети Compose. Kafka не нужна для основного сценария и включается отдельно: `docker compose --profile similar up -d`.
+
+Проверка одной командой после запуска: `python3 scripts/smoke.py` - печатает `PASS: …`, если frontend, прокси, Java и Python отвечают, а рабочие маршруты требуют сессию.
+
+Основные переменные `.env` (полный список с пояснениями - в `.env.example`):
+
+| Переменная | Для чего | Локально |
+|---|---|---|
+| `DB_USER`, `DB_PASSWORD`, `DB_NAME` | PostgreSQL | как в примере |
+| `MAX_BOT_TOKEN`, `MAX_WEBHOOK_SECRET` | вход через MAX, бот, webhook | пусто: бот и вход выключены |
+| `MAX_BOT_NAME` | ссылки «Открыть приложение» из бота | `t109_hakaton_max_bot` |
+| `MAX_WORKERS_ENABLED`, `ANALYSIS_ENABLED`, `KAFKA_ENABLED` | фоновые воркеры, анализ, Kafka | `false` |
+| `CASE_NUMBER_PREFIX` | подпись номера, например `ДЕМО-` для синтетических данных | пусто |
+
+Остановка и перезапуск:
+
+```sh
+docker compose down            # остановить; данные базы сохраняются в томе
+docker compose up -d           # запустить снова без пересборки
+docker compose logs -f backend # журнал Java, в каждой строке id запроса
+docker compose down -v         # остановить и УДАЛИТЬ данные базы
+```
+
+Боевой бот: [max.ru/t109_hakaton_max_bot](https://max.ru/t109_hakaton_max_bot) - `/start` показывает команды, предупреждение про 112 и кнопку открытия Mini App. Проверка публичного API по формату организаторов - [DATA-API.yaml](DATA-API.yaml).
+
 ## Технологии и границы
 
 Java - единственный владелец команд, прав и PostgreSQL. Python возвращает проверяемые подсказки; производный индекс не даёт полномочий. React/TypeScript используют один Java API с ботом. Версии зависимостей закреплены существующими POM/lock-файлами. Kafka/Chroma уже есть в dev, но не должны блокировать основной ручной путь.
