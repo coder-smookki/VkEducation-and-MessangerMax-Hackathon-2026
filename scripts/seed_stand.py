@@ -147,7 +147,12 @@ def load_seed():
         raise SystemExit(
             f"No {ACCOUNTS.relative_to(ROOT)}: copy accounts.private.example.json and fill MAX ids"
         )
-    ids = json.loads(ACCOUNTS.read_text(encoding="utf-8"))
+    try:
+        ids = json.loads(ACCOUNTS.read_text(encoding="utf-8"))
+    except ValueError as error:
+        raise SystemExit(
+            f"accounts.private.json is not valid JSON ({error}); MAX ids are plain numbers"
+        ) from None
     houses = {house_row["key"]: house_row for house_row in seed["houses"]}
     for account in seed["accounts"]:
         max_id = ids.get(account["account"])
