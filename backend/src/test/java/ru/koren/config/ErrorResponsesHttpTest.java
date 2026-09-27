@@ -153,6 +153,22 @@ class ErrorResponsesHttpTest {
     }
 
     @Test
+    void domainRefusalsNameTheirRequestInTheBodyToo() throws Exception {
+        // These come from @ExceptionHandler advice, not from the security filters or /error.
+        var browser = new Browser();
+        browser.login();
+        assertProblem(browser.send("GET", "/api/v1/cases/" + java.util.UUID.randomUUID(), null),
+            404, "RESOURCE_NOT_FOUND");
+        assertProblem(browser.send("POST", "/api/v1/memberships/claim",
+            "{\"invitationCode\":\"KOREN-NO-SUCH-CODE-" + java.util.UUID.randomUUID() + "\"}"),
+            403, "INVITATION_REJECTED");
+        var stranger = new Browser();
+        stranger.fetchCsrf();
+        assertProblem(stranger.send("POST", "/api/v1/auth/max", "{\"initData\":\"user=1&hash=00\"}"),
+            401, "INVALID_MAX_INIT_DATA");
+    }
+
+    @Test
     void aRouteThisApiDoesNotHaveIsNotFoundForASignedInUser() throws Exception {
         var browser = new Browser();
         browser.login();

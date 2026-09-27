@@ -1,17 +1,19 @@
 package ru.koren.cases;
 
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import ru.koren.cases.application.CaseException;
+import ru.koren.config.RequestIdFilter;
 
 /** Maps application failures to the documented problem+json codes. Never leaks another user's object. */
 @RestControllerAdvice
 public class CaseExceptionHandler {
 
     @ExceptionHandler(CaseException.class)
-    ProblemDetail handle(CaseException e) {
+    ProblemDetail handle(CaseException e, HttpServletRequest request) {
         ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.valueOf(e.httpStatus()));
         problem.setTitle(switch (e.code()) {
             case "RESOURCE_NOT_FOUND" -> "Обращение недоступно";
@@ -22,6 +24,7 @@ public class CaseExceptionHandler {
             default -> "Запрос отклонён";
         });
         problem.setProperty("code", e.code());
+        RequestIdFilter.addTo(problem, request);
         return problem;
     }
 }

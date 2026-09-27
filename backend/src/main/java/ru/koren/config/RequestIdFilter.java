@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+import org.springframework.http.ProblemDetail;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -28,6 +29,13 @@ public class RequestIdFilter extends OncePerRequestFilter {
 
     public static final String HEADER = "X-Request-Id";
     public static final String ATTRIBUTE = RequestIdFilter.class.getName() + ".id";
+
+    /** Puts the id of this request into a problem body: the same value as the header, nothing else. */
+    public static void addTo(ProblemDetail problem, HttpServletRequest request) {
+        if (request.getAttribute(ATTRIBUTE) instanceof String id) {
+            problem.setProperty("requestId", id);
+        }
+    }
     static final String MDC_KEY = "requestId";
 
     /** A caller's id is kept only if it cannot forge a log line or flood one. */
