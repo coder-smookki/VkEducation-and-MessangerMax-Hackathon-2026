@@ -60,7 +60,8 @@ public final class InvitationService {
         if (house == null) {
             // Counting the miss outside the failed transaction keeps the attempt recorded.
             invitations.countFailedAttempt(codeHash);
-            throw new InvitationException("ACTION_FORBIDDEN", 403);
+            // One code for used, expired and unknown alike: the reason is not disclosed to a guesser.
+            throw new InvitationException("INVITATION_REJECTED", 403);
         }
         return house;
     }

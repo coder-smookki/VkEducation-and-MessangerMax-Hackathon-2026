@@ -98,7 +98,7 @@
 | X07 Долгий ввод и клавиатура<br>[dark](../design/images/states/X07_keyboard-and-long-input_dark.png) / [light](../design/images/states/X07_keyboard-and-long-input_light.png) | Редактор с открытой клавиатурой | Текущий unsaved input; действие доступно | K-06; QA-R07 |
 | X08 Отправка — защита от двойного нажатия<br>[dark](../design/images/states/X08_submitting-links_dark.png) / [light](../design/images/states/X08_submitting-links_light.png) | Одна pending-команда | Disabled+busy до ответа; сервер dedup независимо | S-04/K-06; QA-A06 |
 | X09 Проблема осталась / невозможно проверить<br>[dark](../design/images/states/X09_negative-and-unable-observations_dark.png) / [light](../design/images/states/X09_negative-and-unable-observations_light.png) | POST observation PERSISTS/CANNOT_CHECK | Альтернативные ответы, оба не успех | S-05/K-04; QA-E06 |
-| X10 Ошибки приглашения<br>[dark](../design/images/states/X10_invitation-errors_dark.png) / [light](../design/images/states/X10_invitation-errors_light.png) | Claim: пустой код 422 INVALID_FIELDS; неподходящий/истёкший/использованный 403 ACTION_FORBIDDEN | Причины отказа не различаются снаружи; успешный claim выдаёт RESIDENT, выбрать роль нельзя | S-02/K-02; QA-A04 |
+| X10 Ошибки приглашения<br>[dark](../design/images/states/X10_invitation-errors_dark.png) / [light](../design/images/states/X10_invitation-errors_light.png) | Claim: пустой код 422 INVALID_FIELDS; неподходящий/истёкший/использованный 403 INVITATION_REJECTED | Причины отказа не различаются снаружи; успешный claim выдаёт RESIDENT, выбрать роль нельзя | S-02/K-02; QA-A04 |
 
 ## Адаптивность
 

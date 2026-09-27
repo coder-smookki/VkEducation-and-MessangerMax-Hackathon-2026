@@ -95,6 +95,15 @@ class InvitationHttpTest {
             .andReturn().getResponse().getStatus();
     }
 
+    private String refusalCode(MockHttpSession session, String code) throws Exception {
+        String body = mvc.perform(post("/api/v1/memberships/claim").session(session).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"invitationCode\":\"" + code + "\"}"))
+            .andExpect(status().isForbidden())
+            .andReturn().getResponse().getContentAsString();
+        return json.readTree(body).get("code").asString();
+    }
+
     @Test
     void validCodeGrantsResidentAndCannotBeUsedTwice() throws Exception {
         MockHttpSession session = new MockHttpSession();
@@ -123,13 +132,16 @@ class InvitationHttpTest {
         assertEquals(403, claim(session, code));
         // An unknown code answers exactly like an expired one: guessing gets no hint.
         assertEquals(403, claim(session, uniqueCode("KOREN-NEVER-EXISTED")));
+        // The Mini App shows its own text for this code, not a generic "access denied".
+        assertEquals("INVITATION_REJECTED", refusalCode(session, uniqueCode("KOREN-NEVER-EXISTED")));
+        assertEquals("INVITATION_REJECTED", refusalCode(session, code));
     }
 
     @ParameterizedTest(name = "existing {0}, revoked={1} joins as {2}")
     @CsvSource({"RESIDENT,false,RESIDENT", "RESIDENT,true,RESIDENT",
         "DISPATCHER,false,DISPATCHER", "DISPATCHER,true,RESIDENT"})
     void newInvitationHandlesExistingMembershipWithoutRestoringRevokedPrivileges(
-            String role, boolean revoked, String expectedRole) throws Exception {
+        String role, boolean revoked, String expectedRole) throws Exception {
         MockHttpSession session = new MockHttpSession();
         UUID user = login(session, AUTHOR_INIT_DATA);
         String code = uniqueCode("KOREN-EXISTING");
