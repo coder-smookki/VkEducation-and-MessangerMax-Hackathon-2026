@@ -1,5 +1,15 @@
 # Текущее состояние ДомПульса (ядро КОРЕНЬ)
 
+## Действующий выпуск 28.09, 01:42 МСК
+
+Опубликован `57924c61cfe26fe5dfc3a3ec64e79f831f08fefc` из `dev`; [протокол](../qa/release-2026-09-28.md), [CI 36355478065](https://github.com/coder-smookki/VkEducation-and-MessangerMax-Hackathon-2026/actions/runs/36355478065) **6/6 jobs PASS**, public smoke **16/16 PASS**. История `09bd804`, `431cc9c`, `309df50` сохранена; при проверке перед выпуском более новых коммитов origin не было. Java integration **237/237, 0 SKIP**, с настоящими Python/Kafka; Python основной suite **195 PASS + 1 Kafka SKIP**, отдельный Kafka **1/1 PASS**; UI **71 PASS**; miniapp **6 RULES PASS** и **4 manual PASS + 2 analysis SKIP**.
+
+Backend/ml/web собраны `--no-cache`, `current` переключён атомарно. Существующий PostgreSQL-контейнер и **все 3 обращения сохранены**. Backup/restore-check выполнен: 66 147 байт, 0,9/1,7 с, 20 таблиц/V11/количества/аудит совпали. Первая активация остановилась на ошибочном ожидании оператора `vectorStore=disabled`; автоматический rollback к `2833443` подтвердил health/SHA. Исправлено только ожидание, повторная активация прошла. Runtime rollback выполнен; восстановления рабочей БД из дампа не было.
+
+На сервере `TRAINING_MODE=true`, `CASE_NUMBER_PREFIX=ДЕМО-`, `ANALYSIS_ENABLED=true`, `MAX_WORKERS_ENABLED=true`, `KAFKA_ENABLED=false`; Python **RULES / rules-baseline-v3**, **Chroma включена**. Engine SHA256 `79042f38b993e147964f414f9d02c421f01d2f126cfa1a281a1128c4343893ae`, stateless HTTP-probes **6/6 PASS**. Снимок ops: 0 draft / 3 confirmed; outbox 0/0/13, inbox 0/0, analysis 0/0/0. Гость/About 390/1440 px: без overflow, JS errors и API-записей; 4 PNG. Артефакты вне Git: `/Users/smokkkkiiii/Desktop/DomPulse-release-2026-09-28-8dwawzzn/`.
+
+**Финальная заморозка и полная готовность НЕ подтверждены.** Новые настоящие MAX-сообщения, seed-мутации и G2 не выполнялись. Остаются реальные три роли/физические клиенты/30 минут бездействия, E-08 до 2/2, независимый человеческий holdout RULES, DATA-API/доступ оценщика/презентация, нагрузка и прочие незакрытые QA-остатки. HTTP80 и автопродление TLS этим выпуском не исправлены. Следующие датированные разделы - история предшествовавших локальных проверок; их тогдашнее «не выпущено» не описывает нынешний сервер.
+
 Обновлено 28.09.2026, Europe/Moscow. Репозиторий `coder-smookki/VkEducation-and-MessangerMax-Hackathon-2026`, интеграционная ветка `dev`. Код, документация и версия сервера учитываются отдельно; push не означает deployment. S-01..S-09, sender и webhook коллег уже объединены, повторно сливать прежние ветки не нужно.
 
 ## Повторная локальная QA - 28.09, после K-ML-01
@@ -41,11 +51,11 @@ PR13 Семёна (`7ff53dd`) уже в dev. Добавлены публична
 ## Текущий сервер и данные
 
 - Mini App **https://hackathon.lumnex.ru/**, бот [t109_hakaton_max_bot](https://max.ru/t109_hakaton_max_bot), [запуск в MAX](https://max.ru/t109_hakaton_max_bot?startapp).
-- Опубликован `2833443e402af1adb94dfb7d1ce39ddf4168b8a5` из dev, 27.09 в 21:57 МСК. [CI точного SHA](https://github.com/coder-smookki/VkEducation-and-MessangerMax-Hackathon-2026/actions/runs/36342119282) **5/5 PASS**; публичный smoke **16/16 PASS**, без записи обращений. Это кандидат сдачи, не подтверждение финальной заморозки.
-- Java/PostgreSQL17/web/Python RULES в `koren-release`; host nginx → `127.0.0.1:8091`. Текущие исходники `/srv/koren/current`, секреты вне Git в `/etc/koren/release.env`. Kafka/Chroma в release выключены.
-- Пользователь подтвердил сохранение существующих данных: **тестовый дом и 3 обращения остаются**. Последняя проверка в 22:02: 0 draft / 3 confirmed; outbox pending/failed/sent 0/0/11, inbox pending/parked 0/0. Это снимок проверки, не обещание неизменности очередей.
-- Перед выпуском backup `koren-20260927T184224Z.dump` (65 098 байт, 1,1 с), restore-check в отдельной БД (1,8 с): 20 таблиц, V11, аудит и количества совпали. Предыдущие образы/env сохранены; рабочая БД не перезаписывалась.
-- На предыдущем выпуске настоящий MAX Web подтвердил вход, аватар/имя, поиск, SVG-историю, темы/крупный текст. На 2833443 подтверждён новый /start; полный сценарий текущего Mini App не засчитан из-за недоступного инструменту отдельного окна. Отсутствующий @username не выдумывается. [Текущий протокол](../qa/backend-polish-2026-09-27.md), [исторический](../qa/profile-visual-2026-09-27.md), [журнал](../operations-log.md).
+- Опубликован `57924c61cfe26fe5dfc3a3ec64e79f831f08fefc`, проверен 28.09 в 01:42 МСК: CI 6/6 и public smoke 16/16. Это кандидат, не подтверждение финальной заморозки.
+- Java/PostgreSQL17/web/Python RULES v3 в `koren-release`; host nginx → `127.0.0.1:8091`, текущие исходники `/srv/koren/current`, секреты `/etc/koren/release.env` вне Git. Kafka выключена; Python сообщает Chroma, пользовательский поиск дублей отсутствует.
+- По решению пользователя тестовый дом и 3 обращения сохраняются. Снимок после выпуска: 0 draft / 3 confirmed; outbox pending/failed/sent 0/0/13, inbox pending/parked 0/0, analysis queued/ready/manual 0/0/0. Очереди могут меняться после снимка.
+- Backup `koren-20260927T222953Z.dump` (66 147 байт, 0,9 с), restore-check в отдельной БД (1,7 с): 20 таблиц, V11, аудит и количества совпали. Рабочая БД не перезаписывалась, её контейнер не пересоздавался. Старые образы/env/исходники защищены; runtime rollback к `2833443` выполнен при первой активации и проверен.
+- Настоящие MAX Web и /start подтверждались 27.09 на прежних выпусках. На `57924c6` проверены публичные гостевые страницы и Python без предметных записей; новый MAX/G2 не засчитан. [Текущий протокол](../qa/release-2026-09-28.md), [история 27.09](../qa/backend-polish-2026-09-27.md), [журнал](../operations-log.md).
 
 ## Проверка и интеграция 27.09
 
