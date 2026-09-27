@@ -5,7 +5,7 @@
     "caseId": "00000000-0000-0000-0000-000000000001",
     "sourceRevision": 1,
     "reportId": "00000000-0000-0000-0000-000000000003",
-    "modelVersion": "rules-baseline-v2",
+    "modelVersion": "rules-baseline-v3",
     "mode": "RULES",
     "suggestions": [
       {

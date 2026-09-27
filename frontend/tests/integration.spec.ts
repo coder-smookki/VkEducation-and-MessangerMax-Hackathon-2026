@@ -12,7 +12,8 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import AxeBuilder from "@axe-core/playwright";
-import type { Case, Me } from "../src/api/client";
+import type { Case, Me, Report, Suggestions } from "../src/api/client";
+import type { components } from "../src/api/schema";
 
 const root = resolve(import.meta.dirname, "../..");
 const composeProject = process.env.KOREN_E2E_PROJECT || "";
@@ -42,6 +43,11 @@ const env = envFile
         .map((s) => [s.slice(0, s.indexOf("=")), s.slice(s.indexOf("=") + 1)]),
     )
   : {};
+const analysisEnabled = process.env.KOREN_E2E_ANALYSIS === "true";
+if (analysisEnabled !== (env.ANALYSIS_ENABLED === "true"))
+  throw new Error(
+    "The integration analysis flag must match the disposable stand env",
+  );
 const captureDirectory = process.env.KOREN_QA_CAPTURE;
 const capturedScreens: {
   screen: string;
@@ -587,6 +593,23 @@ test("real API: author → dispatcher → partial result → archive, with acces
       .getByRole("link", { name: "Проверить связи с пунктами" })
       .click();
     const reportUrl = dispatcher.page.url();
+    if (!analysisEnabled) {
+      await expect(
+        dispatcher.page.getByText("Автоматическая подсказка недоступна.", {
+          exact: false,
+        }),
+      ).toBeVisible();
+      const reportId = new URL(reportUrl).hash.split("/").at(-1);
+      const manual = await dispatcher.context.request.get(
+        `${baseURL}/api/v1/reports/${reportId}/suggestions`,
+      );
+      expect(manual.status()).toBe(200);
+      expect(await manual.json()).toMatchObject({
+        status: "MANUAL_REQUIRED",
+        analysisId: null,
+        result: null,
+      });
+    }
     await expect(
       dispatcher.page.getByRole("checkbox").first(),
     ).not.toBeChecked();
@@ -671,7 +694,7 @@ test("real API: author → dispatcher → partial result → archive, with acces
       ).violations,
     ).toEqual([]);
     await author.page.screenshot({
-      path: "../tmp/kirill/partial-real-light.png",
+      path: test.info().outputPath("partial-real-light.png"),
       fullPage: true,
     });
     await author.page
@@ -684,7 +707,7 @@ test("real API: author → dispatcher → partial result → archive, with acces
       .getByRole("button", { name: "Готово", exact: true })
       .click();
     await author.page.screenshot({
-      path: "../tmp/kirill/partial-real-dark.png",
+      path: test.info().outputPath("partial-real-dark.png"),
       fullPage: true,
     });
     // A dispatcher cannot observe on behalf of the author, even through raw HTTP.
@@ -1084,3 +1107,288 @@ test("release proxy serves API failures as JSON and does not expose demo or priv
     })
     .toBe(200);
 });
+
+// These tests use HTTP for all product commands. Only houses/memberships are
+// synthetic fixtures; Python, durable Java worker, validation and rendering are real.
+async function analysisCase(
+  author: Awaited<ReturnType<typeof actor>>,
+  dispatcher: Awaited<ReturnType<typeof actor>>,
+  house: string,
+) {
+  await author.page.goto("/");
+  await expect(
+    author.page.getByRole("link", { name: "Новое обращение" }),
+  ).toBeVisible();
+  await dispatcher.page.goto("/");
+  await expect(
+    dispatcher.page.getByRole("heading", {
+      name: "Очередь обращений",
+      exact: true,
+    }),
+  ).toBeVisible();
+  const createdResponse = await mutate(author.context.request, "/cases", {
+    houseId: house,
+    sourceText: "На третьем этаже не горит свет, входная дверь не закрывается.",
+  });
+  expect(createdResponse.status()).toBe(201);
+  const created = (await createdResponse.json()) as Case;
+  const token = await (
+    await author.context.request.get(`${baseURL}/api/v1/csrf`)
+  ).json();
+  const editedResponse = await author.context.request.patch(
+    `${baseURL}/api/v1/cases/${created.caseId}/items`,
+    {
+      data: {
+        expectedCaseVersion: created.caseVersion,
+        items: [
+          {
+            category: "LIGHTING",
+            location: "Подъезд 1, этаж 3",
+            symptom: "Не горит свет",
+          },
+          {
+            category: "ENTRANCE_DOOR",
+            location: "Подъезд 1, вход",
+            symptom: "Дверь не закрывается",
+          },
+        ],
+      },
+      headers: {
+        [token.headerName]: token.token,
+        "Idempotency-Key": randomUUID(),
+      },
+    },
+  );
+  expect(editedResponse.status()).toBe(200);
+  const edited = (await editedResponse.json()) as Case;
+  const confirmedResponse = await mutate(
+    author.context.request,
+    `/cases/${created.caseId}/confirm`,
+    {
+      expectedCaseVersion: edited.caseVersion,
+      sourceRevision: edited.sourceRevision,
+    },
+  );
+  expect(confirmedResponse.status()).toBe(200);
+  const confirmed = (await confirmedResponse.json()) as Case;
+  const acceptedResponse = await mutate(
+    dispatcher.context.request,
+    `/cases/${created.caseId}/acceptance`,
+    {
+      expectedCaseVersion: confirmed.caseVersion,
+    },
+  );
+  expect(acceptedResponse.status()).toBe(200);
+  return (await acceptedResponse.json()) as Case;
+}
+
+for (const scenario of [
+  {
+    name: "conditional text is not completed work",
+    screen: "rules-conditional",
+    reportText: "Если лампу на третьем этаже заменили, сообщите диспетчеру.",
+    relations: ["INSUFFICIENT_INFORMATION", "INSUFFICIENT_INFORMATION"],
+    labels: ["Недостаточно сведений", "Недостаточно сведений"],
+    confirmLight: false,
+  },
+  {
+    name: "light and door have separate evidence and no automatic effects",
+    screen: "rules-light-door",
+    reportText: "💡 Лампу на третьем этаже заменили, дверь заменим завтра.",
+    relations: ["REPORTED_DONE", "PLANNED"],
+    labels: ["В тексте сообщается о выполнении", "В тексте описан план"],
+    confirmLight: true,
+  },
+] as const) {
+  test(`real RULES v3: ${scenario.name}`, async ({ browser }) => {
+    test.skip(
+      !analysisEnabled,
+      "Run scripts/check_miniapp.py --analysis for the real Python/Java worker path",
+    );
+    test.setTimeout(180_000);
+    const house = randomHouse();
+    const author = await actor(browser, house, "RESIDENT", 11);
+    const dispatcher = await actor(browser, house, "DISPATCHER", 12);
+    const errors: string[] = [];
+    dispatcher.page.on("pageerror", (error) => errors.push(error.message));
+    try {
+      const data = await analysisCase(author, dispatcher, house);
+      await dispatcher.page.goto(`/#/cases/${data.caseId}`);
+      await dispatcher.page
+        .getByRole("link", { name: "Добавить отчёт о работах" })
+        .click();
+      await dispatcher.page
+        .getByLabel("Текст отчёта")
+        .fill(scenario.reportText);
+      await dispatcher.page
+        .getByRole("checkbox", { name: /Не горит свет/ })
+        .check();
+      await dispatcher.page
+        .getByRole("checkbox", { name: /Дверь не закрывается/ })
+        .check();
+      const savedResponse = dispatcher.page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname ===
+            `/api/v1/cases/${data.caseId}/reports` &&
+          response.request().method() === "POST",
+      );
+      await dispatcher.page
+        .getByRole("button", { name: "Сохранить текст отчёта" })
+        .click();
+      const response = await savedResponse;
+      expect(response.status()).toBe(201);
+      const saved =
+        (await response.json()) as components["schemas"]["CreateReportResponse"];
+      expect(saved.analysis.status).toBe("QUEUED");
+      expect(saved.report.reportText).toBe(scenario.reportText);
+      expect(saved.report.links).toEqual([]);
+      expect(saved.case.items).toEqual(data.items);
+      expect(saved.case.progress).toEqual(data.progress);
+      await dispatcher.page
+        .getByRole("link", { name: "Проверить связи с пунктами" })
+        .click();
+
+      let analysis: Suggestions | undefined;
+      await expect
+        .poll(
+          async () => {
+            const answer = await dispatcher.context.request.get(
+              `${baseURL}/api/v1/reports/${saved.report.reportId}/suggestions`,
+            );
+            expect(answer.status()).toBe(200);
+            analysis = (await answer.json()) as Suggestions;
+            return analysis.status;
+          },
+          { timeout: 60_000, intervals: [500, 1000, 2000] },
+        )
+        .toBe("READY");
+      expect(analysis!.analysisId).toMatch(/^[0-9a-f-]{36}$/);
+      expect(analysis!.result).toMatchObject({
+        caseId: data.caseId,
+        sourceRevision: data.sourceRevision,
+        reportId: saved.report.reportId,
+        modelVersion: "rules-baseline-v3",
+        mode: "RULES",
+      });
+      const suggestions = analysis!.result!.suggestions;
+      expect(suggestions.map((entry) => entry.itemId).sort()).toEqual(
+        data.items.map((item) => item.itemId).sort(),
+      );
+      const job = JSON.parse(
+        sql(
+          `SELECT json_build_object('status', a.status, 'attempts', a.attempts, 'modelVersion', s.model_version)::text
+         FROM report_analysis a JOIN model_suggestion s ON s.id = a.suggestion_id
+         WHERE a.report_id = '${saved.report.reportId}';`,
+        ),
+      ) as { status: string; attempts: number; modelVersion: string };
+      expect(job).toMatchObject({
+        status: "READY",
+        modelVersion: "rules-baseline-v3",
+      });
+      expect(job.attempts).toBeGreaterThanOrEqual(1);
+
+      for (const [index, item] of data.items.entries()) {
+        const suggestion = suggestions.find(
+          (entry) => entry.itemId === item.itemId,
+        )!;
+        expect(suggestion).toMatchObject({
+          contentVersion: item.contentVersion,
+          workRound: item.workRound,
+          relation: scenario.relations[index],
+          reason: "ANALYZED",
+        });
+        const choice = dispatcher.page
+          .locator(".link-choice")
+          .filter({ hasText: item.symptom });
+        await expect(choice.locator("aside.evidence")).toContainText(
+          scenario.labels[index],
+        );
+        await expect(choice.getByRole("checkbox")).not.toBeChecked();
+        if (suggestion.evidence) {
+          const evidence = suggestion.evidence;
+          expect(
+            Array.from(scenario.reportText)
+              .slice(evidence.start, evidence.end)
+              .join(""),
+          ).toBe(evidence.quote);
+          expect(evidence.end).toBeGreaterThan(evidence.start);
+          await expect(choice.locator("q")).toHaveText(evidence.quote);
+          if (index === 0) {
+            expect(evidence.quote).toMatch(/ламп|свет|освещен/i);
+            expect(evidence.quote).not.toMatch(/двер/i);
+          } else {
+            expect(evidence.quote).toMatch(/двер/i);
+            expect(evidence.quote).not.toMatch(/ламп/i);
+          }
+        } else {
+          expect(suggestion.relation).toBe("INSUFFICIENT_INFORMATION");
+          await expect(choice.locator("q")).toHaveCount(0);
+        }
+      }
+      await expect(
+        dispatcher.page.getByText("Ничего не выбрано автоматически.", {
+          exact: false,
+        }),
+      ).toBeVisible();
+      await expect(
+        dispatcher.page.getByRole("button", {
+          name: "Проверить выбранные связи",
+        }),
+      ).toBeDisabled();
+      await auditScreen(dispatcher.page, scenario.screen);
+      const unchanged = await snapshot(author.context, data.caseId);
+      expect(unchanged.caseVersion).toBe(saved.case.caseVersion);
+      expect(unchanged.items).toEqual(saved.case.items);
+      expect(unchanged.progress).toEqual({
+        total: 2,
+        confirmed: 0,
+        withdrawn: 0,
+        remaining: 2,
+        allConfirmed: false,
+      });
+      const reportResponse = await dispatcher.context.request.get(
+        `${baseURL}/api/v1/reports/${saved.report.reportId}`,
+      );
+      expect(reportResponse.status()).toBe(200);
+      expect(((await reportResponse.json()) as Report).links).toEqual([]);
+      await test.info().attach(scenario.screen, {
+        body: JSON.stringify({
+          reportText: scenario.reportText,
+          analysis,
+          job,
+          progress: unchanged.progress,
+        }),
+        contentType: "application/json",
+      });
+
+      if (scenario.confirmLight) {
+        await dispatcher.page
+          .getByRole("checkbox", { name: /Не горит свет/ })
+          .check();
+        await dispatcher.page
+          .getByRole("button", { name: "Проверить выбранные связи" })
+          .click();
+        await dispatcher.page
+          .getByRole("button", { name: "Подтвердить выбранные связи" })
+          .click();
+        await expect(
+          dispatcher.page.getByText("Связь сохранена.", { exact: false }),
+        ).toBeVisible();
+        const linked = await snapshot(author.context, data.caseId);
+        expect(linked.items[0]).toMatchObject({
+          workRound: 1,
+          workStatus: "REPORTED_DONE",
+          observation: "NOT_RECEIVED",
+          administrativeStatus: "ACTIVE",
+        });
+        expect(linked.items[1]).toEqual(unchanged.items[1]);
+        expect(linked.progress).toEqual(unchanged.progress);
+        await auditScreen(dispatcher.page, "rules-explicit-light-link");
+      }
+      expect(errors).toEqual([]);
+    } finally {
+      await author.context.close();
+      await dispatcher.context.close();
+    }
+  });
+}
