@@ -1,238 +1,740 @@
-# DATA-API 1.0 — КОРЕНЬ 2.0
-# Секретов в файле нет. Вход в API — только через подписанный MAX initData и серверную сессию,
-# поэтому для ролей resident и dispatcher среда проверки подставляет готовую сессию и CSRF-токен:
-#   ${residentCookie}, ${residentCsrf}, ${dispatcherCookie}, ${dispatcherCsrf}.
-# Их выдаёт команда через защищённый канал проекта оценки. houseId берётся из ответа /me.
-# Idempotency-Key у команд постоянный: повторный прогон получает сохранённый ответ, а не дубль.
+# DATA-API 1.0 - ДомПульс. Официальный формат: gitverse.ru/stasnorman/example-data-api
+# Проверенная версия шаблона/схемы/валидатора: 8504a6d9b39e6f652bce689d96e88538d7541c6b.
+# Инструкция, границы проверки и новый вход: docs/qa/data-api.md.
+# Секретов нет. Внешние входы через защищённый канал и отдельные cookie jars:
+# residentCookie, dispatcherCookie, strangerCookie - полный актуальный Cookie каждой роли
+# (включая XSRF-TOKEN): обновлять из её cookie jar после каждого Set-Cookie;
+# houseId - проверенный общий учебный дом автора и диспетчера (чужой не имеет доступа);
+# runId - новый UUID для каждого полного прогона;
+# nextActionDueAt - будущая дата RFC3339 (например, текущее UTC + 1 день).
+# ${numberVariable} в целом JSON-поле заменяется ЧИСЛОМ из extract, не строкой.
+# Формат допускает dependsOn/extract/bodySchema; опубликованный валидатор НЕ исполняет HTTP.
+# Исполнитель обязан сохранять cookies/Set-Cookie по ролям, не смешивать public с вошедшими.
+# repeatable=true для команды: повтор только с исходными body, key и ролью; не пересобирать
+# retry из более нового snapshot. Новый полный сценарий всегда получает новый runId.
+# GET с ожиданием промежуточного состояния повторяют только до перехода к следующей стадии.
+# Не подставлять production bot token и не подписывать MAX-вход публичного стенда вручную.
+# cleanup отсутствует: API не предоставляет DELETE; архив не удаляет историю.
+# Для автоматических мутаций использовать одноразовый стенд scripts/check_data_api.py;
+# запуск на публичном адресе требует согласованной учебной среды и подготовленных ролей.
 
-schemaVersion: "1.0"
-
+schemaVersion: '1.0'
 solution:
-  name: "КОРЕНЬ 2.0"
-  teamId: "t109"
-
+  name: ДомПульс (КОРЕНЬ 2.0)
+  teamId: t109
 api:
-  baseUrl: "https://hackathon.lumnex.ru"
-  openapi: "./contracts/author-review.openapi.json"
+  baseUrl: https://hackathon.lumnex.ru
+  openapi: ./contracts/author-review.openapi.json
   defaultHeaders:
-    Accept: "application/json"
-
+    Accept: application/json
 checks:
-  - id: "csrf-token"
-    name: "Доступность API и выдача CSRF-токена"
-    description: "Публичный метод: сервер отвечает JSON и выдаёт токен для защищённых команд."
-    method: "GET"
-    path: "/api/v1/csrf"
-    role: "public"
-    expected:
-      statusCodes: [200]
-      contentType: "application/json"
-      requiredFields: ["headerName", "token"]
-    timeoutMs: 5000
-    repeatable: true
-
-  - id: "me-anonymous"
-    name: "Без входа данные пользователя недоступны"
-    description: "Защищённый метод без сессии отвечает 401 в формате problem+json с постоянным кодом AUTH_REQUIRED."
-    method: "GET"
-    path: "/api/v1/me"
-    role: "public"
-    expected:
-      statusCodes: [401]
-      contentType: "application/problem+json"
-      requiredFields: ["status", "code"]
-    timeoutMs: 5000
-    repeatable: true
-
-  - id: "cases-anonymous"
-    name: "Без входа список обращений недоступен"
-    method: "GET"
-    path: "/api/v1/cases"
-    role: "public"
-    expected:
-      statusCodes: [401]
-      contentType: "application/problem+json"
-      requiredFields: ["code"]
-    timeoutMs: 5000
-    repeatable: true
-
-  - id: "me-resident"
-    name: "Жилец видит свой дом и роль"
-    method: "GET"
-    path: "/api/v1/me"
-    role: "resident"
-    request:
-      headers:
-        Cookie: "${residentCookie}"
-    expected:
-      statusCodes: [200]
-      contentType: "application/json"
-      requiredFields: ["userId", "memberships"]
-    timeoutMs: 5000
-    repeatable: true
-    extract:
-      houseId: "$.memberships[0].houseId"
-
-  - id: "create-case"
-    name: "Жилец создаёт черновик обращения"
-    method: "POST"
-    path: "/api/v1/cases"
-    role: "resident"
-    dependsOn: ["me-resident"]
-    request:
-      headers:
-        Content-Type: "application/json"
-        Cookie: "${residentCookie}"
-        X-XSRF-TOKEN: "${residentCsrf}"
-        Idempotency-Key: "data-api-v1-create-case"
-      body:
-        houseId: "${houseId}"
-        sourceText: "Синтетическая проверка: на третьем этаже не горит свет, входная дверь не закрывается."
-    expected:
-      statusCodes: [201]
-      contentType: "application/json"
-      requiredFields: ["caseId", "caseVersion", "submissionStatus", "displayNumber"]
-    timeoutMs: 5000
-    repeatable: true
-    extract:
-      caseId: "$.caseId"
-      caseVersion: "$.caseVersion"
-
-  - id: "patch-items"
-    name: "Жилец задаёт два отдельных пункта"
-    method: "PATCH"
-    path: "/api/v1/cases/{caseId}/items"
-    role: "resident"
-    dependsOn: ["create-case"]
-    request:
-      path:
-        caseId: "${caseId}"
-      headers:
-        Content-Type: "application/json"
-        Cookie: "${residentCookie}"
-        X-XSRF-TOKEN: "${residentCsrf}"
-        Idempotency-Key: "data-api-v1-patch-items"
-      body:
-        expectedCaseVersion: "${caseVersion}"
-        items:
-          - category: "LIGHTING"
-            location: "Подъезд 1, этаж 3"
-            symptom: "Не горит свет"
-          - category: "ENTRANCE_DOOR"
-            location: "Подъезд 1, вход"
-            symptom: "Дверь не закрывается"
-    expected:
-      statusCodes: [200]
-      contentType: "application/json"
-      requiredFields: ["caseId", "caseVersion", "sourceRevision", "items", "progress"]
-    timeoutMs: 5000
-    repeatable: true
-    extract:
-      caseVersion: "$.caseVersion"
-      sourceRevision: "$.sourceRevision"
-
-  - id: "confirm-case"
-    name: "Жилец подтверждает список пунктов"
-    method: "POST"
-    path: "/api/v1/cases/{caseId}/confirm"
-    role: "resident"
-    dependsOn: ["patch-items"]
-    request:
-      path:
-        caseId: "${caseId}"
-      headers:
-        Content-Type: "application/json"
-        Cookie: "${residentCookie}"
-        X-XSRF-TOKEN: "${residentCsrf}"
-        Idempotency-Key: "data-api-v1-confirm-case"
-      body:
-        expectedCaseVersion: "${caseVersion}"
-        sourceRevision: "${sourceRevision}"
-    expected:
-      statusCodes: [200]
-      contentType: "application/json"
-      requiredFields: ["caseId", "caseVersion", "submissionStatus", "progress"]
-    timeoutMs: 5000
-    repeatable: true
-    extract:
-      caseVersion: "$.caseVersion"
-
-  - id: "read-case"
-    name: "Жилец читает карточку: пункты и прогресс раздельно"
-    method: "GET"
-    path: "/api/v1/cases/{caseId}"
-    role: "resident"
-    dependsOn: ["confirm-case"]
-    request:
-      path:
-        caseId: "${caseId}"
-      headers:
-        Cookie: "${residentCookie}"
-    expected:
-      statusCodes: [200]
-      contentType: "application/json"
-      requiredFields: ["caseId", "submissionStatus", "items", "progress", "receipt"]
-    timeoutMs: 5000
-    repeatable: true
-
-  - id: "dispatcher-queue"
-    name: "Диспетчер видит обращения, ожидающие приёма"
-    method: "GET"
-    path: "/api/v1/cases"
-    role: "dispatcher"
-    dependsOn: ["confirm-case"]
-    request:
-      query:
-        houseId: "${houseId}"
-        queueState: "NEEDS_ACCEPTANCE"
-      headers:
-        Cookie: "${dispatcherCookie}"
-    expected:
-      statusCodes: [200]
-      contentType: "application/json"
-      requiredFields: ["items", "nextCursor"]
-    timeoutMs: 5000
-    repeatable: true
-
-  - id: "accept-case"
-    name: "Диспетчер принимает обращение"
-    method: "POST"
-    path: "/api/v1/cases/{caseId}/acceptance"
-    role: "dispatcher"
-    dependsOn: ["dispatcher-queue"]
-    request:
-      path:
-        caseId: "${caseId}"
-      headers:
-        Content-Type: "application/json"
-        Cookie: "${dispatcherCookie}"
-        X-XSRF-TOKEN: "${dispatcherCsrf}"
-        Idempotency-Key: "data-api-v1-accept-case"
-      body:
-        expectedCaseVersion: "${caseVersion}"
-    expected:
-      statusCodes: [200]
-      contentType: "application/json"
-      requiredFields: ["caseId", "receipt"]
-    timeoutMs: 5000
-    repeatable: true
-
-  - id: "case-history"
-    name: "История обращения без текста и причин"
-    method: "GET"
-    path: "/api/v1/cases/{caseId}/history"
-    role: "dispatcher"
-    dependsOn: ["accept-case"]
-    request:
-      path:
-        caseId: "${caseId}"
-      query:
-        limit: 50
-      headers:
-        Cookie: "${dispatcherCookie}"
-    expected:
-      statusCodes: [200]
-      contentType: "application/json"
-      requiredFields: ["items", "nextCursor"]
-    timeoutMs: 5000
-    repeatable: true
+- id: csrf-token
+  name: API выдаёт CSRF-токен
+  method: GET
+  path: /api/v1/csrf
+  role: public
+  expected:
+    statusCodes:
+    - 200
+    contentType: application/json
+    bodySchema: {type: object, required: [headerName, token], properties: {headerName: {const: X-XSRF-TOKEN}, token: {
+          type: string, minLength: 1}}}
+  timeoutMs: 10000
+  repeatable: true
+- id: me-anonymous
+  name: Без входа доступ к данным закрыт
+  method: GET
+  path: /api/v1/me
+  role: public
+  expected:
+    statusCodes:
+    - 401
+    contentType: application/problem+json
+    bodySchema: {type: object, required: [code, requestId], properties: {code: {const: AUTH_REQUIRED}, requestId: {
+          type: string, minLength: 1}}}
+  timeoutMs: 10000
+  repeatable: true
+- id: cases-anonymous
+  name: Без входа доступ к данным закрыт
+  method: GET
+  path: /api/v1/cases
+  role: public
+  expected:
+    statusCodes:
+    - 401
+    contentType: application/problem+json
+    bodySchema: {type: object, required: [code, requestId], properties: {code: {const: AUTH_REQUIRED}, requestId: {
+          type: string, minLength: 1}}}
+  timeoutMs: 10000
+  repeatable: true
+- id: me-resident
+  name: Проверка входа роли resident
+  description: 'Перед запуском отдельно проверить дом: resident и dispatcher относятся к houseId, stranger не имеет
+    к нему доступа. Три userId различны.'
+  method: GET
+  path: /api/v1/me
+  role: resident
+  request:
+    headers:
+      Cookie: ${residentCookie}
+  expected:
+    statusCodes:
+    - 200
+    contentType: application/json
+    bodySchema: {type: object, required: [userId, memberships], properties: {userId: {type: string, format: uuid},
+        memberships: {type: array, minItems: 1, contains: {type: object, required: [role], properties: {role: {
+                const: RESIDENT}}}}}}
+  timeoutMs: 10000
+  repeatable: true
+  extract:
+    residentUserId: $.userId
+- id: csrf-resident
+  name: CSRF текущей сессии resident
+  method: GET
+  path: /api/v1/csrf
+  role: resident
+  dependsOn:
+  - me-resident
+  request:
+    headers:
+      Cookie: ${residentCookie}
+  expected:
+    statusCodes:
+    - 200
+    contentType: application/json
+    bodySchema: {type: object, required: [headerName, token], properties: {headerName: {const: X-XSRF-TOKEN}, token: {
+          type: string, minLength: 1}}}
+  timeoutMs: 10000
+  repeatable: true
+  extract:
+    residentCsrf: $.token
+- id: me-dispatcher
+  name: Проверка входа роли dispatcher
+  description: 'Перед запуском отдельно проверить дом: resident и dispatcher относятся к houseId, stranger не имеет
+    к нему доступа. Три userId различны.'
+  method: GET
+  path: /api/v1/me
+  role: dispatcher
+  request:
+    headers:
+      Cookie: ${dispatcherCookie}
+  expected:
+    statusCodes:
+    - 200
+    contentType: application/json
+    bodySchema: {type: object, required: [userId, memberships], properties: {userId: {type: string, format: uuid},
+        memberships: {type: array, minItems: 1, contains: {type: object, required: [role], properties: {role: {
+                const: DISPATCHER}}}}}}
+  timeoutMs: 10000
+  repeatable: true
+  extract:
+    dispatcherUserId: $.userId
+- id: csrf-dispatcher
+  name: CSRF текущей сессии dispatcher
+  method: GET
+  path: /api/v1/csrf
+  role: dispatcher
+  dependsOn:
+  - me-dispatcher
+  request:
+    headers:
+      Cookie: ${dispatcherCookie}
+  expected:
+    statusCodes:
+    - 200
+    contentType: application/json
+    bodySchema: {type: object, required: [headerName, token], properties: {headerName: {const: X-XSRF-TOKEN}, token: {
+          type: string, minLength: 1}}}
+  timeoutMs: 10000
+  repeatable: true
+  extract:
+    dispatcherCsrf: $.token
+- id: me-stranger
+  name: Проверка входа роли stranger
+  description: 'Перед запуском отдельно проверить дом: resident и dispatcher относятся к houseId, stranger не имеет
+    к нему доступа. Три userId различны.'
+  method: GET
+  path: /api/v1/me
+  role: stranger
+  request:
+    headers:
+      Cookie: ${strangerCookie}
+  expected:
+    statusCodes:
+    - 200
+    contentType: application/json
+    bodySchema: {type: object, required: [userId, memberships], properties: {userId: {type: string, format: uuid},
+        memberships: {type: array, minItems: 1, contains: {type: object, required: [role], properties: {role: {
+                const: RESIDENT}}}}}}
+  timeoutMs: 10000
+  repeatable: true
+  extract:
+    strangerUserId: $.userId
+- id: create-case
+  name: Жилец создаёт новый черновик
+  method: POST
+  path: /api/v1/cases
+  role: resident
+  dependsOn:
+  - csrf-resident
+  - csrf-dispatcher
+  - me-stranger
+  request:
+    headers:
+      Cookie: ${residentCookie}
+      Content-Type: application/json
+      X-XSRF-TOKEN: ${residentCsrf}
+      Idempotency-Key: data-api-${runId}-create-case
+    body:
+      houseId: ${houseId}
+      sourceText: 'Учебная проверка DATA-API: на третьем этаже не горит свет, входная дверь не закрывается.'
+  expected:
+    statusCodes:
+    - 201
+    contentType: application/json
+    bodySchema: {type: object, required: [submissionStatus, caseId, caseVersion, displayNumber], properties: {submissionStatus: {
+          const: DRAFT}, caseId: {type: string, format: uuid}, caseVersion: {type: integer, minimum: 1}, displayNumber: {
+          type: string, minLength: 1}}}
+  timeoutMs: 10000
+  repeatable: true
+  extract:
+    caseId: $.caseId
+    draftCaseVersion: $.caseVersion
+- id: patch-items
+  name: 'Автор задаёт отдельные пункты: свет и дверь'
+  description: Порядок пунктов сохраняется backend через position. bodySchema проверяет категории до извлечения
+    ID; при FAIL зависимые команды не выполнять.
+  method: PATCH
+  path: /api/v1/cases/{caseId}/items
+  role: resident
+  dependsOn:
+  - create-case
+  request:
+    path:
+      caseId: ${caseId}
+    headers:
+      Cookie: ${residentCookie}
+      Content-Type: application/json
+      X-XSRF-TOKEN: ${residentCsrf}
+      Idempotency-Key: data-api-${runId}-patch-items
+    body:
+      expectedCaseVersion: ${draftCaseVersion}
+      items:
+      - category: LIGHTING
+        location: Подъезд 1, этаж 3
+        symptom: Не горит свет
+      - category: ENTRANCE_DOOR
+        location: Подъезд 1, вход
+        symptom: Дверь не закрывается
+  expected:
+    statusCodes:
+    - 200
+    contentType: application/json
+    bodySchema: {type: object, required: [submissionStatus, caseVersion, sourceRevision, progress, items], properties: {
+        submissionStatus: {const: DRAFT}, caseVersion: {type: integer, minimum: 1}, sourceRevision: {type: integer,
+          minimum: 1}, progress: {const: {total: 2, confirmed: 0, withdrawn: 0, remaining: 2, allConfirmed: false}},
+        items: {type: array, minItems: 2, maxItems: 2, prefixItems: [{type: object, required: [category, workStatus,
+                observation, administrativeStatus, itemVersion, contentVersion, workRound, itemId], properties: {
+                category: {const: LIGHTING}, workStatus: {const: NOT_ASSIGNED}, observation: {const: NOT_RECEIVED},
+                administrativeStatus: {const: ACTIVE}, itemVersion: {type: integer, minimum: 1}, contentVersion: {
+                  type: integer, minimum: 1}, workRound: {type: integer, minimum: 0}, itemId: {type: string, format: uuid}}},
+            {type: object, required: [category, workStatus, observation, administrativeStatus, itemVersion, contentVersion,
+                workRound, itemId], properties: {category: {const: ENTRANCE_DOOR}, workStatus: {const: NOT_ASSIGNED},
+                observation: {const: NOT_RECEIVED}, administrativeStatus: {const: ACTIVE}, itemVersion: {type: integer,
+                  minimum: 1}, contentVersion: {type: integer, minimum: 1}, workRound: {type: integer, minimum: 0},
+                itemId: {type: string, format: uuid}}}]}}}
+  timeoutMs: 10000
+  repeatable: true
+  extract:
+    itemsCaseVersion: $.caseVersion
+    sourceRevision: $.sourceRevision
+    lightId: $.items[0].itemId
+    doorId: $.items[1].itemId
+- id: confirm-case
+  name: Автор подтверждает список, но ещё не ремонт
+  method: POST
+  path: /api/v1/cases/{caseId}/confirm
+  role: resident
+  dependsOn:
+  - patch-items
+  request:
+    path:
+      caseId: ${caseId}
+    headers:
+      Cookie: ${residentCookie}
+      Content-Type: application/json
+      X-XSRF-TOKEN: ${residentCsrf}
+      Idempotency-Key: data-api-${runId}-confirm-case
+    body:
+      expectedCaseVersion: ${itemsCaseVersion}
+      sourceRevision: ${sourceRevision}
+  expected:
+    statusCodes:
+    - 200
+    contentType: application/json
+    bodySchema: {type: object, required: [submissionStatus, caseVersion, sourceRevision, progress, items], properties: {
+        submissionStatus: {const: CONFIRMED}, caseVersion: {type: integer, minimum: 1}, sourceRevision: {type: integer,
+          minimum: 1}, progress: {const: {total: 2, confirmed: 0, withdrawn: 0, remaining: 2, allConfirmed: false}},
+        items: {type: array, minItems: 2, maxItems: 2, prefixItems: [{type: object, required: [category, workStatus,
+                observation, administrativeStatus, itemVersion, contentVersion, workRound, itemId], properties: {
+                category: {const: LIGHTING}, workStatus: {const: NOT_ASSIGNED}, observation: {const: NOT_RECEIVED},
+                administrativeStatus: {const: ACTIVE}, itemVersion: {type: integer, minimum: 1}, contentVersion: {
+                  type: integer, minimum: 1}, workRound: {type: integer, minimum: 0}, itemId: {type: string, format: uuid}}},
+            {type: object, required: [category, workStatus, observation, administrativeStatus, itemVersion, contentVersion,
+                workRound, itemId], properties: {category: {const: ENTRANCE_DOOR}, workStatus: {const: NOT_ASSIGNED},
+                observation: {const: NOT_RECEIVED}, administrativeStatus: {const: ACTIVE}, itemVersion: {type: integer,
+                  minimum: 1}, contentVersion: {type: integer, minimum: 1}, workRound: {type: integer, minimum: 0},
+                itemId: {type: string, format: uuid}}}]}}}
+  timeoutMs: 10000
+  repeatable: true
+  extract:
+    confirmedCaseVersion: $.caseVersion
+- id: read-case
+  name: Автор читает подтверждённый список с результатом 0 из 2
+  method: GET
+  path: /api/v1/cases/{caseId}
+  role: resident
+  dependsOn:
+  - confirm-case
+  request:
+    path:
+      caseId: ${caseId}
+    headers:
+      Cookie: ${residentCookie}
+  expected:
+    statusCodes:
+    - 200
+    contentType: application/json
+    requiredFields:
+    - receipt
+    bodySchema: {type: object, required: [submissionStatus, caseVersion, sourceRevision, progress, items], properties: {
+        submissionStatus: {const: CONFIRMED}, caseVersion: {type: integer, minimum: 1}, sourceRevision: {type: integer,
+          minimum: 1}, progress: {const: {total: 2, confirmed: 0, withdrawn: 0, remaining: 2, allConfirmed: false}},
+        items: {type: array, minItems: 2, maxItems: 2, prefixItems: [{type: object, required: [category, workStatus,
+                observation, administrativeStatus, itemVersion, contentVersion, workRound, itemId], properties: {
+                category: {const: LIGHTING}, workStatus: {const: NOT_ASSIGNED}, observation: {const: NOT_RECEIVED},
+                administrativeStatus: {const: ACTIVE}, itemVersion: {type: integer, minimum: 1}, contentVersion: {
+                  type: integer, minimum: 1}, workRound: {type: integer, minimum: 0}, itemId: {type: string, format: uuid}}},
+            {type: object, required: [category, workStatus, observation, administrativeStatus, itemVersion, contentVersion,
+                workRound, itemId], properties: {category: {const: ENTRANCE_DOOR}, workStatus: {const: NOT_ASSIGNED},
+                observation: {const: NOT_RECEIVED}, administrativeStatus: {const: ACTIVE}, itemVersion: {type: integer,
+                  minimum: 1}, contentVersion: {type: integer, minimum: 1}, workRound: {type: integer, minimum: 0},
+                itemId: {type: string, format: uuid}}}]}}}
+  timeoutMs: 10000
+  repeatable: true
+- id: dispatcher-queue
+  name: Диспетчер видит очередь приёма
+  description: Наличие именно caseId и пагинацию проверяет scripts/check_data_api.py. Непустой список сам по себе
+    не доказывает присутствие нужного обращения.
+  method: GET
+  path: /api/v1/cases
+  role: dispatcher
+  dependsOn:
+  - confirm-case
+  - me-dispatcher
+  request:
+    query:
+      houseId: ${houseId}
+      queueState: NEEDS_ACCEPTANCE
+      limit: 50
+    headers:
+      Cookie: ${dispatcherCookie}
+  expected:
+    statusCodes:
+    - 200
+    contentType: application/json
+    bodySchema: {type: object, required: [items, nextCursor], properties: {items: {type: array, minItems: 1}, nextCursor: {
+          type: [string, 'null']}}}
+  timeoutMs: 10000
+  repeatable: true
+- id: accept-case
+  name: Диспетчер принимает обращение, прогресс остаётся 0 из 2
+  method: POST
+  path: /api/v1/cases/{caseId}/acceptance
+  role: dispatcher
+  dependsOn:
+  - dispatcher-queue
+  - csrf-dispatcher
+  - read-case
+  request:
+    path:
+      caseId: ${caseId}
+    headers:
+      Cookie: ${dispatcherCookie}
+      Content-Type: application/json
+      X-XSRF-TOKEN: ${dispatcherCsrf}
+      Idempotency-Key: data-api-${runId}-accept-case
+    body:
+      expectedCaseVersion: ${confirmedCaseVersion}
+  expected:
+    statusCodes:
+    - 200
+    contentType: application/json
+    bodySchema: {type: object, required: [submissionStatus, caseVersion, sourceRevision, progress, items, receipt],
+      properties: {submissionStatus: {const: CONFIRMED}, caseVersion: {type: integer, minimum: 1}, sourceRevision: {
+          type: integer, minimum: 1}, progress: {const: {total: 2, confirmed: 0, withdrawn: 0, remaining: 2, allConfirmed: false}},
+        items: {type: array, minItems: 2, maxItems: 2, prefixItems: [{type: object, required: [category, workStatus,
+                observation, administrativeStatus, itemVersion, contentVersion, workRound, itemId], properties: {
+                category: {const: LIGHTING}, workStatus: {const: NOT_ASSIGNED}, observation: {const: NOT_RECEIVED},
+                administrativeStatus: {const: ACTIVE}, itemVersion: {type: integer, minimum: 1}, contentVersion: {
+                  type: integer, minimum: 1}, workRound: {type: integer, minimum: 0}, itemId: {type: string, format: uuid}}},
+            {type: object, required: [category, workStatus, observation, administrativeStatus, itemVersion, contentVersion,
+                workRound, itemId], properties: {category: {const: ENTRANCE_DOOR}, workStatus: {const: NOT_ASSIGNED},
+                observation: {const: NOT_RECEIVED}, administrativeStatus: {const: ACTIVE}, itemVersion: {type: integer,
+                  minimum: 1}, contentVersion: {type: integer, minimum: 1}, workRound: {type: integer, minimum: 0},
+                itemId: {type: string, format: uuid}}}]}, receipt: {type: object, required: [acceptedAt, acceptedBy],
+          properties: {acceptedAt: {type: string, format: date-time}, acceptedBy: {type: string, format: uuid}}}}}
+  timeoutMs: 10000
+  repeatable: true
+  extract:
+    acceptedCaseVersion: $.caseVersion
+    doorItemVersion: $.items[1].itemVersion
+- id: set-door-next-action
+  name: Для двери задан свой следующий шаг
+  method: PUT
+  path: /api/v1/items/{itemId}/next-action
+  role: dispatcher
+  dependsOn:
+  - accept-case
+  request:
+    path:
+      itemId: ${doorId}
+    headers:
+      Cookie: ${dispatcherCookie}
+      Content-Type: application/json
+      X-XSRF-TOKEN: ${dispatcherCsrf}
+      Idempotency-Key: data-api-${runId}-set-door-next-action
+    body:
+      expectedCaseVersion: ${acceptedCaseVersion}
+      expectedItemVersion: ${doorItemVersion}
+      text: Проверить доводчик двери и сообщить следующий результат
+      ownerId: ${dispatcherUserId}
+      updateDueAt: ${nextActionDueAt}
+  expected:
+    statusCodes:
+    - 200
+    contentType: application/json
+    bodySchema: {type: object, required: [submissionStatus, caseVersion, sourceRevision, progress, items], properties: {
+        submissionStatus: {const: CONFIRMED}, caseVersion: {type: integer, minimum: 1}, sourceRevision: {type: integer,
+          minimum: 1}, progress: {const: {total: 2, confirmed: 0, withdrawn: 0, remaining: 2, allConfirmed: false}},
+        items: {type: array, minItems: 2, maxItems: 2, prefixItems: [{type: object, required: [category, workStatus,
+                observation, administrativeStatus, itemVersion, contentVersion, workRound, itemId], properties: {
+                category: {const: LIGHTING}, workStatus: {const: NOT_ASSIGNED}, observation: {const: NOT_RECEIVED},
+                administrativeStatus: {const: ACTIVE}, itemVersion: {type: integer, minimum: 1}, contentVersion: {
+                  type: integer, minimum: 1}, workRound: {type: integer, minimum: 0}, itemId: {type: string, format: uuid}}},
+            {type: object, required: [category, workStatus, observation, administrativeStatus, itemVersion, contentVersion,
+                workRound, itemId, nextAction], properties: {category: {const: ENTRANCE_DOOR}, workStatus: {const: NOT_ASSIGNED},
+                observation: {const: NOT_RECEIVED}, administrativeStatus: {const: ACTIVE}, itemVersion: {type: integer,
+                  minimum: 1}, contentVersion: {type: integer, minimum: 1}, workRound: {type: integer, minimum: 0},
+                itemId: {type: string, format: uuid}, nextAction: {type: object, required: [text, ownerId, updateDueAt],
+                  properties: {text: {const: Проверить доводчик двери и сообщить следующий результат}, ownerId: {
+                      type: string, format: uuid}, updateDueAt: {type: string, format: date-time}}}}}]}}}
+  timeoutMs: 10000
+  repeatable: true
+  extract:
+    nextActionCaseVersion: $.caseVersion
+- id: save-light-report
+  name: Отчёт сохранён, ни один пункт автоматически не закрыт
+  method: POST
+  path: /api/v1/cases/{caseId}/reports
+  role: dispatcher
+  dependsOn:
+  - set-door-next-action
+  request:
+    path:
+      caseId: ${caseId}
+    headers:
+      Cookie: ${dispatcherCookie}
+      Content-Type: application/json
+      X-XSRF-TOKEN: ${dispatcherCsrf}
+      Idempotency-Key: data-api-${runId}-save-light-report
+    body:
+      expectedCaseVersion: ${nextActionCaseVersion}
+      reportText: Лампу на третьем этаже заменили
+      targetItemIds:
+      - ${lightId}
+      - ${doorId}
+  expected:
+    statusCodes:
+    - 201
+    contentType: application/json
+    bodySchema: {type: object, required: [report, case, analysis], properties: {report: {type: object, required: [
+            reportId, reportText, targetItemIds, links], properties: {reportId: {type: string, format: uuid}, reportText: {
+              const: Лампу на третьем этаже заменили}, targetItemIds: {type: array, minItems: 2, maxItems: 2, uniqueItems: true,
+              items: {type: string, format: uuid}}, links: {type: array, maxItems: 0}}}, case: {type: object, required: [
+            submissionStatus, caseVersion, sourceRevision, progress, items], properties: {submissionStatus: {const: CONFIRMED},
+            caseVersion: {type: integer, minimum: 1}, sourceRevision: {type: integer, minimum: 1}, progress: {const: {
+                total: 2, confirmed: 0, withdrawn: 0, remaining: 2, allConfirmed: false}}, items: {type: array,
+              minItems: 2, maxItems: 2, prefixItems: [{type: object, required: [category, workStatus, observation,
+                    administrativeStatus, itemVersion, contentVersion, workRound, itemId], properties: {category: {
+                      const: LIGHTING}, workStatus: {const: NOT_ASSIGNED}, observation: {const: NOT_RECEIVED}, administrativeStatus: {
+                      const: ACTIVE}, itemVersion: {type: integer, minimum: 1}, contentVersion: {type: integer,
+                      minimum: 1}, workRound: {type: integer, minimum: 0}, itemId: {type: string, format: uuid}}},
+                {type: object, required: [category, workStatus, observation, administrativeStatus, itemVersion,
+                    contentVersion, workRound, itemId, nextAction], properties: {category: {const: ENTRANCE_DOOR},
+                    workStatus: {const: NOT_ASSIGNED}, observation: {const: NOT_RECEIVED}, administrativeStatus: {
+                      const: ACTIVE}, itemVersion: {type: integer, minimum: 1}, contentVersion: {type: integer,
+                      minimum: 1}, workRound: {type: integer, minimum: 0}, itemId: {type: string, format: uuid},
+                    nextAction: {type: object, required: [text, ownerId, updateDueAt], properties: {text: {const: Проверить
+                            доводчик двери и сообщить следующий результат}, ownerId: {type: string, format: uuid},
+                        updateDueAt: {type: string, format: date-time}}}}}]}}}, analysis: {type: object, required: [
+            status], properties: {status: {enum: [QUEUED, MANUAL_REQUIRED]}}}}}
+  timeoutMs: 10000
+  repeatable: true
+  extract:
+    reportId: $.report.reportId
+    reportCaseVersion: $.case.caseVersion
+    reportLightItemVersion: $.case.items[0].itemVersion
+    reportLightContentVersion: $.case.items[0].contentVersion
+    reportLightWorkRound: $.case.items[0].workRound
+- id: read-saved-report
+  name: Автор читает отчёт, пока без подтверждённых связей
+  method: GET
+  path: /api/v1/reports/{reportId}
+  role: resident
+  dependsOn:
+  - save-light-report
+  request:
+    path:
+      reportId: ${reportId}
+    headers:
+      Cookie: ${residentCookie}
+  expected:
+    statusCodes:
+    - 200
+    contentType: application/json
+    bodySchema: {type: object, required: [reportId, reportText, targetItemIds, links], properties: {reportId: {
+          type: string, format: uuid}, reportText: {const: Лампу на третьем этаже заменили}, targetItemIds: {type: array,
+          minItems: 2, maxItems: 2, uniqueItems: true, items: {type: string, format: uuid}}, links: {type: array,
+          maxItems: 0}}}
+  timeoutMs: 10000
+  repeatable: true
+- id: link-report-to-light
+  name: Диспетчер явно связывает отчёт только со светом
+  method: POST
+  path: /api/v1/reports/{reportId}/links
+  role: dispatcher
+  dependsOn:
+  - read-saved-report
+  request:
+    path:
+      reportId: ${reportId}
+    headers:
+      Cookie: ${dispatcherCookie}
+      Content-Type: application/json
+      X-XSRF-TOKEN: ${dispatcherCsrf}
+      Idempotency-Key: data-api-${runId}-link-report-to-light
+    body:
+      expectedCaseVersion: ${reportCaseVersion}
+      links:
+      - itemId: ${lightId}
+        expectedItemVersion: ${reportLightItemVersion}
+        contentVersion: ${reportLightContentVersion}
+        expectedWorkRound: ${reportLightWorkRound}
+        workStatus: REPORTED_DONE
+  expected:
+    statusCodes:
+    - 200
+    contentType: application/json
+    bodySchema: {type: object, required: [submissionStatus, caseVersion, sourceRevision, progress, items], properties: {
+        submissionStatus: {const: CONFIRMED}, caseVersion: {type: integer, minimum: 1}, sourceRevision: {type: integer,
+          minimum: 1}, progress: {const: {total: 2, confirmed: 0, withdrawn: 0, remaining: 2, allConfirmed: false}},
+        items: {type: array, minItems: 2, maxItems: 2, prefixItems: [{type: object, required: [category, workStatus,
+                observation, administrativeStatus, itemVersion, contentVersion, workRound, itemId], properties: {
+                category: {const: LIGHTING}, workStatus: {const: REPORTED_DONE}, observation: {const: NOT_RECEIVED},
+                administrativeStatus: {const: ACTIVE}, itemVersion: {type: integer, minimum: 1}, contentVersion: {
+                  type: integer, minimum: 1}, workRound: {type: integer, minimum: 0}, itemId: {type: string, format: uuid}}},
+            {type: object, required: [category, workStatus, observation, administrativeStatus, itemVersion, contentVersion,
+                workRound, itemId, nextAction], properties: {category: {const: ENTRANCE_DOOR}, workStatus: {const: NOT_ASSIGNED},
+                observation: {const: NOT_RECEIVED}, administrativeStatus: {const: ACTIVE}, itemVersion: {type: integer,
+                  minimum: 1}, contentVersion: {type: integer, minimum: 1}, workRound: {type: integer, minimum: 0},
+                itemId: {type: string, format: uuid}, nextAction: {type: object, required: [text, ownerId, updateDueAt],
+                  properties: {text: {const: Проверить доводчик двери и сообщить следующий результат}, ownerId: {
+                      type: string, format: uuid}, updateDueAt: {type: string, format: date-time}}}}}]}}}
+  timeoutMs: 10000
+  repeatable: true
+  extract:
+    linkedCaseVersion: $.caseVersion
+    linkedLightItemVersion: $.items[0].itemVersion
+    linkedLightContentVersion: $.items[0].contentVersion
+    linkedLightWorkRound: $.items[0].workRound
+- id: observe-light-restored
+  name: 'Автор подтвердил свет: готов 1 пункт из 2'
+  method: POST
+  path: /api/v1/items/{itemId}/observations
+  role: resident
+  dependsOn:
+  - link-report-to-light
+  request:
+    path:
+      itemId: ${lightId}
+    headers:
+      Cookie: ${residentCookie}
+      Content-Type: application/json
+      X-XSRF-TOKEN: ${residentCsrf}
+      Idempotency-Key: data-api-${runId}-observe-light-restored
+    body:
+      expectedCaseVersion: ${linkedCaseVersion}
+      expectedItemVersion: ${linkedLightItemVersion}
+      contentVersion: ${linkedLightContentVersion}
+      workRound: ${linkedLightWorkRound}
+      value: RESTORED
+      source: AFTER_REPORT
+  expected:
+    statusCodes:
+    - 200
+    contentType: application/json
+    bodySchema: {type: object, required: [submissionStatus, caseVersion, sourceRevision, progress, items], properties: {
+        submissionStatus: {const: CONFIRMED}, caseVersion: {type: integer, minimum: 1}, sourceRevision: {type: integer,
+          minimum: 1}, progress: {const: {total: 2, confirmed: 1, withdrawn: 0, remaining: 1, allConfirmed: false}},
+        items: {type: array, minItems: 2, maxItems: 2, prefixItems: [{type: object, required: [category, workStatus,
+                observation, administrativeStatus, itemVersion, contentVersion, workRound, itemId], properties: {
+                category: {const: LIGHTING}, workStatus: {const: REPORTED_DONE}, observation: {const: RESTORED},
+                administrativeStatus: {const: ACTIVE}, itemVersion: {type: integer, minimum: 1}, contentVersion: {
+                  type: integer, minimum: 1}, workRound: {type: integer, minimum: 0}, itemId: {type: string, format: uuid}}},
+            {type: object, required: [category, workStatus, observation, administrativeStatus, itemVersion, contentVersion,
+                workRound, itemId, nextAction], properties: {category: {const: ENTRANCE_DOOR}, workStatus: {const: NOT_ASSIGNED},
+                observation: {const: NOT_RECEIVED}, administrativeStatus: {const: ACTIVE}, itemVersion: {type: integer,
+                  minimum: 1}, contentVersion: {type: integer, minimum: 1}, workRound: {type: integer, minimum: 0},
+                itemId: {type: string, format: uuid}, nextAction: {type: object, required: [text, ownerId, updateDueAt],
+                  properties: {text: {const: Проверить доводчик двери и сообщить следующий результат}, ownerId: {
+                      type: string, format: uuid}, updateDueAt: {type: string, format: date-time}}}}}]}}}
+  timeoutMs: 10000
+  repeatable: true
+- id: read-partial-result-resident
+  name: 'Результат сохранён: свет подтверждён, дверь остаётся'
+  method: GET
+  path: /api/v1/cases/{caseId}
+  role: resident
+  dependsOn:
+  - observe-light-restored
+  request:
+    path:
+      caseId: ${caseId}
+    headers:
+      Cookie: ${residentCookie}
+  expected:
+    statusCodes:
+    - 200
+    contentType: application/json
+    bodySchema: {type: object, required: [submissionStatus, caseVersion, sourceRevision, progress, items], properties: {
+        submissionStatus: {const: CONFIRMED}, caseVersion: {type: integer, minimum: 1}, sourceRevision: {type: integer,
+          minimum: 1}, progress: {const: {total: 2, confirmed: 1, withdrawn: 0, remaining: 1, allConfirmed: false}},
+        items: {type: array, minItems: 2, maxItems: 2, prefixItems: [{type: object, required: [category, workStatus,
+                observation, administrativeStatus, itemVersion, contentVersion, workRound, itemId], properties: {
+                category: {const: LIGHTING}, workStatus: {const: REPORTED_DONE}, observation: {const: RESTORED},
+                administrativeStatus: {const: ACTIVE}, itemVersion: {type: integer, minimum: 1}, contentVersion: {
+                  type: integer, minimum: 1}, workRound: {type: integer, minimum: 0}, itemId: {type: string, format: uuid}}},
+            {type: object, required: [category, workStatus, observation, administrativeStatus, itemVersion, contentVersion,
+                workRound, itemId, nextAction], properties: {category: {const: ENTRANCE_DOOR}, workStatus: {const: NOT_ASSIGNED},
+                observation: {const: NOT_RECEIVED}, administrativeStatus: {const: ACTIVE}, itemVersion: {type: integer,
+                  minimum: 1}, contentVersion: {type: integer, minimum: 1}, workRound: {type: integer, minimum: 0},
+                itemId: {type: string, format: uuid}, nextAction: {type: object, required: [text, ownerId, updateDueAt],
+                  properties: {text: {const: Проверить доводчик двери и сообщить следующий результат}, ownerId: {
+                      type: string, format: uuid}, updateDueAt: {type: string, format: date-time}}}}}]}}}
+  timeoutMs: 10000
+  repeatable: true
+- id: read-partial-result-dispatcher
+  name: 'Результат сохранён: свет подтверждён, дверь остаётся'
+  method: GET
+  path: /api/v1/cases/{caseId}
+  role: dispatcher
+  dependsOn:
+  - observe-light-restored
+  request:
+    path:
+      caseId: ${caseId}
+    headers:
+      Cookie: ${dispatcherCookie}
+  expected:
+    statusCodes:
+    - 200
+    contentType: application/json
+    bodySchema: {type: object, required: [submissionStatus, caseVersion, sourceRevision, progress, items], properties: {
+        submissionStatus: {const: CONFIRMED}, caseVersion: {type: integer, minimum: 1}, sourceRevision: {type: integer,
+          minimum: 1}, progress: {const: {total: 2, confirmed: 1, withdrawn: 0, remaining: 1, allConfirmed: false}},
+        items: {type: array, minItems: 2, maxItems: 2, prefixItems: [{type: object, required: [category, workStatus,
+                observation, administrativeStatus, itemVersion, contentVersion, workRound, itemId], properties: {
+                category: {const: LIGHTING}, workStatus: {const: REPORTED_DONE}, observation: {const: RESTORED},
+                administrativeStatus: {const: ACTIVE}, itemVersion: {type: integer, minimum: 1}, contentVersion: {
+                  type: integer, minimum: 1}, workRound: {type: integer, minimum: 0}, itemId: {type: string, format: uuid}}},
+            {type: object, required: [category, workStatus, observation, administrativeStatus, itemVersion, contentVersion,
+                workRound, itemId, nextAction], properties: {category: {const: ENTRANCE_DOOR}, workStatus: {const: NOT_ASSIGNED},
+                observation: {const: NOT_RECEIVED}, administrativeStatus: {const: ACTIVE}, itemVersion: {type: integer,
+                  minimum: 1}, contentVersion: {type: integer, minimum: 1}, workRound: {type: integer, minimum: 0},
+                itemId: {type: string, format: uuid}, nextAction: {type: object, required: [text, ownerId, updateDueAt],
+                  properties: {text: {const: Проверить доводчик двери и сообщить следующий результат}, ownerId: {
+                      type: string, format: uuid}, updateDueAt: {type: string, format: date-time}}}}}]}}}
+  timeoutMs: 10000
+  repeatable: true
+- id: stranger-read-case
+  name: Жилец другого дома не получает чужие данные
+  method: GET
+  path: /api/v1/cases/{caseId}
+  role: stranger
+  dependsOn:
+  - observe-light-restored
+  - me-stranger
+  request:
+    path:
+      caseId: ${caseId}
+    headers:
+      Cookie: ${strangerCookie}
+  expected:
+    statusCodes:
+    - 404
+    contentType: application/problem+json
+    bodySchema: {type: object, required: [code, requestId], properties: {code: {const: RESOURCE_NOT_FOUND}, requestId: {
+          type: string, minLength: 1}}}
+  timeoutMs: 10000
+  repeatable: true
+- id: stranger-read-report
+  name: Жилец другого дома не получает чужие данные
+  method: GET
+  path: /api/v1/reports/{reportId}
+  role: stranger
+  dependsOn:
+  - observe-light-restored
+  - me-stranger
+  request:
+    path:
+      reportId: ${reportId}
+    headers:
+      Cookie: ${strangerCookie}
+  expected:
+    statusCodes:
+    - 404
+    contentType: application/problem+json
+    bodySchema: {type: object, required: [code, requestId], properties: {code: {const: RESOURCE_NOT_FOUND}, requestId: {
+          type: string, minLength: 1}}}
+  timeoutMs: 10000
+  repeatable: true
+- id: case-history
+  name: История содержит все восемь действий без дублей
+  method: GET
+  path: /api/v1/cases/{caseId}/history
+  role: dispatcher
+  dependsOn:
+  - observe-light-restored
+  request:
+    path:
+      caseId: ${caseId}
+    query:
+      limit: 50
+    headers:
+      Cookie: ${dispatcherCookie}
+  expected:
+    statusCodes:
+    - 200
+    contentType: application/json
+    bodySchema: {type: object, required: [items, nextCursor], properties: {items: {type: array, minItems: 8, maxItems: 8,
+          prefixItems: [{type: object, required: [eventType], properties: {eventType: {const: CASE_CREATED}}}, {
+              type: object, required: [eventType], properties: {eventType: {const: CASE_ITEMS_PATCHED}}}, {type: object,
+              required: [eventType], properties: {eventType: {const: CASE_CONFIRMED}}}, {type: object, required: [
+                eventType], properties: {eventType: {const: CASE_ACCEPTED}}}, {type: object, required: [eventType],
+              properties: {eventType: {const: ITEM_NEXT_ACTION_SET}}}, {type: object, required: [eventType], properties: {
+                eventType: {const: REPORT_SAVED}}}, {type: object, required: [eventType], properties: {eventType: {
+                  const: REPORT_LINK_CONFIRMED}}}, {type: object, required: [eventType], properties: {eventType: {
+                  const: OBSERVATION_RECORDED}}}]}, nextCursor: {const: null}}}
+  timeoutMs: 10000
+  repeatable: true

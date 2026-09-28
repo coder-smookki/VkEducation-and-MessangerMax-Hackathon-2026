@@ -425,13 +425,16 @@ export interface components {
             createdAt: string;
         } & unknown;
         Problem: {
-            type: string;
+            /** @description Optional problem type. Some current domain errors omit this field. */
+            type?: string;
             title: string;
             status: number;
             code: string;
             requestId: string;
             currentCaseVersion?: number;
             currentItemVersion?: number;
+            /** @description Optional request path in domain errors; security-filter errors may omit it. */
+            instance?: string;
         };
         /** @description One house context of the current user. The role belongs to this house only and is never taken from the client. */
         Membership: {

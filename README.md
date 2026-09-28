@@ -4,7 +4,7 @@
 
 **Состояние на 28.09.2026, 02:22 МСК:** опубликован `894243ac5c137affd908bb2992c1ee9be1dd4bd7` из `dev`, PR #15 Семёна принят с сохранением прежних исправлений. **[CI 6/6 jobs](https://github.com/coder-smookki/VkEducation-and-MessangerMax-Hackathon-2026/actions/runs/36358029171), public smoke 16/16 PASS**. Java integration 238/238, UI 71/71, Python 195 PASS + отдельный Kafka replay PASS; Mini App 6/6 с анализом и 4 PASS + 2 analysis SKIP без него. Два изолированных DATA-API сценария: **81/81 PASS**; runner control tests 17/17.
 
-[Новый протокол выпуска](docs/qa/pr15-release-2026-09-28.md): все 3 обращения и аудит сохранены, backend обновлён после backup/restore-check, история коллег объединена, удалены 14 слитых веток. Остались dev/main. Реальный MAX/G2, независимая приёмка, DAPI-04/05 и финальная заморозка ещё открыты. [Текущее состояние](docs/memory/PROJECT_STATE.md), [журнал](docs/operations-log.md), [остаток QA](docs/qa/readiness-update-2026-09-28.md). Документационный HEAD может отличаться от SHA runtime. Внешний HTTPS проверен; серверный self-route/HTTP80/TLS-renewal требуют отдельной сетевой доработки.
+[Новый протокол выпуска](docs/qa/pr15-release-2026-09-28.md): все 3 обращения и аудит сохранены, backend обновлён после backup/restore-check, история коллег объединена, удалены 14 слитых веток. Остались dev/main. Реальный MAX/G2, независимая приёмка, DAPI-04/05 и финальная заморозка ещё открыты. [Текущее состояние](docs/memory/PROJECT_STATE.md), [журнал](docs/operations-log.md), [остаток QA](docs/qa/readiness-update-2026-09-28.md). Документационный HEAD может отличаться от SHA runtime. HTTPS self-route хоста и DNS-продление исправлены 28.09 ([протокол](docs/qa/tls-2026-09-28.md)); порт 80 по поручению пользователя не меняется.
 
 ## С чего начать
 
@@ -58,7 +58,7 @@ docker compose logs -f backend # журнал Java, в каждой строке
 docker compose down -v         # остановить и УДАЛИТЬ данные базы
 ```
 
-Боевой бот: [max.ru/t109_hakaton_max_bot](https://max.ru/t109_hakaton_max_bot) - `/start` показывает команды, предупреждение про 112 и кнопку открытия Mini App. Описание текущих 11 проверок API - [DATA-API.yaml](DATA-API.yaml). Это пока неполный комплект; расширение и сверка синтаксиса runner описаны в [плане Семёна](docs/team/semyon-data-api.md).
+Боевой бот: [max.ru/t109_hakaton_max_bot](https://max.ru/t109_hakaton_max_bot) - `/start` показывает команды, предупреждение про 112 и кнопку открытия Mini App. [DATA-API.yaml](DATA-API.yaml) содержит 24 проверки в официальном формате 1.0: от создания до отчёта, связи, авторского наблюдения и результата 1/2. Официальный валидатор даёт exit 0 с предупреждениями о внешних доступах/параметрах; отдельная локальная проверка нового комплекта - 145/145 PASS. [Команды проверки и новый вход оценщика](docs/qa/data-api.md): валидация файла не исполняет HTTP; самостоятельный доступ организаторов ещё нужно согласовать.
 
 ## Технологии и границы
 
