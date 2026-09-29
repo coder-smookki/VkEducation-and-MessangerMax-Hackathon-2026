@@ -119,6 +119,9 @@ test("account without membership needs an invitation", async ({ page }) => {
     page.getByRole("heading", { name: "Подключите свой дом" }),
   ).toBeVisible();
   await page.getByRole("link", { name: "Ввести код приглашения" }).click();
+  await expect(page.getByLabel("Код приглашения")).toHaveAccessibleDescription(
+    "Нужен отдельный код приглашения. ID дома сюда не подходит.",
+  );
   await page.getByLabel("Код приглашения").fill("bad-code");
   await page.route("**/memberships/claim", (r) =>
     problem(r, 403, "INVITATION_REJECTED"),

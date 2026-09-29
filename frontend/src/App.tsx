@@ -508,6 +508,7 @@ export function AccessPage() {
           <fieldset disabled={claim.locked}>
             <Field
               label="Код приглашения"
+              hint="Нужен отдельный код приглашения. ID дома сюда не подходит."
               value={code}
               onChange={(value) => {
                 setCode(value);
