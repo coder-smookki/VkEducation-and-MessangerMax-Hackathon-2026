@@ -1,5 +1,9 @@
 # Эксплуатационный журнал
 
+## 29.09, 23:12 МСК - приглашения и роли
+
+Web e4a7b3b опубликован отдельно, backend e569da6/ml/DB/env сохранены. CI6/6, публичные проверки16/16, реальный HTTPS bundle с подсказкой PASS. Первый check ролей FAIL/1; после прямого разрешения Кирилла назначен DISPATCHER А, повторный check PASS/0, независимая сверка прав PASS; private mapping удалён. Новые данные не удалялись. [Протокол/откат](qa/invitations-2026-09-29.md), [порядок доступа комиссии](roles-and-review-access.md).
+
 ## Выпуск и очистка 29.09
 
 Runtime e569da6, backend/web/ml no-cache + recreate. Полная очистка только koren по прямому запросу пользователя после backup/restore-check 20 таблиц/V11/аудита. Seed: 2 дома, 4 приглашения, users/roles/cases/audit/queues=0 сразу после операции. CI 6/6, внешний путь Wi-Fi 16/16, ops OK; первоначальный VPN-путь FAIL 1/16 сохранён. [Протокол и пределы](qa/reset-release-2026-09-29.md).
