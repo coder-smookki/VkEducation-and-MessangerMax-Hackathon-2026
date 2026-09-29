@@ -33,4 +33,8 @@ Java/HTTPS проверены на неизменном source digest `0da6aae70
 - Полный G2 с разными реальными MAX-аккаунтами, доставка уведомлений, клавиатура/фон и физические iOS/Android остаются отдельной приёмкой. Chromium не закрывает MANUAL/PARTIAL.
 - Самостоятельная выдача ролей комиссии из [плана](../roles-and-review-access.md) ещё не реализована. Этот UI/cookie выпуск её не добавляет.
 
-Публикация и итог `check_miniapp.py --analysis` фиксируются ниже после завершения соответствующих действий.
+## Итог и публикация
+
+Последний `check_miniapp.py --analysis`: **6/6 PASS**, 0 skipped/failed/flaky, cleanup PASS, sourceConsistent=true, 52 PNG. Digest фактических исходников `2504d994529d246cae58d9d49ff8d7ed2e32efb6ce30e71084a3363558df5f40`; результат `/Users/smokkkkiiii/Desktop/DomPulse-UI-Cookies-2026-09-30/miniapp-verified/`. Это финальный повтор после исправления специфичности цвета рамки. Продуктовые файлы сверены с архивом Git; единственное отличие Windows mvnw.cmd - эквивалентные CRLF/LF, не используемые Linux-сборкой.
+
+Коммит `530c36a99a8cc53c911ffc901338da78823daa44` отправлен в dev, CI [6/6 SUCCESS](https://github.com/coder-smookki/VkEducation-and-MessangerMax-Hackathon-2026/actions/runs/36634430683). Backend/web опубликованы из него; ml остаётся `e569da6`, db/ml не пересоздавались. Архив 604 файлов проверен по SHA-256. Backup восстановлен и проверен в отдельной БД до активации. Все прежние ID и количества сохранены: 2 дома, 3 пользователя, 3 Membership, 4 обращения, 32 записи аудита. `/actuator/info` соответствует 530c36a, health UP; публичная проверка **16/16 PASS**, HTTPS CSRF cookie Partitioned подтверждена. Порт 80 не менялся. Машинное доказательство: `/Users/smokkkkiiii/Desktop/DomPulse-UI-Cookies-2026-09-30/release.json`, публичная проверка `public-check.log`. Последующие изменения поиска/очереди описаны [отдельно](search-dispatcher-2026-09-30.md).

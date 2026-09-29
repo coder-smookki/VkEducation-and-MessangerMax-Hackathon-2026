@@ -516,6 +516,31 @@ test("real API: author → dispatcher → partial result → archive, with acces
       author.page.getByRole("link", { name: "Не горит свет", exact: true }),
     ).toBeVisible();
     await auditScreen(author.page, "resident-list-mobile");
+    await author.page
+      .getByRole("button", { name: "Поиск обращений", exact: true })
+      .click();
+    const authorSearch = author.page.getByRole("searchbox", {
+      name: "Поиск по загруженным обращениям",
+    });
+    await authorSearch.fill("ДВЕРЬ");
+    await expect(
+      author.page.getByRole("link", {
+        name: "Дверь не закрывается",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      author.page.getByRole("link", { name: "Не горит свет", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      author.page.getByText("Пункт 2 · Дверь", { exact: false }),
+    ).toBeVisible();
+    await auditScreen(author.page, "resident-search-secondary-mobile");
+    await authorSearch.fill("несуществующая проблема");
+    await expect(author.page.locator(".case-list article")).toHaveCount(0);
+    await authorSearch.fill(confirmed.displayNumber);
+    await expect(author.page.locator(".case-list article")).toHaveCount(1);
+    await authorSearch.fill("");
     await author.page.goto(`/#/cases/${initial.caseId}`);
     await dispatcher.page.setViewportSize({ width: 1440, height: 1000 });
     await dispatcher.page.goto("/");
@@ -525,8 +550,29 @@ test("real API: author → dispatcher → partial result → archive, with acces
         exact: true,
       }),
     ).toBeVisible();
+    await expect(
+      dispatcher.page.getByRole("link", {
+        name: "Новое обращение",
+        exact: true,
+      }),
+    ).toHaveCount(0);
+    await expect(
+      dispatcher.page
+        .locator(".app-nav")
+        .getByRole("link", { name: "Очередь", exact: true }),
+    ).toBeVisible();
+    await dispatcher.page
+      .getByRole("button", { name: "Ждут приёма", exact: true })
+      .click();
+    await expect(
+      dispatcher.page.getByRole("link", { name: "Не горит свет", exact: true }),
+    ).toBeVisible();
+    await expect(dispatcher.page).toHaveURL(/queue=NEEDS_ACCEPTANCE/);
     await appearance(dispatcher.page, "light");
     await auditScreen(dispatcher.page, "dispatcher-queue-desktop");
+    await dispatcher.page.setViewportSize({ width: 390, height: 844 });
+    await auditScreen(dispatcher.page, "dispatcher-workspace-mobile");
+    await dispatcher.page.setViewportSize({ width: 1440, height: 1000 });
     await dispatcher.page.goto(`/#/cases/${initial.caseId}`);
     await expect(
       dispatcher.page.getByRole("button", {
@@ -542,6 +588,19 @@ test("real API: author → dispatcher → partial result → archive, with acces
       dispatcher.page.getByText("Принято диспетчером", { exact: true }),
     ).toBeVisible();
     await auditScreen(dispatcher.page, "dispatcher-accepted-desktop");
+    await dispatcher.page.goto(
+      `/#/?house=${confirmed.houseId}&queue=NEEDS_ACTION`,
+    );
+    await expect(
+      dispatcher.page.getByRole("link", { name: "Не горит свет", exact: true }),
+    ).toBeVisible();
+    await dispatcher.page
+      .getByRole("button", { name: "Ждут приёма", exact: true })
+      .click();
+    await expect(
+      dispatcher.page.getByRole("link", { name: "Не горит свет", exact: true }),
+    ).toHaveCount(0);
+    await dispatcher.page.goto(`/#/cases/${initial.caseId}`);
     await dispatcher.page
       .locator(".item-card")
       .filter({ hasText: "Дверь не закрывается" })

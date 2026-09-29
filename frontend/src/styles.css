@@ -1636,6 +1636,25 @@ dialog .actions .button {
 .queue-table tbody tr:hover {
   background: var(--accent-soft);
 }
+.dispatcher-label {
+  margin-bottom: 6px;
+  color: var(--accent);
+}
+.dispatcher-filters {
+  min-width: 0;
+  width: 100%;
+}
+.dispatcher-filters .filter-chips {
+  flex-wrap: wrap;
+  overflow: visible;
+}
+.queue-hint {
+  margin: 8px 0 0;
+}
+.search-match {
+  margin-block: 4px;
+  color: var(--accent);
+}
 @media (min-width: 960px) {
   .authenticated {
     display: grid;
@@ -1738,6 +1757,7 @@ dialog .actions .button {
   }
   .queue-table {
     background: transparent;
+    border: 0;
   }
   .queue-table thead {
     position: absolute;

@@ -309,6 +309,7 @@ export function Icon({
     | "lock"
     | "search"
     | "file"
+    | "list"
     | "clock"
     | "pin";
 }) {
@@ -322,6 +323,7 @@ export function Icon({
     lock: "M7 10V7a5 5 0 0 1 10 0v3M5 10h14v11H5V10ZM12 14v3",
     search: "m16 16 5 5M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0",
     file: "M6 3h8l4 4v14H6V3ZM14 3v5h4M9 12h6M9 16h6",
+    list: "M9 6h12M9 12h12M9 18h12M3 6h.01M3 12h.01M3 18h.01",
     clock: "M12 8v5l3 2M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0",
     pin: "M19 10c0 5-7 12-7 12S5 15 5 10a7 7 0 0 1 14 0ZM15 10a3 3 0 1 1-6 0 3 3 0 0 1 6 0",
     arrow: "m9 5 7 7-7 7",

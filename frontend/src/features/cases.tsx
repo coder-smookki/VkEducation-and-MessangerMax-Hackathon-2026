@@ -56,6 +56,76 @@ function matchesFilter(value: Case, filter: ListFilter) {
   if (filter === "restored") return value.progress.allConfirmed;
   return true;
 }
+const queueFilters = [
+  { value: "", label: "Все", hint: "Все доступные обращения выбранного дома." },
+  {
+    value: "NEEDS_ACCEPTANCE",
+    label: "Ждут приёма",
+    hint: "Автор подтвердил список. Примите обращение, чтобы начать работу.",
+  },
+  {
+    value: "NEEDS_ACTION",
+    label: "Нужен шаг",
+    hint: "Нужен следующий шаг: он не назначен, срок прошёл или автор сообщил, что проблема осталась.",
+  },
+  {
+    value: "AWAITING_AUTHOR",
+    label: "Проверка автора",
+    hint: "О выполнении сообщили. Ожидается проверка результата автором.",
+  },
+  {
+    value: "ARCHIVED",
+    label: "Архив",
+    hint: "Обращения, в которых есть архивные пункты.",
+  },
+];
+function normalizeSearch(value: string) {
+  return value
+    .toLocaleLowerCase("ru")
+    .replaceAll("ё", "е")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+function caseSearchResult(value: Case, needle: string) {
+  const itemText = (item: Item) =>
+    [item.symptom, item.location, categories[item.category]].join(" ");
+  if (
+    needle &&
+    !normalizeSearch(
+      [
+        value.displayNumber,
+        value.sourceText,
+        ...value.items.map(itemText),
+      ].join(" "),
+    ).includes(needle)
+  )
+    return null;
+  const index = needle
+    ? value.items.findIndex((item) =>
+        normalizeSearch(itemText(item)).includes(needle),
+      )
+    : -1;
+  const item = value.items[index >= 0 ? index : 0];
+  const sourceMatch =
+    !!needle && index < 0 && normalizeSearch(value.sourceText).includes(needle);
+  // A secondary item/source match must be visible; the first item can be unrelated.
+  let source = value.sourceText;
+  if (sourceMatch) {
+    source = source.replace(/\s+/g, " ").trim();
+    const start = Math.max(0, normalizeSearch(source).indexOf(needle) - 45);
+    source = `${start ? "…" : ""}${source.slice(start, start + 160)}${source.length > start + 160 ? "…" : ""}`;
+  }
+  return {
+    value,
+    item,
+    index,
+    sourceMatch,
+    title:
+      sourceMatch || !item
+        ? source.slice(0, sourceMatch ? 165 : 100)
+        : item.symptom,
+  };
+}
 export function CasesPage() {
   const { house, me } = useSession();
   const [search, setSearch] = useSearchParams();
@@ -92,24 +162,11 @@ export function CasesPage() {
       </section>
     );
   const all = query.data?.pages.flatMap((page) => page.items) || [];
-  const needle = text.trim().toLocaleLowerCase("ru");
-  const visible = all.filter(
-    (value) =>
-      (dispatcher || matchesFilter(value, filter)) &&
-      (!needle ||
-        [
-          value.displayNumber,
-          value.sourceText,
-          ...value.items.flatMap((item) => [
-            item.symptom,
-            item.location,
-            categories[item.category],
-          ]),
-        ]
-          .join(" ")
-          .toLocaleLowerCase("ru")
-          .includes(needle)),
-  );
+  const needle = normalizeSearch(text);
+  const visible = all
+    .filter((value) => dispatcher || matchesFilter(value, filter))
+    .map((value) => caseSearchResult(value, needle))
+    .filter((result) => result !== null);
   function setText(value: string) {
     setLocal({ houseId: house!.houseId, text: value, filter });
   }
@@ -121,6 +178,9 @@ export function CasesPage() {
     <>
       <div className="page-heading case-list-heading">
         <div>
+          {dispatcher && (
+            <p className="eyebrow dispatcher-label">Рабочее место диспетчера</p>
+          )}
           <div className="case-list-title">
             <Title>{dispatcher ? "Очередь обращений" : "Мои обращения"}</Title>
             <button
@@ -152,10 +212,12 @@ export function CasesPage() {
           </div>
           <p className="page-description">{house.address}</p>
         </div>
-        <Link className="button primary" to={`/new?house=${house.houseId}`}>
-          <Icon name="plus" />
-          Новое обращение
-        </Link>
+        {!dispatcher && (
+          <Link className="button primary" to={`/new?house=${house.houseId}`}>
+            <Icon name="plus" />
+            Новое обращение
+          </Link>
+        )}
       </div>
       <div id="case-search" hidden={!searchOpen && !text}>
         <label className="case-search">
@@ -184,23 +246,29 @@ export function CasesPage() {
           </Select>
         )}
         {dispatcher ? (
-          <Select
-            label="Показывать"
-            value={queue}
-            onChange={(value) => {
-              setLocal({ houseId: house.houseId, text: "", filter: "all" });
-              setSearch({
-                house: house.houseId,
-                ...(value ? { queue: value } : {}),
-              });
-            }}
-          >
-            <option value="">Все доступные</option>
-            <option value="NEEDS_ACCEPTANCE">Ждут приёма</option>
-            <option value="NEEDS_ACTION">Нужен следующий шаг</option>
-            <option value="AWAITING_AUTHOR">Ждут наблюдения автора</option>
-            <option value="ARCHIVED">Есть архивные пункты</option>
-          </Select>
+          <div className="dispatcher-filters">
+            <div className="filter-chips" aria-label="Очередь диспетчера">
+              {queueFilters.map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  className={`filter-chip${queue === item.value ? " active" : ""}`}
+                  aria-pressed={queue === item.value}
+                  onClick={() =>
+                    setSearch({
+                      house: house.houseId,
+                      ...(item.value ? { queue: item.value } : {}),
+                    })
+                  }
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            <p className="caption queue-hint">
+              {queueFilters.find((item) => item.value === queue)?.hint}
+            </p>
+          </div>
         ) : (
           <div className="filter-chips" aria-label="Состояние обращений">
             {listFilters.map((item) => (
@@ -227,6 +295,11 @@ export function CasesPage() {
           </div>
         )}
       </section>
+      {!!needle && !query.isPending && !query.error && (
+        <p className="caption list-scope" role="status">
+          Найдено: {visible.length} из {all.length} загруженных обращений.
+        </p>
+      )}
       {query.hasNextPage && !query.error && (
         <p className="caption list-scope">
           Загружено {all.length} обращений. Поиск и счётчики относятся к
@@ -257,7 +330,9 @@ export function CasesPage() {
               <p>
                 {queue || needle || filter !== "all"
                   ? "Измените поиск или покажите все доступные обращения."
-                  : "Здесь будут ваши обращения и новости о работах по дому."}
+                  : dispatcher
+                    ? "Здесь появятся обращения жителей после подтверждения списка."
+                    : "Здесь будут ваши обращения и новости о работах по дому."}
               </p>
               {(queue || needle || filter !== "all") && (
                 <Button kind="secondary" onClick={resetFilters}>
@@ -276,14 +351,23 @@ export function CasesPage() {
                 </tr>
               </thead>
               <tbody>
-                {visible.map((value) => (
+                {visible.map(({ value, item, index, sourceMatch, title }) => (
                   <tr key={value.caseId}>
                     <td>
                       <p className="eyebrow">№{value.displayNumber}</p>
-                      <Link to={`/cases/${value.caseId}`}>
-                        {value.items[0]?.symptom ||
-                          value.sourceText.slice(0, 100)}
-                      </Link>
+                      <Link to={`/cases/${value.caseId}`}>{title}</Link>
+                      <SearchMatch
+                        item={item}
+                        index={index}
+                        sourceMatch={sourceMatch}
+                      />
+                      {item?.location && (
+                        <p className="caption">
+                          {item.location}
+                          {value.items.length > 1 &&
+                            ` · ещё пунктов: ${value.items.length - 1}`}
+                        </p>
+                      )}
                     </td>
                     <td data-label="Приём">
                       <CaseStatus value={value} />
@@ -301,13 +385,13 @@ export function CasesPage() {
             </table>
           ) : (
             <div className="case-list">
-              {visible.map((value) => (
+              {visible.map(({ value, item, index, sourceMatch, title }) => (
                 <article
                   className={`card case-row${value.submissionStatus === "DRAFT" ? " draft-card" : ""}`}
                   key={value.caseId}
                 >
                   <CategorySymbol
-                    category={value.items[0]?.category || "OTHER"}
+                    category={sourceMatch ? "OTHER" : item?.category || "OTHER"}
                   />
                   <div className="case-card-content">
                     <p className="eyebrow">
@@ -315,16 +399,18 @@ export function CasesPage() {
                     </p>
                     <div className="case-card-top">
                       <h2>
-                        <Link to={`/cases/${value.caseId}`}>
-                          {value.items[0]?.symptom ||
-                            value.sourceText.slice(0, 100)}
-                        </Link>
+                        <Link to={`/cases/${value.caseId}`}>{title}</Link>
                       </h2>
                       <CaseStatus value={value} />
                     </div>
-                    {value.items[0]?.location && (
+                    <SearchMatch
+                      item={item}
+                      index={index}
+                      sourceMatch={sourceMatch}
+                    />
+                    {item?.location && !sourceMatch && (
                       <p className="caption">
-                        {value.items[0].location}
+                        {item.location}
                         {value.items.length > 1 &&
                           ` · ещё пунктов: ${value.items.length - 1}`}
                       </p>
@@ -745,6 +831,30 @@ function History({ data, meId }: { data: Case; meId: string }) {
   );
 }
 
+function SearchMatch({
+  item,
+  index,
+  sourceMatch,
+}: {
+  item?: Item;
+  index: number;
+  sourceMatch: boolean;
+}) {
+  if (sourceMatch)
+    return <p className="caption search-match">Совпадение в исходном тексте</p>;
+  if (index < 0 || !item) return null;
+  return (
+    <p className="caption search-match">
+      Пункт {index + 1} · {categories[item.category]}
+      {item.administrativeStatus === "WITHDRAWN"
+        ? " · Отозван"
+        : item.administrativeStatus === "ARCHIVED"
+          ? " · В архиве"
+          : ""}
+    </p>
+  );
+}
+
 export function NewCasePage() {
   const { house } = useSession();
   const navigate = useNavigate();
@@ -768,6 +878,8 @@ export function NewCasePage() {
     );
   if (!house)
     return <Notice>Сначала подключите дом на странице доступа.</Notice>;
+  if (house.role === "DISPATCHER")
+    return <Navigate to={`/?house=${house.houseId}`} replace />;
   return (
     <>
       <Link className="back-link" to={`/?house=${house.houseId}`}>

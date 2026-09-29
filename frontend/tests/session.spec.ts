@@ -173,10 +173,11 @@ test("second house survives profile and access navigation and owns the new case"
 }) => {
   const state = await setup(page);
   const second = state.me.memberships[1];
+  second.role = "RESIDENT";
   await page.goto("/");
   await page.getByLabel("Дом", { exact: true }).selectOption(second.houseId);
   await expect(
-    page.getByRole("heading", { name: "Очередь обращений", exact: true }),
+    page.getByRole("heading", { name: "Мои обращения", exact: true }),
   ).toBeVisible();
   await page.getByRole("link", { name: "Профиль", exact: true }).click();
   await expect(
@@ -210,6 +211,42 @@ test("second house survives profile and access navigation and owns the new case"
   expect(state.houseReads.at(-1)).toBe(second.houseId);
 });
 
+test("dispatcher workspace survives navigation, prevents resident creation and switches with the house role", async ({
+  page,
+}) => {
+  const state = await setup(page);
+  const [resident, dispatcher] = state.me.memberships;
+  await page.goto(`/#/?house=${dispatcher.houseId}`);
+  await expect(
+    page.getByRole("heading", { name: "Очередь обращений", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Профиль", exact: true }).click();
+  await page.getByRole("link", { name: "Очередь", exact: true }).click();
+  await expect(page.getByLabel("Дом", { exact: true })).toHaveValue(
+    dispatcher.houseId,
+  );
+  await page.getByRole("link", { name: "Дома", exact: true }).click();
+  await page.getByRole("link", { name: "Очередь", exact: true }).click();
+  await expect(page.getByLabel("Дом", { exact: true })).toHaveValue(
+    dispatcher.houseId,
+  );
+  await page.goto(`/#/new?house=${dispatcher.houseId}`);
+  await expect(
+    page.getByRole("heading", { name: "Очередь обращений", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Текст обращения")).toHaveCount(0);
+  expect(state.commands).toHaveLength(0);
+  await page.getByLabel("Дом", { exact: true }).selectOption(resident.houseId);
+  await expect(
+    page.getByRole("link", { name: "Новое обращение", exact: true }),
+  ).toHaveAttribute("href", `#/new?house=${resident.houseId}`);
+  await expect(
+    page
+      .locator(".app-nav")
+      .getByRole("link", { name: "Обращения", exact: true }),
+  ).toBeVisible();
+});
+
 test("revoked selected membership cannot survive refresh or a forged house URL", async ({
   page,
 }) => {
@@ -219,7 +256,7 @@ test("revoked selected membership cannot survive refresh or a forged house URL",
   await expect(page.getByLabel("Дом", { exact: true })).toHaveValue(
     revoked.houseId,
   );
-  await page.getByRole("link", { name: "Доступ к дому", exact: true }).click();
+  await page.getByRole("link", { name: "Дома", exact: true }).click();
   state.me.memberships = [first];
   await page
     .getByRole("button", { name: "Обновить доступ", exact: true })

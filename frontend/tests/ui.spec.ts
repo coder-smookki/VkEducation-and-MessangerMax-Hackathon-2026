@@ -632,6 +632,17 @@ for (const width of [320, 1440]) {
       page.getByRole("table", { name: "Доступные обращения" }),
     ).toBeVisible();
     await expect(
+      page.getByRole("link", { name: "Новое обращение", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page
+        .locator(".app-nav")
+        .getByRole("link", { name: "Очередь", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Ждут приёма", exact: true }),
+    ).toBeVisible();
+    await expect(
       page.getByRole("link", { name: "Не горит свет", exact: true }),
     ).toBeVisible();
     await page.evaluate(() => {

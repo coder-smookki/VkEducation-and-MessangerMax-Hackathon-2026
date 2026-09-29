@@ -24,6 +24,80 @@ async function session(page: Page) {
   return me;
 }
 
+for (const dispatcher of [false, true]) {
+  test(`search exposes a matching second item and excludes unrelated cards: ${dispatcher ? "dispatcher" : "resident"}`, async ({
+    page,
+  }) => {
+    const me = await session(page);
+    if (dispatcher) {
+      me.memberships[0].role = "DISPATCHER";
+      await page.route("**/api/v1/me", (route) => route.fulfill({ json: me }));
+    }
+    const mixed = caseData(81, "Дверь не закрывается");
+    mixed.items.reverse();
+    mixed.items[0].symptom = "Дверь не закрывается";
+    mixed.items[1].symptom = "Не горит свет";
+    mixed.items[1].location = "Третий этаж";
+    mixed.sourceText = "Дверь сломана, свет не горит";
+    const draft = caseData(82, "Сломана дверь. Не горит свет в коридоре.");
+    draft.submissionStatus = "DRAFT";
+    draft.items = [];
+    const unrelated = caseData(83, "Течёт кран");
+    unrelated.items = [unrelated.items[0]];
+    unrelated.items[0].category = "OTHER";
+    unrelated.items[0].location = "Кухня";
+    await page.route("**/api/v1/cases?**", (route) =>
+      route.fulfill({
+        json: { items: [mixed, draft, unrelated], nextCursor: null },
+      }),
+    );
+    await page.goto("/");
+    await page
+      .getByRole("button", { name: "Поиск обращений", exact: true })
+      .click();
+    const search = page.getByRole("searchbox", {
+      name: "Поиск по загруженным обращениям",
+    });
+    const links = page.locator(
+      ".case-list h2 a, .queue-table td:first-child > a",
+    );
+    await search.fill("  СВЕТ  ");
+    await expect(links).toHaveCount(2);
+    await expect(
+      page.getByRole("link", { name: "Не горит свет", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Пункт 2 · Освещение", { exact: false }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Течёт кран", exact: true }),
+    ).toHaveCount(0);
+    await search.fill("третий");
+    await expect(links).toHaveCount(1);
+    await expect(
+      page.getByRole("link", { name: "Не горит свет", exact: true }),
+    ).toBeVisible();
+    await search.fill("ТЕСТ-82");
+    await expect(links).toHaveCount(1);
+    await search.fill("освещение");
+    await expect(links).toHaveCount(1);
+    await search.fill("течет");
+    await expect(links).toHaveCount(1);
+    await expect(
+      page.getByRole("link", { name: "Течёт кран", exact: true }),
+    ).toBeVisible();
+    await search.fill("несуществующая проблема");
+    await expect(links).toHaveCount(0);
+    await expect(
+      page.getByRole("heading", {
+        name: "Под этот фильтр пока ничего не подходит",
+      }),
+    ).toBeVisible();
+    await search.fill("");
+    await expect(links).toHaveCount(3);
+  });
+}
+
 test("step and navigation labels keep whole words at narrow widths and enlarged text", async ({
   page,
 }) => {

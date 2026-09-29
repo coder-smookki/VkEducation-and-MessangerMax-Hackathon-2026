@@ -273,12 +273,16 @@ export function App() {
                   : ""
               }
             >
-              <Icon name="home" />
-              <span>Обращения</span>
+              <Icon name={house?.role === "DISPATCHER" ? "list" : "home"} />
+              <span>
+                {house?.role === "DISPATCHER" ? "Очередь" : "Обращения"}
+              </span>
             </NavLink>
             <NavLink to="/access">
               <Icon name="lock" />
-              <span>Доступ к дому</span>
+              <span>
+                {house?.role === "DISPATCHER" ? "Дома" : "Доступ к дому"}
+              </span>
             </NavLink>
             <NavLink to="/profile">
               <Icon name="user" />
