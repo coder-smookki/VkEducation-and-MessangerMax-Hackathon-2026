@@ -1164,3 +1164,78 @@ test("profile action buttons keep a gap in both themes and with enlarged text", 
     }
   }
 });
+
+test("touch keyboard gives the bottom menu's space to the focused field", async ({
+  browser,
+}) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    isMobile: true,
+  });
+  const page = await context.newPage();
+  await setup(page);
+  await page.goto("/#/new");
+  const navigation = page.getByRole("navigation", {
+    name: "Основная навигация",
+  });
+  const field = page.getByRole("textbox").first();
+  await expect(navigation).toBeVisible();
+  await field.focus();
+  await expect(navigation).toBeHidden();
+  await expect(page.locator("html")).toHaveAttribute("data-keyboard", "open");
+  // The reserved space follows the hidden bar, so the last field is not padded away.
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue(
+          "--navigation-height",
+        ),
+      ),
+    )
+    .toBe("0px");
+  await field.blur();
+  await expect(navigation).toBeVisible();
+  await expect(page.locator("html")).not.toHaveAttribute("data-keyboard");
+  await context.close();
+});
+
+test("desktop pointer keeps the menu while typing", async ({ page }) => {
+  await setup(page);
+  await page.goto("/#/new");
+  await page.getByRole("textbox").first().focus();
+  await expect(
+    page.getByRole("navigation", { name: "Основная навигация" }),
+  ).toBeVisible();
+});
+
+test("readable text: captions stay at 14px and controls at 16px or more", async ({
+  page,
+}) => {
+  await setup(page);
+  for (const path of ["/", `/cases/${caseId}`, "/new", "/profile", "/access"]) {
+    await page.goto(`/#${path}`);
+    await expect(page.locator("main h1")).toBeVisible();
+    const tooSmall = await page.evaluate(() => {
+      const problems: string[] = [];
+      const visible = (e: Element) => {
+        const r = e.getBoundingClientRect();
+        return r.width > 0 && r.height > 0 && !e.closest("[aria-hidden=true]");
+      };
+      document.querySelectorAll("main *, nav *").forEach((e) => {
+        if (!visible(e)) return;
+        const size = parseFloat(getComputedStyle(e).fontSize);
+        const own = [...e.childNodes].some(
+          (n) => n.nodeType === 3 && n.textContent!.trim(),
+        );
+        const control = e.matches(
+          "button:not(.filter-chip), .button, input, textarea, select, label, legend, .back-link",
+        );
+        if ((own && size < 14) || (control && size < 16))
+          problems.push(`${e.tagName}.${e.className} ${size}px`);
+      });
+      return problems;
+    });
+    expect(tooSmall, path).toEqual([]);
+  }
+});

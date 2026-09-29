@@ -97,7 +97,7 @@
 .brand-splash-identity p {
   color: var(--muted, #5e6684);
   line-height: 1.4;
-  font-size: 0.9rem;
+  font-size: 1rem;
   margin: 0.65rem 0 0;
 }
 .brand-splash-progress {
@@ -106,7 +106,7 @@
 }
 .brand-splash-progress p {
   margin: 0.85rem 0 0;
-  font-size: 0.8rem;
+  font-size: 0.875rem;
   color: var(--muted, #5e6684);
 }
 .brand-loading-track {

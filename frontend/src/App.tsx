@@ -47,6 +47,22 @@ export type Session = {
   logout(): void;
 };
 export const useSession = () => useOutletContext<Session>();
+const NO_KEYBOARD = new Set([
+  "button",
+  "checkbox",
+  "color",
+  "file",
+  "radio",
+  "range",
+  "reset",
+  "submit",
+]);
+function typesText(element: Element | null): element is HTMLElement {
+  return (
+    element instanceof HTMLTextAreaElement ||
+    (element instanceof HTMLInputElement && !NO_KEYBOARD.has(element.type))
+  );
+}
 function DraftCopy() {
   const [text, setText] = useState<string>();
   return (
@@ -192,6 +208,36 @@ export function App() {
         : () => navigate(match ? `/cases/${match[1]}` : "/"),
     );
   }, [location.pathname, navigate]);
+  useEffect(() => {
+    // On touch screens the on-screen keyboard shrinks the visible area. The fixed
+    // bottom bar would then sit above the keyboard and hide the field or its action.
+    const coarse = matchMedia("(pointer: coarse)");
+    const root = document.documentElement;
+    let frame = 0;
+    const update = () => {
+      cancelAnimationFrame(frame);
+      // Wait for the next focus target: focusout fires before focusin.
+      frame = requestAnimationFrame(() => {
+        const open = coarse.matches && typesText(document.activeElement);
+        if (open) root.dataset.keyboard = "open";
+        else delete root.dataset.keyboard;
+      });
+    };
+    const reveal = () => {
+      const active = document.activeElement;
+      if (typesText(active)) active.scrollIntoView({ block: "nearest" });
+    };
+    document.addEventListener("focusin", update);
+    document.addEventListener("focusout", update);
+    window.visualViewport?.addEventListener("resize", reveal);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener("focusin", update);
+      document.removeEventListener("focusout", update);
+      window.visualViewport?.removeEventListener("resize", reveal);
+      delete root.dataset.keyboard;
+    };
+  }, []);
   useEffect(() => {
     const nav = navigation.current;
     if (!nav) return;

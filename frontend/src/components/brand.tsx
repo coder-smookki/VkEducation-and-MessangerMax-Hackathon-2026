@@ -1,7 +1,8 @@
 import { useId } from "react";
 import "./brand.css";
 
-/** Supplied brand artwork; application theme chooses the matching original. */
+/** Supplied brand artwork; application theme chooses the matching original.
+ * Lazy loading keeps the hidden variant (display:none) from being downloaded. */
 export function Brand({ className = "" }: { className?: string }) {
   return (
     <span className={`dompulse-brand ${className}`}>
@@ -11,6 +12,8 @@ export function Brand({ className = "" }: { className?: string }) {
         width="882"
         height="256"
         alt="ДомПульс"
+        loading="lazy"
+        decoding="async"
         draggable={false}
       />
       <img
@@ -19,6 +22,8 @@ export function Brand({ className = "" }: { className?: string }) {
         width="882"
         height="256"
         alt="ДомПульс"
+        loading="lazy"
+        decoding="async"
         draggable={false}
       />
     </span>

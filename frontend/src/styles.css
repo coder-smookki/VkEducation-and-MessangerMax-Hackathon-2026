@@ -124,7 +124,7 @@ p:last-child {
 }
 small,
 .caption {
-  font-size: 0.833rem;
+  font-size: 0.875rem;
   color: var(--muted);
 }
 .muted,
@@ -225,7 +225,8 @@ summary {
 }
 .app-nav a {
   display: flex;
-  flex: 1 0 min-content;
+  /* Equal thirds: labels fit on one line where space allows, wrap only when not. */
+  flex: 1 1 0;
   align-items: center;
   justify-content: center;
   flex-direction: column;
@@ -234,7 +235,7 @@ summary {
   min-height: 56px;
   border-radius: 12px;
   padding: 6px;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   font-weight: 500;
   text-align: center;
   text-decoration: none;
@@ -312,7 +313,7 @@ main:has(.report-layout) {
   margin-bottom: 0;
 }
 .eyebrow {
-  font-size: 0.78rem;
+  font-size: 0.875rem;
   color: var(--muted);
   font-weight: 500;
   margin-bottom: 6px;
@@ -328,7 +329,7 @@ main:has(.report-layout) {
   border-radius: 12px;
   border: 1px solid transparent;
   font-weight: 600;
-  font-size: 0.94rem;
+  font-size: 1rem;
   text-decoration: none;
   max-width: 100%;
   line-height: 1.4;
@@ -439,7 +440,7 @@ fieldset:disabled .button {
 .toast-content {
   flex: 1;
   min-width: 0;
-  font-size: 0.875rem;
+  font-size: 1rem;
 }
 .toast-content p {
   margin: 0 0 6px;
@@ -475,7 +476,8 @@ fieldset:disabled .button {
   display: inline-flex;
   align-items: center;
   min-height: 48px;
-  font-size: 0.89rem;
+  min-width: 44px;
+  font-size: 1rem;
 }
 .back-link {
   gap: 8px;
@@ -493,7 +495,7 @@ fieldset:disabled .button {
   margin: 16px 0;
   background: var(--accent-soft);
   border-radius: 12px;
-  font-size: 0.9rem;
+  font-size: 1rem;
 }
 .notice.warning {
   background: var(--warning-bg);
@@ -501,7 +503,7 @@ fieldset:disabled .button {
 }
 .warning-text {
   color: var(--warning);
-  font-size: 0.833rem;
+  font-size: 1rem;
 }
 .notice.success {
   background: var(--success-bg);
@@ -541,7 +543,7 @@ fieldset {
 .field label,
 legend {
   font-weight: 600;
-  font-size: 0.94rem;
+  font-size: 1rem;
 }
 input:not([type="checkbox"]):not([type="radio"]),
 textarea,
@@ -623,7 +625,7 @@ textarea[aria-invalid="true"] {
   display: block;
 }
 .choice strong {
-  font-size: 0.94rem;
+  font-size: 1rem;
 }
 .choice small {
   margin-top: 4px;
@@ -671,7 +673,7 @@ textarea[aria-invalid="true"] {
 }
 .progress-copy > span {
   flex: 1 1 170px;
-  font-size: 0.89rem;
+  font-size: 0.9375rem;
   color: var(--muted);
   max-width: 280px;
 }
@@ -696,7 +698,7 @@ textarea[aria-invalid="true"] {
   min-width: 0;
 }
 .item-heading .muted {
-  font-size: 0.89rem;
+  font-size: 1rem;
 }
 .category-symbol,
 .empty-symbol,
@@ -728,12 +730,12 @@ textarea[aria-invalid="true"] {
   border-top: 1px solid var(--border);
 }
 .facts dt {
-  font-size: 0.833rem;
+  font-size: 0.875rem;
   color: var(--muted);
 }
 .facts dd {
   margin: 0;
-  font-size: 0.89rem;
+  font-size: 1rem;
 }
 .next-action {
   padding: 16px 18px;
@@ -742,7 +744,7 @@ textarea[aria-invalid="true"] {
   margin: 20px 0;
 }
 .next-action-label {
-  font-size: 0.833rem;
+  font-size: 0.875rem;
   font-weight: 650;
 }
 .next-action .caption {
@@ -752,14 +754,14 @@ textarea[aria-invalid="true"] {
   text-align: center;
 }
 .item-more summary {
-  font-size: 0.833rem;
+  font-size: 1rem;
   color: var(--muted);
 }
 .item-more .minor-actions {
   justify-content: center;
 }
 .receipt-status {
-  font-size: 0.833rem;
+  font-size: 0.875rem;
   color: var(--muted);
   margin: 0;
 }
@@ -774,7 +776,7 @@ textarea[aria-invalid="true"] {
   flex: 1 1 160px;
 }
 .case-meta .button {
-  font-size: 0.833rem;
+  font-size: 1rem;
   min-height: 48px;
   padding: 10px 0;
 }
@@ -808,7 +810,7 @@ textarea[aria-invalid="true"] {
   margin-bottom: 6px;
 }
 .timeline strong {
-  font-size: 0.94rem;
+  font-size: 1rem;
 }
 .report-layout {
   display: grid;
@@ -824,7 +826,7 @@ textarea[aria-invalid="true"] {
   padding: 16px;
   background: var(--subtle);
   border-radius: 10px;
-  font-size: 0.9rem;
+  font-size: 1rem;
 }
 .evidence q {
   display: block;
@@ -956,7 +958,7 @@ dialog .actions .button {
 }
 .context-details summary {
   color: var(--muted);
-  font-size: 0.833rem;
+  font-size: 1rem;
 }
 .success-screen .notice {
   display: flex;
@@ -1001,7 +1003,7 @@ dialog .actions .button {
   display: block;
 }
 .membership-list strong {
-  font-size: 0.94rem;
+  font-size: 1rem;
   font-weight: 500;
 }
 .account-exit {
@@ -1025,7 +1027,7 @@ dialog .actions .button {
   flex: 1 0 auto;
   min-width: max-content;
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   overflow-wrap: normal;
 }
 .creation-steps li > span:last-child {
@@ -1082,7 +1084,7 @@ dialog .actions .button {
   border-bottom: 1px solid var(--border);
 }
 .queue-table th {
-  font-size: 0.833rem;
+  font-size: 0.875rem;
   color: var(--muted);
   font-weight: 500;
 }
@@ -1090,7 +1092,7 @@ dialog .actions .button {
   width: 34%;
 }
 .queue-table td {
-  font-size: 0.89rem;
+  font-size: 1rem;
 }
 .queue-table td a {
   display: inline-flex;
@@ -1216,7 +1218,7 @@ dialog .actions .button {
   border-radius: 20px;
   padding: 4px 9px;
   line-height: 1.3;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   font-weight: 600;
 }
 .status-badge.waiting {
@@ -1320,7 +1322,7 @@ dialog .actions .button {
   flex-shrink: 0;
 }
 .case-list-title + .page-description {
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   margin-top: 4px;
 }
 .case-list-heading {
@@ -1342,7 +1344,7 @@ dialog .actions .button {
   margin-left: auto;
   min-height: 44px;
   padding: 6px;
-  font-size: 0.8125rem;
+  font-size: 1rem;
 }
 .case-search {
   position: relative;
@@ -1379,12 +1381,11 @@ dialog .actions .button {
   border: 0;
 }
 .filter-chips {
+  /* Wrap instead of a silent horizontal scroll: every filter stays visible. */
   display: flex;
-  flex-wrap: nowrap;
-  overflow-x: auto;
+  flex-wrap: wrap;
   max-width: 100%;
   padding: 4px;
-  scrollbar-width: thin;
   gap: 8px;
   margin: 12px 0;
 }
@@ -1396,12 +1397,13 @@ dialog .actions .button {
   justify-content: center;
   gap: 5px;
   min-height: 44px;
+  min-width: 44px;
   border: 1px solid var(--border);
   border-radius: 24px;
   padding: 6px 9px;
   background: var(--surface);
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   font-weight: 500;
 }
 .filter-chip.active {
@@ -1419,7 +1421,7 @@ dialog .actions .button {
   border-radius: 50%;
   background: var(--subtle);
   color: var(--text);
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   font-variant-numeric: tabular-nums;
 }
 .filter-chip.active .filter-count {
@@ -1427,7 +1429,7 @@ dialog .actions .button {
   color: white;
 }
 .list-scope {
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   color: var(--muted);
   margin-bottom: 12px;
 }
@@ -1491,11 +1493,13 @@ dialog .actions .button {
   width: 100%;
   border: 1px solid var(--control-border);
   border-radius: 9px;
+  padding: 6px 12px;
+  text-align: center;
   text-decoration: none;
-  font-size: 0.875rem;
+  font-size: 1rem;
 }
 .case-card-top h2 {
-  font-size: 0.9375rem;
+  font-size: 1rem;
   line-height: 1.4;
   margin-bottom: 6px;
 }
@@ -1512,10 +1516,10 @@ dialog .actions .button {
   margin-top: 6px;
 }
 .case-row .eyebrow {
-  font-size: 0.75rem;
+  font-size: 0.875rem;
 }
 .case-row .caption {
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   margin-bottom: 0;
 }
 .case-row .row-arrow {
@@ -1533,7 +1537,7 @@ dialog .actions .button {
   display: flex;
   gap: 5px;
   flex-wrap: wrap;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
 }
 .list-progress strong {
   color: var(--text);
@@ -1589,10 +1593,10 @@ dialog .actions .button {
   display: none;
 }
 .creation-intro .muted {
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
 }
 .creation-intro .page-description {
-  font-size: 0.875rem;
+  font-size: 1rem;
 }
 .creation-intro h1 {
   font-size: 1.25rem;
@@ -1621,10 +1625,10 @@ dialog .actions .button {
 }
 .queue-table th {
   background: var(--accent-soft);
-  font-size: 0.75rem;
+  font-size: 0.875rem;
 }
 .queue-table td {
-  font-size: 0.8125rem;
+  font-size: 1rem;
 }
 .queue-table td a {
   color: var(--text);
@@ -1966,6 +1970,10 @@ dialog .actions .button {
   .nested-page .back-link {
     margin: 0 0 16px;
     padding-right: 50px;
+  }
+  /* Touch keyboard is open (App.tsx): give its space to the field, not the menu. */
+  :root[data-keyboard="open"] .app-nav {
+    display: none;
   }
 }
 
