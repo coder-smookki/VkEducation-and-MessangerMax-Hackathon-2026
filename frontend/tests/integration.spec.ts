@@ -438,13 +438,10 @@ test("real API: author → dispatcher → partial result → archive, with acces
         "В подъезде на третьем этаже не горит свет, и входная дверь не закрывается.",
       );
     await author.page
-      .getByRole("button", { name: "Сохранить текст", exact: true })
-      .click();
-    await expect(
-      author.page.getByText("Текст сохранён.", { exact: false }),
-    ).toBeVisible();
-    await author.page
-      .getByRole("link", { name: "К пунктам", exact: true })
+      .getByRole("button", {
+        name: "Сохранить текст и перейти к пунктам",
+        exact: true,
+      })
       .click();
     await expect(
       author.page.getByRole("heading", {
@@ -453,6 +450,17 @@ test("real API: author → dispatcher → partial result → archive, with acces
     ).toBeVisible();
     await auditScreen(author.page, "resident-items-empty-mobile");
     await author.page.getByLabel("Тема проблемы").selectOption("LIGHTING");
+    await author.page
+      .getByRole("button", { name: "Перейти к проверке", exact: true })
+      .click();
+    await expect(author.page.getByLabel("Где это произошло?")).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+    await expect(
+      author.page.getByLabel("Что не работает или мешает?"),
+    ).toHaveAttribute("aria-invalid", "true");
+    await auditScreen(author.page, "resident-items-validation-mobile");
     await author.page
       .getByLabel("Где это произошло?")
       .fill("Подъезд 1, этаж 3");
@@ -476,10 +484,7 @@ test("real API: author → dispatcher → partial result → archive, with acces
       .fill("Дверь не закрывается");
     await auditScreen(author.page, "resident-items-filled-mobile");
     await author.page
-      .getByRole("button", { name: "Сохранить список", exact: true })
-      .click();
-    await author.page
-      .getByRole("link", { name: "Проверить и подтвердить" })
+      .getByRole("button", { name: "Перейти к проверке", exact: true })
       .click();
     await expect(
       author.page.getByRole("heading", { name: "Всё верно?" }),

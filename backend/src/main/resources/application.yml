@@ -30,6 +30,9 @@ server:
         http-only: true
         secure: ${SESSION_COOKIE_SECURE:false}
         same-site: ${SESSION_COOKIE_SAMESITE:Lax}
+        # HTTPS MAX Web runs cross-site, where ordinary third-party cookies may be blocked.
+        # Partition the session by its embedding site; the CSRF cookie follows the same policy.
+        partitioned: ${server.servlet.session.cookie.secure}
   error:
     include-message: never
     include-stacktrace: never

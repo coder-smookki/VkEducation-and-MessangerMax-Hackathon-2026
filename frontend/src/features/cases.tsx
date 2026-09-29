@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import {
   Link,
+  Navigate,
   useNavigate,
   useParams,
   useSearchParams,
@@ -21,10 +22,13 @@ import {
   Loading,
   Notice,
   Select,
+  Toast,
   Title,
   formatDate,
   submit,
   validText,
+  textError,
+  focusInvalid,
 } from "../components/ui";
 import {
   categories,
@@ -746,6 +750,8 @@ export function NewCasePage() {
   const navigate = useNavigate();
   const saved = useCaseSaved();
   const [text, setText] = useState("");
+  const [attempted, setAttempted] = useState(false);
+  const [validationAttempt, setValidationAttempt] = useState(0);
   const create = useCommand<Case>((data) => {
     saved(data);
     setText("");
@@ -781,14 +787,21 @@ export function NewCasePage() {
       </div>
       <section className="card form-card">
         <form
-          onSubmit={(e) =>
-            submit(e, () =>
-              create.run("/cases", {
-                houseId: house.houseId,
-                sourceText: text,
-              }),
-            )
-          }
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            setAttempted(true);
+            if (!validText(text, 5000)) {
+              setValidationAttempt((value) => value + 1);
+              focusInvalid(e.currentTarget);
+              return;
+            }
+            setValidationAttempt(0);
+            create.run("/cases", {
+              houseId: house.houseId,
+              sourceText: text,
+            });
+          }}
         >
           <fieldset disabled={create.locked}>
             <Field
@@ -798,17 +811,27 @@ export function NewCasePage() {
               multiline
               limit={5000}
               hint="Укажите место: подъезд, этаж или участок дома."
+              error={
+                attempted
+                  ? textError(text, 5000, "Опишите, что произошло.")
+                  : undefined
+              }
             />
             <Notice>
               Можно писать как есть. Список проблем вы проверите перед
               отправкой.
             </Notice>
-            <Button type="submit" disabled={!validText(text, 5000)}>
-              Сохранить и перейти к пунктам
-            </Button>
+            <Button type="submit">Сохранить и перейти к пунктам</Button>
           </fieldset>
           <CommandError operation={create} />
           {create.isPending && <p role="status">Сохраняем черновик…</p>}
+          {validationAttempt > 0 && !validText(text, 5000) && (
+            <Toast key={validationAttempt} tone="error">
+              {text.trim()
+                ? "Сократите текст обращения до 5000 символов."
+                : "Заполните обязательные поля."}
+            </Toast>
+          )}
         </form>
       </section>
       <DirtyGuard dirty={!!text} pending={create.locked} />
@@ -891,6 +914,11 @@ function DraftForm({
   );
   const [dirty, setDirty] = useState(false);
   const [hasSaved, setHasSaved] = useState(false);
+  const [attempted, setAttempted] = useState(false);
+  const [needsItem, setNeedsItem] = useState(false);
+  const [validationAttempt, setValidationAttempt] = useState(0);
+  const advance = useRef(false);
+  const formRef = useRef<HTMLFormElement>(null);
   const operation = useCommand<Case>((result) => {
     saved(result);
     setBaseVersion(result.caseVersion);
@@ -917,6 +945,34 @@ function DraftForm({
     : items.every(
         (i) => validText(i.location, 300) && validText(i.symptom, 1000),
       );
+  function save(goNext: boolean) {
+    if (operation.locked || data.submissionStatus !== "DRAFT") return;
+    setAttempted(true);
+    setNeedsItem(goNext && !sourceOnly && items.length === 0);
+    if (!valid || (goNext && !sourceOnly && !items.length)) {
+      setValidationAttempt((value) => value + 1);
+      if (formRef.current) focusInvalid(formRef.current);
+      return;
+    }
+    setValidationAttempt(0);
+    advance.current = goNext;
+    setHasSaved(false);
+    operation.run(
+      `/cases/${data.caseId}/${sourceOnly ? "source" : "items"}`,
+      {
+        expectedCaseVersion: baseVersion,
+        ...(sourceOnly ? { sourceText: text } : { items }),
+      },
+      "PATCH",
+    );
+  }
+  if (hasSaved && !dirty && advance.current) {
+    return (
+      <Navigate
+        to={`/cases/${data.caseId}/${sourceOnly ? "edit" : "review"}`}
+      />
+    );
+  }
   return (
     <>
       <Link className="back-link" to={`/cases/${data.caseId}`}>
@@ -941,18 +997,9 @@ function DraftForm({
         </Notice>
       )}
       <form
-        onSubmit={(e) =>
-          submit(e, () =>
-            operation.run(
-              `/cases/${data.caseId}/${sourceOnly ? "source" : "items"}`,
-              {
-                expectedCaseVersion: baseVersion,
-                ...(sourceOnly ? { sourceText: text } : { items }),
-              },
-              "PATCH",
-            ),
-          )
-        }
+        ref={formRef}
+        noValidate
+        onSubmit={(e) => submit(e, () => save(true))}
       >
         <fieldset
           disabled={operation.locked || data.submissionStatus !== "DRAFT"}
@@ -969,6 +1016,11 @@ function DraftForm({
                 }}
                 multiline
                 limit={5000}
+                error={
+                  attempted
+                    ? textError(text, 5000, "Опишите, что произошло.")
+                    : undefined
+                }
               />
             </section>
           ) : (
@@ -1008,6 +1060,15 @@ function DraftForm({
                     onChange={(v) => update(index, { location: v })}
                     limit={300}
                     hint="Например: подъезд 1, третий этаж."
+                    error={
+                      attempted
+                        ? textError(
+                            item.location,
+                            300,
+                            "Укажите место: подъезд, этаж или участок дома.",
+                          )
+                        : undefined
+                    }
                   />
                   <Field
                     label="Что не работает или мешает?"
@@ -1015,6 +1076,15 @@ function DraftForm({
                     onChange={(v) => update(index, { symptom: v })}
                     multiline
                     limit={1000}
+                    error={
+                      attempted
+                        ? textError(
+                            item.symptom,
+                            1000,
+                            "Опишите, что не работает или мешает.",
+                          )
+                        : undefined
+                    }
                   />
                   <Button
                     kind="quiet"
@@ -1028,17 +1098,26 @@ function DraftForm({
                   </Button>
                 </section>
               ))}
-              <Button
-                kind="secondary"
-                disabled={items.length >= 20}
-                onClick={() => {
-                  setItems([...items, emptyItem()]);
-                  setDirty(true);
-                  setHasSaved(false);
-                }}
+              <div
+                className={needsItem ? "empty-items invalid" : "empty-items"}
+                data-validation-error={needsItem || undefined}
+                tabIndex={needsItem ? -1 : undefined}
               >
-                Добавить ещё проблему
-              </Button>
+                <Button
+                  kind="secondary"
+                  disabled={items.length >= 20}
+                  onClick={() => {
+                    setItems([...items, emptyItem()]);
+                    setDirty(true);
+                    setHasSaved(false);
+                    setNeedsItem(false);
+                  }}
+                >
+                  {items.length
+                    ? "Добавить ещё проблему"
+                    : "Добавить первую проблему"}
+                </Button>
+              </div>
               <p className="caption">
                 До 20 пунктов. Пустой список можно сохранить как черновик.
               </p>
@@ -1048,16 +1127,43 @@ function DraftForm({
             <Button
               type="submit"
               disabled={
-                !valid ||
-                (operation.error instanceof ApiError &&
-                  operation.error.status === 409)
+                operation.error instanceof ApiError &&
+                operation.error.status === 409
               }
+            >
+              {sourceOnly
+                ? "Сохранить текст и перейти к пунктам"
+                : "Перейти к проверке"}
+            </Button>
+            <Button
+              kind="secondary"
+              disabled={
+                operation.error instanceof ApiError &&
+                operation.error.status === 409
+              }
+              onClick={() => save(false)}
             >
               Сохранить {sourceOnly ? "текст" : "список"}
             </Button>
           </div>
         </fieldset>
         <CommandError operation={operation} />
+        {validationAttempt > 0 && (!valid || needsItem) && (
+          <Toast key={validationAttempt} tone="error">
+            {needsItem
+              ? "Добавьте хотя бы одну проблему и заполните её поля."
+              : (
+                    sourceOnly
+                      ? !text.trim()
+                      : items.some(
+                          (item) =>
+                            !item.location.trim() || !item.symptom.trim(),
+                        )
+                  )
+                ? "Заполните обязательные поля."
+                : "Сократите текст в выделенных полях до указанного лимита."}
+          </Toast>
+        )}
         {operation.isPending && <p role="status">Сохраняем…</p>}
         <ConflictReview
           error={operation.error}
@@ -1069,17 +1175,13 @@ function DraftForm({
           }}
         />
         {hasSaved && !dirty && (
-          <Notice tone="success">
+          <Toast>
             {sourceOnly
               ? "Текст сохранён."
-              : "Список сохранён. Теперь подтвердите его отдельно."}{" "}
-            <Link
-              className="text-link"
-              to={`/cases/${data.caseId}/${sourceOnly ? "edit" : "review"}`}
-            >
-              {sourceOnly ? "К пунктам" : "Проверить и подтвердить"}
-            </Link>
-          </Notice>
+              : items.length
+                ? "Список сохранён. Можно перейти к проверке."
+                : "Пустой черновик сохранён. Для отправки добавьте хотя бы одну проблему."}
+          </Toast>
         )}
       </form>
       <DirtyGuard dirty={dirty} pending={operation.locked} />

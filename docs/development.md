@@ -24,7 +24,7 @@ UI-набор включает `about.spec.ts`, `transport.spec.ts`, `case-flow.
 
 После истечения initData новый вход требует закрыть Mini App и снова открыть кнопкой бота. Reload страницы может оставить прежние данные запуска; увеличение серверного TTL и подмена подписи не являются исправлением. Скопировать несохранённый текст перед закрытием.
 
-Отдельный постоянный стенд поднимается по [release](release.md). Для локального HTTP задать `SESSION_COOKIE_SECURE=false` и `SESSION_COOKIE_SAMESITE=Lax` только в закрытом тестовом env. На HTTPS нужны `true` и `None`: MAX Web открывает Mini App в iframe с другого сайта. Эти настройки применяются и к session cookie, и к CSRF cookie; CSRF-заголовок всё равно обязателен. Не открывать Vite или профили demo/no-db на публичном домене.
+Отдельный постоянный стенд поднимается по [release](release.md). Для локального HTTP задать `SESSION_COOKIE_SECURE=false` и `SESSION_COOKIE_SAMESITE=Lax` только в закрытом тестовом env. На HTTPS нужны `true` и `None`: MAX Web открывает Mini App в iframe с другого сайта. На HTTPS обе cookies также получают `Partitioned` через штатную политику Tomcat: обычные third-party cookies могут быть заблокированы браузером. На HTTP с Secure=false Partitioned выключен. CSRF-заголовок и подписанный MAX-вход всё равно обязательны. [Проверка](qa/ui-cookies-2026-09-30.md). Не открывать Vite или профили demo/no-db на публичном домене.
 
 ## Исторический учебный Compose для smoke Java/Python
 

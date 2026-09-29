@@ -29,6 +29,7 @@ import {
   Icon,
   Notice,
   Title,
+  Toast,
   submit,
 } from "./components/ui";
 import {
@@ -486,16 +487,7 @@ export function AccessPage() {
         <p className="muted">
           Введите одноразовый код, который вам передал диспетчер дома.
         </p>
-        {success && (
-          <div className="access-success" role="status">
-            <StateIllustration kind="success" />
-            <h2>Дом успешно подключён!</h2>
-            <p>Доступ обновлён. Можно перейти к обращениям.</p>
-            <Link className="button primary" to="/">
-              Готово
-            </Link>
-          </div>
-        )}
+        {success && <Toast>Дом успешно подключён! Доступ обновлён.</Toast>}
         <form
           onSubmit={(e) =>
             submit(e, () => {
@@ -608,12 +600,14 @@ export function ProfilePage() {
           части экрана.
         </p>
       </section>
-      <Link className="button secondary" to="/logout">
-        Выйти
-      </Link>
-      <Link className="button secondary" to="/about">
-        О сервисе и удалении данных
-      </Link>
+      <div className="actions">
+        <Link className="button secondary" to="/logout">
+          Выйти
+        </Link>
+        <Link className="button secondary" to="/about">
+          О сервисе и удалении данных
+        </Link>
+      </div>
     </>
   );
 }

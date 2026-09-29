@@ -389,7 +389,80 @@ fieldset:disabled .button {
   flex-direction: column;
 }
 .form-actions {
-  margin-top: 24px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+.form-actions > .button {
+  flex: 1 1 220px;
+}
+.empty-items.invalid {
+  border: 1px solid var(--danger);
+  border-radius: 12px;
+  padding: 10px;
+}
+.toast {
+  position: fixed;
+  z-index: 30;
+  top: max(12px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(440px, calc(100% - 24px));
+  max-height: 40dvh;
+  overflow-y: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 8px 32px #0003;
+  animation: toast-enter 160ms var(--ease);
+}
+.toast.success {
+  border-color: var(--success);
+}
+.toast.success > .notice-icon {
+  color: var(--success);
+  background: var(--success-bg);
+}
+.toast.error {
+  border-color: var(--danger);
+}
+.toast.error > .notice-icon {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+.toast-content {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.875rem;
+}
+.toast-content p {
+  margin: 0 0 6px;
+}
+.toast-content p:last-child {
+  margin-bottom: 0;
+}
+.toast-close {
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  min-width: 44px;
+  min-height: 44px;
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  color: var(--muted);
+}
+.toast-close .icon {
+  transform: rotate(45deg);
+}
+.toast-close:hover {
+  background: var(--subtle);
 }
 .minor-actions {
   display: flex;
@@ -406,7 +479,7 @@ fieldset:disabled .button {
 }
 .back-link {
   gap: 8px;
-  margin: -12px 0 16px;
+  margin: -4px 0 8px;
   text-decoration: none;
 }
 .back-link > .icon {
@@ -463,7 +536,7 @@ fieldset {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 .field label,
 legend {
@@ -488,9 +561,11 @@ textarea {
   min-height: 150px;
   line-height: 1.5;
 }
-input[aria-invalid="true"],
+input:not([type="checkbox"]):not([type="radio"])[aria-invalid="true"],
 textarea[aria-invalid="true"] {
   border-color: var(--danger);
+  box-shadow: 0 0 0 1px var(--danger);
+  outline-color: var(--danger);
 }
 .field > .caption {
   display: flex;
@@ -639,7 +714,11 @@ textarea[aria-invalid="true"] {
   border-radius: 12px;
 }
 .facts {
-  margin: 20px 0;
+  margin: 0;
+}
+.facts > div:first-child {
+  border-top: 0;
+  padding-top: 0;
 }
 .facts > div {
   display: grid;
@@ -935,7 +1014,7 @@ dialog .actions .button {
   overflow-x: auto;
   list-style: none;
   padding: 2px 0;
-  margin: 0 0 24px;
+  margin: 0 0 16px;
   gap: 8px;
 }
 .creation-steps li {
@@ -1488,7 +1567,13 @@ dialog .actions .button {
   display: flex;
   gap: 12px;
   align-items: center;
-  margin-bottom: 18px;
+  margin-bottom: 12px;
+}
+.draft-item textarea {
+  min-height: 112px;
+}
+.draft-item .field:last-of-type {
+  margin-bottom: 4px;
 }
 .draft-item-heading h2 {
   margin: 0;
@@ -1751,6 +1836,14 @@ dialog .actions .button {
   }
   to {
     transform: translateY(0);
+  }
+}
+@keyframes toast-enter {
+  from {
+    transform: translate(-50%, 6px);
+  }
+  to {
+    transform: translate(-50%, 0);
   }
 }
 @keyframes dialog-enter {

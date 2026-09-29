@@ -1,5 +1,6 @@
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useBlocker, useBeforeUnload } from "react-router-dom";
 import { ApiError, errorMessage } from "../api/client";
 import { BrandSplash, StateIllustration } from "./brand";
@@ -56,6 +57,55 @@ export function Notice({
 export function Loading() {
   return <BrandSplash compact label="Загружаем данные…" />;
 }
+export function Toast({
+  children,
+  tone = "success",
+}: {
+  children: ReactNode;
+  tone?: "success" | "error" | "info";
+}) {
+  const [closed, setClosed] = useState(false);
+  const [paused, setPaused] = useState(false);
+  useEffect(() => {
+    if (tone === "error" || closed || paused) return;
+    const timer = window.setTimeout(() => setClosed(true), 8000);
+    return () => window.clearTimeout(timer);
+  }, [tone, closed, paused]);
+  if (closed) return null;
+  return createPortal(
+    <aside
+      className={`toast ${tone}`}
+      aria-label="Уведомление"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onFocus={() => setPaused(true)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget))
+          setPaused(false);
+      }}
+    >
+      <span className="notice-icon" aria-hidden="true">
+        <Icon name={tone === "success" ? "check" : "other"} />
+      </span>
+      <div
+        className="toast-content"
+        role={tone === "error" ? "alert" : "status"}
+        aria-atomic="true"
+      >
+        {children}
+      </div>
+      <button
+        type="button"
+        className="toast-close"
+        aria-label="Закрыть уведомление"
+        onClick={() => setClosed(true)}
+      >
+        <Icon name="plus" />
+      </button>
+    </aside>,
+    document.body,
+  );
+}
 export function ErrorPanel({
   error,
   retry,
@@ -87,9 +137,15 @@ export function CommandError({
   operation: { error: unknown; retry: () => void; isPending: boolean };
 }) {
   const error = operation.error;
+  if (!error) return null;
   return (
-    <>
-      <ErrorPanel error={error} />
+    <Toast tone="error">
+      <p>{errorMessage(error)}</p>
+      {error instanceof ApiError && error.requestId && (
+        <p className="caption">
+          Код запроса: <span className="identifier">{error.requestId}</span>
+        </p>
+      )}
       {error instanceof ApiError &&
         (error.unknownOutcome || error.status === 401) && (
           <Button
@@ -100,7 +156,7 @@ export function CommandError({
             Повторить ту же отправку
           </Button>
         )}
-    </>
+    </Toast>
   );
 }
 export function Field({
@@ -112,6 +168,7 @@ export function Field({
   hint,
   type = "text",
   required = true,
+  error,
 }: {
   label: string;
   value: string;
@@ -121,15 +178,17 @@ export function Field({
   hint?: string;
   type?: string;
   required?: boolean;
+  error?: string;
 }) {
   const id = useId();
   const length = Array.from(value).length;
-  const invalid = limit !== undefined && length > limit;
+  const tooLong = limit !== undefined && length > limit;
+  const invalid = !!error || tooLong;
   const props = {
     id,
     value,
     required,
-    "aria-describedby": `${id}-help`,
+    "aria-describedby": `${id}-help${error ? ` ${id}-error` : ""}`,
     "aria-invalid": invalid || undefined,
     onChange: (
       event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
@@ -143,12 +202,17 @@ export function Field({
       ) : (
         <input {...props} type={type} />
       )}
-      <div id={`${id}-help`} className={`caption ${invalid ? "invalid" : ""}`}>
+      {error && (
+        <span id={`${id}-error`} className="sr-only">
+          {error}
+        </span>
+      )}
+      <div id={`${id}-help`} className={`caption ${tooLong ? "invalid" : ""}`}>
         {hint && <span>{hint}</span>}
         {limit && (
           <span className="counter">
             {length} / {limit}
-            {invalid ? " - сократите текст" : ""}
+            {tooLong ? " - сократите текст" : ""}
           </span>
         )}
       </div>
@@ -178,6 +242,21 @@ export function Select({
 }
 export const validText = (text: string, max: number) =>
   text.trim().length > 0 && Array.from(text).length <= max;
+export const textError = (text: string, max: number, emptyMessage: string) =>
+  !text.trim()
+    ? emptyMessage
+    : Array.from(text).length > max
+      ? `Сократите текст до ${max} символов.`
+      : undefined;
+export function focusInvalid(form: HTMLFormElement) {
+  window.requestAnimationFrame(() => {
+    const field = form.querySelector<HTMLElement>(
+      '[aria-invalid="true"], [data-validation-error]',
+    );
+    field?.focus();
+    field?.scrollIntoView({ block: "center" });
+  });
+}
 export function submit(event: FormEvent, action: () => void) {
   event.preventDefault();
   action();

@@ -132,6 +132,20 @@ class ErrorResponsesHttpTest {
     }
 
     @Test
+    void csrfRejectionLogsPresenceAndRequestIdWithoutCredentials(CapturedOutput output) throws Exception {
+        String secret = "never-log-this-csrf-header";
+        var browser = new Browser();
+        var rejected = browser.send("POST", "/api/v1/auth/max", "{\"initData\":\"hidden-launch-data\"}",
+            Map.of("X-XSRF-TOKEN", secret));
+        assertProblem(rejected, 403, "CSRF_TOKEN_INVALID");
+        assertTrue(output.getAll().contains("CSRF rejected: reason="));
+        assertTrue(output.getAll().contains("csrfCookiePresent=false, csrfHeaderPresent=true"));
+        assertTrue(output.getAll().contains(rejected.requestId()));
+        assertFalse(output.getAll().contains(secret));
+        assertFalse(output.getAll().contains("hidden-launch-data"));
+    }
+
+    @Test
     void theRealCsrfHandshakeLogsInAndAMissingTokenIsNamedAsSuch() throws Exception {
         var withoutToken = new Browser();
         var refused = withoutToken.send("POST", "/api/v1/auth/max",

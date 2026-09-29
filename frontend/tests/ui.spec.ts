@@ -226,7 +226,7 @@ test("invitation with a lost response recovers access by reading me without repl
     }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Дом успешно подключён!" }),
+    page.getByRole("status").filter({ hasText: "Дом успешно подключён!" }),
   ).toHaveCount(0);
   expect(claims).toBe(1);
 });
@@ -248,18 +248,18 @@ test("invitation success is cleared before a different code can fail", async ({
     .getByRole("button", { name: "Подключить дом", exact: true })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Дом успешно подключён!" }),
+    page.getByRole("status").filter({ hasText: "Дом успешно подключён!" }),
   ).toBeVisible();
   await page.getByLabel("Код приглашения").fill("different-invalid-code");
   await expect(
-    page.getByRole("heading", { name: "Дом успешно подключён!" }),
+    page.getByRole("status").filter({ hasText: "Дом успешно подключён!" }),
   ).toHaveCount(0);
   await page
     .getByRole("button", { name: "Подключить дом", exact: true })
     .click();
   await expect(page.getByRole("alert")).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Дом успешно подключён!" }),
+    page.getByRole("status").filter({ hasText: "Дом успешно подключён!" }),
   ).toHaveCount(0);
 });
 
@@ -423,39 +423,124 @@ test("409 preserves edits and requires comparison before adopting a version", as
   });
 });
 
-test("Unicode limits and empty draft cannot be confirmed", async ({ page }) => {
+test("Unicode limits and empty drafts block progression with actionable errors", async ({
+  page,
+}) => {
   const { data } = await setup(page);
   data.submissionStatus = "DRAFT";
   data.items = [];
   await page.goto("/#/new");
-  await page.getByLabel("Текст обращения").fill("💡".repeat(5000));
+  const source = page.getByLabel("Текст обращения");
+  const next = page.getByRole("button", {
+    name: "Сохранить и перейти к пунктам",
+  });
+  await source.fill("💡".repeat(5000));
   await expect(page.getByText("5000 / 5000", { exact: true })).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Сохранить и перейти к пунктам" }),
-  ).toBeEnabled();
-  await page.getByLabel("Текст обращения").fill("💡".repeat(5001));
-  await expect(
-    page.getByRole("button", { name: "Сохранить и перейти к пунктам" }),
-  ).toBeDisabled();
-  await page.getByLabel("Текст обращения").fill("");
-  await page.getByRole("link", { name: "Обращения", exact: true }).click();
-  await page
-    .getByRole("link", { name: data.sourceText.slice(0, 100), exact: true })
-    .click();
-  await page
-    .getByRole("link", { name: "Проверить пункты", exact: true })
-    .click();
-  await page.getByRole("button", { name: "Удалить пункт 1" }).click();
-  await page.route("**/items", (route) =>
-    route.fulfill({ json: { ...data, caseVersion: 6 } }),
+  await source.fill("💡".repeat(5001));
+  await next.click();
+  await expect(source).toHaveAttribute("aria-invalid", "true");
+  await expect(source).toHaveAccessibleDescription(
+    /Сократите текст до 5000 символов/,
   );
+  await source.fill("");
+  await next.click();
+  await expect(source).toHaveAccessibleDescription(/Опишите, что произошло/);
+  await page.goto(`/#/cases/${caseId}/edit`);
+  await page.getByRole("button", { name: "Удалить пункт 1" }).click();
+  let saves = 0;
+  await page.route("**/items", (route) => {
+    saves++;
+    return route.fulfill({ json: { ...data, caseVersion: 6 } });
+  });
+  const review = page.getByRole("button", {
+    name: "Перейти к проверке",
+    exact: true,
+  });
+  await review.click();
+  await expect(page.getByRole("alert")).toHaveText(
+    /Добавьте хотя бы одну проблему/,
+  );
+  expect(saves).toBe(0);
   await page
     .getByRole("button", { name: "Сохранить список", exact: true })
     .click();
-  await page.getByRole("link", { name: "Проверить и подтвердить" }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Пустой черновик сохранён" }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/\/edit$/);
+  await expect(
+    page.getByRole("link", { name: "Проверить и подтвердить" }),
+  ).toHaveCount(0);
+  expect(saves).toBe(1);
+  await page.goto(`/#/cases/${caseId}/review`);
   await expect(
     page.getByRole("button", { name: "Подтвердить список", exact: true }),
   ).toBeDisabled();
+});
+
+test("each missing draft field is identified and progression waits for the saved server response", async ({
+  page,
+}) => {
+  const { data } = await setup(page);
+  data.submissionStatus = "DRAFT";
+  data.items = [];
+  let saves = 0;
+  await page.route("**/items", (route) => {
+    saves++;
+    const body = route.request().postDataJSON();
+    data.items = body.items.map((item: object) => ({
+      ...caseFixture.items[0],
+      ...item,
+    }));
+    data.caseVersion++;
+    return route.fulfill({ json: data });
+  });
+  await page.goto(`/#/cases/${caseId}/edit`);
+  const next = page.getByRole("button", {
+    name: "Перейти к проверке",
+    exact: true,
+  });
+  const place = page.getByLabel("Где это произошло?");
+  const symptom = page.getByLabel("Что не работает или мешает?");
+  await next.click();
+  await expect(place).toBeFocused();
+  await expect(place).toHaveAttribute("aria-invalid", "true");
+  await expect(symptom).toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByRole("alert")).toHaveText(
+    "Заполните обязательные поля.",
+  );
+  await expect(page.locator(".field-error")).toHaveCount(0);
+  await expect(place).toHaveCSS(
+    "border-color",
+    await place.evaluate((field) => getComputedStyle(field).outlineColor),
+  );
+  const border = await symptom.evaluate(
+    (field) => getComputedStyle(field).borderColor,
+  );
+  expect(border).not.toBe(
+    await symptom.evaluate((field) => getComputedStyle(field).backgroundColor),
+  );
+  await page.getByRole("button", { name: "Закрыть уведомление" }).click();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByText("0 / 300", { exact: true })).toBeVisible();
+  await expect(page.getByText("0 / 1000", { exact: true })).toBeVisible();
+  expect(saves).toBe(0);
+  await place.fill("Подъезд 1, третий этаж");
+  await next.click();
+  await expect(symptom).toBeFocused();
+  await expect(page.getByRole("alert")).toHaveText(
+    "Заполните обязательные поля.",
+  );
+  await expect(place).not.toHaveAttribute("aria-invalid", "true");
+  expect(saves).toBe(0);
+  await symptom.fill("Не горит свет");
+  await next.click();
+  await expect(page.getByRole("heading", { name: "Всё верно?" })).toBeVisible();
+  expect(saves).toBe(1);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Подтвердить список", exact: true }),
+  ).toBeEnabled();
 });
 
 test("no automatic report links and dispatcher cannot observe for author", async ({
@@ -976,5 +1061,95 @@ test("redesigned screen families remain accessible in both themes", async ({
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto(`/?screen=${name}#${path}`);
     await capture(`${name}-desktop-dark`);
+  }
+});
+
+test("invitation success floats without stretching the form and disappears; errors remain dismissible", async ({
+  page,
+}) => {
+  const { me } = await setup(page);
+  await page.clock.install();
+  let good = true;
+  await page.route("**/memberships/claim", (route) =>
+    good
+      ? route.fulfill({ json: me })
+      : problem(route, 403, "INVITATION_REJECTED"),
+  );
+  await page.goto("/#/access");
+  const form = page
+    .getByLabel("Код приглашения")
+    .locator("xpath=ancestor::form");
+  const before = await form.boundingBox();
+  await page.getByLabel("Код приглашения").fill("valid-code");
+  await page
+    .getByRole("button", { name: "Подключить дом", exact: true })
+    .click();
+  const notice = page
+    .getByRole("status")
+    .filter({ hasText: "Дом успешно подключён" });
+  await expect(notice).toBeVisible();
+  expect((await form.boundingBox())!.height).toBe(before!.height);
+  expect(
+    await notice.locator("..").evaluate((el) => getComputedStyle(el).position),
+  ).toBe("fixed");
+  await page.clock.runFor(8100);
+  await expect(notice).toHaveCount(0);
+  good = false;
+  await page.getByLabel("Код приглашения").fill("bad-code");
+  await page
+    .getByRole("button", { name: "Подключить дом", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toBeVisible();
+  await page.clock.runFor(12000);
+  await expect(page.getByRole("alert")).toBeVisible();
+  await page.getByRole("button", { name: "Закрыть уведомление" }).click();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByLabel("Код приглашения")).toHaveValue("bad-code");
+});
+
+test("profile action buttons keep a gap in both themes and with enlarged text", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.goto("/#/profile");
+  for (const width of [320, 390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const theme of ["light", "dark"]) {
+      for (const size of [16, 32]) {
+        await page.evaluate(
+          ({ theme, size }) => {
+            document.documentElement.dataset.theme = theme;
+            document.documentElement.style.fontSize = `${size}px`;
+          },
+          { theme, size },
+        );
+        const exit = await page
+          .getByRole("link", { name: "Выйти", exact: true })
+          .boundingBox();
+        const about = await page
+          .getByRole("link", {
+            name: "О сервисе и удалении данных",
+            exact: true,
+          })
+          .boundingBox();
+        const gap = Math.max(
+          about!.x - exit!.x - exit!.width,
+          exit!.x - about!.x - about!.width,
+          about!.y - exit!.y - exit!.height,
+          exit!.y - about!.y - about!.height,
+        );
+        expect(
+          gap,
+          `${theme} ${width}px ${size}px text`,
+        ).toBeGreaterThanOrEqual(10);
+        expect(
+          await page.evaluate(
+            () =>
+              document.documentElement.scrollWidth -
+              document.documentElement.clientWidth,
+          ),
+        ).toBeLessThanOrEqual(1);
+      }
+    }
   }
 });

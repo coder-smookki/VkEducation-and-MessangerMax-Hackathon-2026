@@ -1,8 +1,14 @@
 package ru.koren.config;
 
 import jakarta.servlet.DispatcherType;
+import java.util.Arrays;
+import org.apache.tomcat.util.http.Rfc6265CookieProcessor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.tomcat.servlet.TomcatServletWebServerFactory;
+import org.springframework.boot.web.server.WebServerFactoryCustomizer;
 import org.springframework.core.env.Environment;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
@@ -18,6 +24,21 @@ import org.springframework.security.web.csrf.CsrfException;
 /** Closed by default. A route opens only together with authentication and object authorization. */
 @Configuration
 public class SecurityConfig {
+    private static final Logger LOG = LoggerFactory.getLogger(SecurityConfig.class);
+
+    @Bean
+    WebServerFactoryCustomizer<TomcatServletWebServerFactory> partitionedCookies(Environment environment) {
+        boolean partitioned = environment.getProperty("server.servlet.session.cookie.partitioned", Boolean.class, false);
+        // Security 7.1.1 drops ResponseCookie.partitioned when mapping to Servlet Cookie.
+        // Tomcat's native policy preserves it for both session and CSRF cookies, including deletion.
+        return factory -> factory.addContextCustomizers(context -> {
+            if (context.getCookieProcessor() instanceof Rfc6265CookieProcessor processor) {
+                processor.setPartitioned(partitioned);
+            } else {
+                throw new IllegalStateException("The session/CSRF cookie policy requires Tomcat's RFC6265 processor");
+            }
+        });
+    }
 
     @Bean
     SecurityContextRepository securityContextRepository() {
@@ -36,8 +57,12 @@ public class SecurityConfig {
         // otherwise the browser drops the CSRF cookie before the signed login reaches us.
         String sameSite = environment.getProperty("server.servlet.session.cookie.same-site", "Lax");
         boolean secure = environment.getProperty("server.servlet.session.cookie.secure", Boolean.class, false);
+        boolean partitioned = environment.getProperty("server.servlet.session.cookie.partitioned", Boolean.class, false);
         if ("None".equalsIgnoreCase(sameSite) && !secure) {
             throw new IllegalStateException("SameSite=None requires Secure cookies and HTTPS");
+        }
+        if (partitioned && !secure) {
+            throw new IllegalStateException("Partitioned cookies require Secure cookies and HTTPS");
         }
         CookieCsrfTokenRepository csrfTokens = CookieCsrfTokenRepository.withHttpOnlyFalse();
         csrfTokens.setCookieCustomizer(cookie -> cookie.sameSite(sameSite).secure(secure));
@@ -51,6 +76,11 @@ public class SecurityConfig {
             // Object-level refusals are CaseException 403s with their own codes and never come this way.
             .accessDeniedHandler((request, response, e) -> {
                 if (e instanceof CsrfException) {
+                    // Log only presence, never cookie/header values, session IDs or MAX launch data.
+                    boolean hasCookie = request.getCookies() != null && Arrays.stream(request.getCookies())
+                        .anyMatch(cookie -> "XSRF-TOKEN".equals(cookie.getName()));
+                    LOG.warn("CSRF rejected: reason={}, csrfCookiePresent={}, csrfHeaderPresent={}",
+                        e.getClass().getSimpleName(), hasCookie, request.getHeader("X-XSRF-TOKEN") != null);
                     ApiErrorController.write(request, response, HttpStatus.FORBIDDEN, "CSRF_TOKEN_INVALID",
                         "Проверка запроса не пройдена, обновите страницу");
                 } else {
