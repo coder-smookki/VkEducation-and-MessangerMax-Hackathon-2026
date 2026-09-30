@@ -48,7 +48,7 @@ Production-сборка, Chromium 390×844 touch, CPU ×4, сеть 150 мс / 1
 
 ## NOT VERIFIED
 
-- В первом окружении Семёна Docker не было. Кирилл выполнил два изолированных `check_miniapp.py --analysis`: 6/6, cleanup/sourceConsistent PASS; после дополнительного исправления медленного нажатия выполняется финальный прогон на неизменной отдельной копии. Окончательный результат и публикация фиксируются ниже.
+- В первом окружении Семёна Docker не было. Кирилл выполнил два изолированных `check_miniapp.py --analysis`: 6/6, cleanup/sourceConsistent PASS; после дополнительного исправления медленного нажатия выполняется финальный прогон на неизменной отдельной копии завершён 6/6, cleanup/sourceConsistent PASS. Окончательный результат и публикация фиксируются ниже.
 - Физический MAX на iOS/Android, настоящая экранная клавиатура, поворот и фон → возврат: только эмуляция Chromium touch. WebKit не запускался.
 - Методы MAX Bridge сверх уже используемых не добавлялись; актуальная документация Bridge в этой проверке не открывалась.
 - Screen reader, полный G2 с тремя аккаунтами, доставка уведомлений.
@@ -65,6 +65,16 @@ Production-сборка, Chromium 390×844 touch, CPU ×4, сеть 150 мс / 1
 
 Итог текущего UI: **82/82 PASS**, без skips/flaky, 96,8 с. api:check, format:check, build и diff --check PASS. Новые проверки оценивают собственное переполнение nav, полную видимость/нажатие всех ссылок в обеих ролях при 320/360/390 px и 16/36 px тексте, ввод/возврат viewport без blur и медленное нажатие. API fixtures относятся только к этим UI-проверкам; сквозной полигон работает с настоящими Java/PostgreSQL/Python.
 
-Нативный release nginx **1.28.3**: nginx -t, одинаковое содержимое identity/gzip JS/CSS, immutable assets, сутки для brand вместе с CSP, no-store для index и 401 API - PASS. Изолированные прогоны до последней focus-правки: 6/6 в 308,7 и 289,7 с. Финальная отдельная копия заморожена и проверена по 606 SHA256 файлов; её результат ещё ожидается. Это не публичные мутации и не данные настоящих пользователей. Все артефакты находятся в `/Users/smokkkkiiii/Desktop/DomPulse-Release-2026-09-30/`.
+Нативный release nginx **1.28.3**: nginx -t, одинаковое содержимое identity/gzip JS/CSS, immutable assets, сутки для brand вместе с CSP, no-store для index и 401 API - PASS. Изолированные прогоны до последней focus-правки: 6/6 в 308,7 и 289,7 с. Финальная отдельная копия заморожена и проверена по 606 SHA256 файлов; её результат: **6/6 PASS**, 291,1 с, sourceConsistent/cleanup PASS, digest `5b3bb4b7a6adbca0a3665537ff37bb74743a37cc8077d13744a1900d627a5d07`, 56 PNG. HEAD временной QA-копии не является SHA репозитория; 554 недокументационных файла сопоставлены с Git archive `c2464f1`, Windows mvnw.cmd отличается только эквивалентными CRLF/LF. Это не публичные мутации и не данные настоящих пользователей. Все артефакты находятся в `/Users/smokkkkiiii/Desktop/DomPulse-Release-2026-09-30/`.
 
-Публикация и финальный CI пока не заявляются: рабочие web0755638/backend530c36a/ml e569da6 сохранены. После успешных проверок обновляется только web; БД, роли, обращения, release.env и порт80 не затрагиваются. Физические iOS/Android/MAX Web, фон/клавиатура, настоящий G2/уведомления и самостоятельный доступ комиссии остаются открытыми.
+Опубликован web `c2464f1fbb3992a5a0af696c1e52b7c5b50ad5e0`; backend530c36a/ml e569da6, БД, роли, обращения, release.env и порт80 сохранены. Документационный коммит после него не меняет исполняемые исходники и не требует новой сборки. Физические iOS/Android/MAX Web, фон/клавиатура, настоящий G2/уведомления и самостоятельный доступ комиссии остаются открытыми.
+
+## Выпуск 30.09 - подтверждён
+
+[CI c2464f1](https://github.com/coder-smookki/VkEducation-and-MessangerMax-Hackathon-2026/actions/runs/36650436146) **6/6 jobs SUCCESS**: UI82/82, Java standalone238 PASS + 2 external SKIP; integration с PostgreSQL/Inference/Kafka **240/240**, Python195 PASS + 1 Kafka SKIP в обычном job и отдельный Kafka replay PASS. Mini App RULES6/6 и manual4 PASS + 2 analysis SKIP. Пропуски относятся к отключённым внешним окружениям; полный integration их выполнил.
+
+Серверный архив `c2464f1` проверен по 606 SHA256 файлов. Обновлён только web: контейнер `be066fd93e8a`, image `sha256:a351fcb8d393658dce4f5b3933c868995b532de64ee5bd963bb143cccdc2a420`. Backend/db/ml имеют прежние IDs/images, env byte digest совпал. Проверены сохранность прежних IDs и назначений ролей, до/после: users4, houses2, memberships3, cases4, items4, reports2, audit32. Seed/сброс БД не запускались; rollback web tag `koren-rollback-web:readability-20260930` сохранён.
+
+Публичные GET/портовые проверки **16/16 PASS**, без входа или мутаций. HTTPS index no-store, JS `/assets/index-tIhkp27O.js` содержит новое меню и прежние поиск/очередь; CSS `/assets/index-BHxHdku2.css` содержит data-editing и не содержит data-keyboard. Gzip JS/CSS декодируется в те же байты (451313→137112 / 36083→8376), hashed assets immutable, brand cache сутки с CSP. health UP, info по-прежнему честно сообщает SHA backend530c36a.
+
+Артефакты вне Git: `release.json`, `ci.json`/`ci.log`, `qa-final/result.json`/`playwright.json`, `operations/nginx-probe.json`, `public-check.log`, `public-assets.json`, `source-match.json`, FAIL JSON/PNG и 56 успешных снимков в указанной Desktop-папке. В `/srv/koren/operations/readability-release-20260930/` находятся release/build/activate журналы. Продуктовый SHA web не заменяется SHA последующего документационного HEAD.
