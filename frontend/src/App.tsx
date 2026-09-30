@@ -47,7 +47,7 @@ export type Session = {
   logout(): void;
 };
 export const useSession = () => useOutletContext<Session>();
-const NO_KEYBOARD = new Set([
+const NON_TEXT_INPUT_TYPES = new Set([
   "button",
   "checkbox",
   "color",
@@ -60,7 +60,8 @@ const NO_KEYBOARD = new Set([
 function typesText(element: Element | null): element is HTMLElement {
   return (
     element instanceof HTMLTextAreaElement ||
-    (element instanceof HTMLInputElement && !NO_KEYBOARD.has(element.type))
+    (element instanceof HTMLInputElement &&
+      !NON_TEXT_INPUT_TYPES.has(element.type))
   );
 }
 function DraftCopy() {
@@ -209,36 +210,6 @@ export function App() {
     );
   }, [location.pathname, navigate]);
   useEffect(() => {
-    // On touch screens the on-screen keyboard shrinks the visible area. The fixed
-    // bottom bar would then sit above the keyboard and hide the field or its action.
-    const coarse = matchMedia("(pointer: coarse)");
-    const root = document.documentElement;
-    let frame = 0;
-    const update = () => {
-      cancelAnimationFrame(frame);
-      // Wait for the next focus target: focusout fires before focusin.
-      frame = requestAnimationFrame(() => {
-        const open = coarse.matches && typesText(document.activeElement);
-        if (open) root.dataset.keyboard = "open";
-        else delete root.dataset.keyboard;
-      });
-    };
-    const reveal = () => {
-      const active = document.activeElement;
-      if (typesText(active)) active.scrollIntoView({ block: "nearest" });
-    };
-    document.addEventListener("focusin", update);
-    document.addEventListener("focusout", update);
-    window.visualViewport?.addEventListener("resize", reveal);
-    return () => {
-      cancelAnimationFrame(frame);
-      document.removeEventListener("focusin", update);
-      document.removeEventListener("focusout", update);
-      window.visualViewport?.removeEventListener("resize", reveal);
-      delete root.dataset.keyboard;
-    };
-  }, []);
-  useEffect(() => {
     const nav = navigation.current;
     if (!nav) return;
     // The mobile bar grows with text zoom and safe areas; reserve its actual height.
@@ -252,10 +223,38 @@ export function App() {
         `${height}px`,
       );
     };
+    // Focus does not prove an on-screen keyboard is open (especially in an iframe).
+    // During touch editing, CSS moves navigation into the page flow instead of hiding it.
+    const coarse = matchMedia("(pointer: coarse)");
+    const root = document.documentElement;
+    let frame = 0;
+    const update = () => {
+      cancelAnimationFrame(frame);
+      // Wait for the next focus target: focusout fires before focusin.
+      frame = requestAnimationFrame(() => {
+        const active = document.activeElement;
+        // A nav press moves focus before click. Keep its geometry until activation,
+        // then the new route's heading takes focus and restores the fixed bar.
+        const editing =
+          coarse.matches &&
+          (typesText(active) ||
+            (root.dataset.editing === "true" && nav.contains(active)));
+        if (editing) root.dataset.editing = "true";
+        else delete root.dataset.editing;
+        measure();
+      });
+    };
     const observer = new ResizeObserver(measure);
     observer.observe(nav);
     measure();
+    document.addEventListener("focusin", update);
+    document.addEventListener("focusout", update);
+    update();
     return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener("focusin", update);
+      document.removeEventListener("focusout", update);
+      delete root.dataset.editing;
       observer.disconnect();
       document.documentElement.style.removeProperty("--navigation-height");
     };

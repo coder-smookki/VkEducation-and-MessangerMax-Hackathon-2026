@@ -1099,7 +1099,11 @@ test("invitation success floats without stretching the form and disappears; erro
     .getByRole("status")
     .filter({ hasText: "Дом успешно подключён" });
   await expect(notice).toBeVisible();
-  expect((await form.boundingBox())!.height).toBe(before!.height);
+  // Layout/animation may round fractional CSS pixels differently across engines.
+  // A notification must not add a layout row; subpixel rounding is not stretching.
+  expect(
+    Math.abs((await form.boundingBox())!.height - before!.height),
+  ).toBeLessThan(1);
   expect(
     await notice.locator("..").evaluate((el) => getComputedStyle(el).position),
   ).toBe("fixed");
@@ -1165,7 +1169,7 @@ test("profile action buttons keep a gap in both themes and with enlarged text", 
   }
 });
 
-test("touch keyboard gives the bottom menu's space to the focused field", async ({
+test("touch editing removes the fixed overlay without hiding navigation", async ({
   browser,
 }) => {
   const context = await browser.newContext({
@@ -1182,9 +1186,12 @@ test("touch keyboard gives the bottom menu's space to the focused field", async 
   const field = page.getByRole("textbox").first();
   await expect(navigation).toBeVisible();
   await field.focus();
-  await expect(navigation).toBeHidden();
-  await expect(page.locator("html")).toHaveAttribute("data-keyboard", "open");
-  // The reserved space follows the hidden bar, so the last field is not padded away.
+  await expect(navigation).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("data-editing", "true");
+  expect(await navigation.evaluate((el) => getComputedStyle(el).position)).toBe(
+    "static",
+  );
+  // No fixed bar needs reserved space; the menu itself remains in document flow.
   await expect
     .poll(() =>
       page.evaluate(() =>
@@ -1194,11 +1201,66 @@ test("touch keyboard gives the bottom menu's space to the focused field", async 
       ),
     )
     .toBe("0px");
+  // Viewport restoration without blur (keyboard Done/back, external keyboard)
+  // must leave all navigation links reachable rather than hiding the menu.
+  await page.setViewportSize({ width: 390, height: 500 });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(field).toBeFocused();
+  await navigation
+    .getByRole("link", { name: "Профиль", exact: true })
+    .click({ delay: 150 });
+  await expect(page.locator("main h1")).toHaveText("Профиль");
+  await expect(page.locator("html")).not.toHaveAttribute("data-editing");
+  expect(await navigation.evaluate((el) => getComputedStyle(el).position)).toBe(
+    "fixed",
+  );
+  await page.goto("/#/new");
+  await field.focus();
   await field.blur();
   await expect(navigation).toBeVisible();
-  await expect(page.locator("html")).not.toHaveAttribute("data-keyboard");
+  await expect(page.locator("html")).not.toHaveAttribute("data-editing");
   await context.close();
 });
+
+for (const dispatcher of [false, true]) {
+  test(`mobile navigation fits and receives clicks with large text: ${dispatcher ? "dispatcher" : "resident"}`, async ({
+    page,
+  }) => {
+    await setup(page, dispatcher);
+    for (const width of [320, 360, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      for (const size of [16, 36]) {
+        await page.goto("/#/profile");
+        await expect(page.locator("main h1")).toHaveText("Профиль");
+        await page.evaluate((px) => {
+          document.documentElement.style.fontSize = `${px}px`;
+        }, size);
+        const navigation = page.getByRole("navigation", {
+          name: "Основная навигация",
+        });
+        expect(
+          await navigation.evaluate((el) => el.scrollWidth - el.clientWidth),
+        ).toBeLessThanOrEqual(1);
+        for (const link of await navigation.getByRole("link").all()) {
+          await expect(link).toBeInViewport({ ratio: 1 });
+          expect(
+            await link.evaluate((el) => {
+              const r = el.getBoundingClientRect();
+              return el.contains(
+                document.elementFromPoint(
+                  r.x + r.width / 2,
+                  r.y + r.height / 2,
+                ),
+              );
+            }),
+          ).toBeTruthy();
+          await link.click();
+          expect(await navigation.evaluate((el) => el.scrollLeft)).toBe(0);
+        }
+      }
+    }
+  });
+}
 
 test("desktop pointer keeps the menu while typing", async ({ page }) => {
   await setup(page);

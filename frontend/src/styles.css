@@ -214,6 +214,7 @@ summary {
   z-index: 10;
   inset: auto 0 0;
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-start;
   overflow-x: auto;
   gap: 4px;
@@ -225,7 +226,7 @@ summary {
 }
 .app-nav a {
   display: flex;
-  /* Equal thirds: labels fit on one line where space allows, wrap only when not. */
+  /* Keep whole words. At large text sizes wrap links into rows, never off-screen. */
   flex: 1 1 0;
   align-items: center;
   justify-content: center;
@@ -1971,9 +1972,10 @@ dialog .actions .button {
     margin: 0 0 16px;
     padding-right: 50px;
   }
-  /* Touch keyboard is open (App.tsx): give its space to the field, not the menu. */
-  :root[data-keyboard="open"] .app-nav {
-    display: none;
+  /* Keep navigation accessible, but let the browser scroll the focused field
+     without a fixed overlay. Focus does not prove an on-screen keyboard is open. */
+  :root[data-editing="true"] .app-nav {
+    position: static;
   }
 }
 
