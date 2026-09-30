@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 import ru.koren.identity.application.InvitationService;
 import ru.koren.identity.persistence.MembershipRepository;
 
-/** Claiming an invitation is the only self-service way to get a membership, and it always grants RESIDENT. */
+/** Membership comes only from a one-time server-issued invitation, never from a requested role. */
 @RestController
 @RequestMapping("/api/v1/memberships")
 @Profile("!no-db")

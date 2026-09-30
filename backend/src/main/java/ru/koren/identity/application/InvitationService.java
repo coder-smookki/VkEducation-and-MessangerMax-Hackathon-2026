@@ -12,18 +12,20 @@ import org.springframework.transaction.support.TransactionTemplate;
 import ru.koren.identity.InvitationException;
 import ru.koren.identity.persistence.InvitationRepository;
 
-/** Exchanges a one-time code for RESIDENT membership. The code itself is never stored or logged. */
+/** Exchanges a one-time server-issued invitation for its permitted membership. */
 public final class InvitationService {
 
     private final InvitationRepository invitations;
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transaction;
+    private final boolean reviewInvitationsEnabled;
 
     public InvitationService(InvitationRepository invitations, JdbcTemplate jdbc,
-                             PlatformTransactionManager transactions) {
+                             PlatformTransactionManager transactions, boolean reviewInvitationsEnabled) {
         this.invitations = Objects.requireNonNull(invitations);
         this.jdbc = Objects.requireNonNull(jdbc);
         this.transaction = new TransactionTemplate(Objects.requireNonNull(transactions));
+        this.reviewInvitationsEnabled = reviewInvitationsEnabled;
     }
 
     public static String hash(String code) {
@@ -43,19 +45,20 @@ public final class InvitationService {
         }
         String codeHash = hash(invitationCode);
         UUID house = transaction.execute(status -> {
-            UUID houseId = invitations.consume(codeHash, userId);
-            if (houseId == null) {
+            InvitationRepository.Grant grant = invitations.consume(codeHash, userId, reviewInvitationsEnabled);
+            if (grant == null) {
                 return null;
             }
             // A uniqueness error would abort this PostgreSQL transaction before a catch could UPDATE.
             // Preserve active privileges, but a resident invitation cannot restore revoked staff access.
             jdbc.update("""
-                    INSERT INTO membership(user_id, house_id, role) VALUES (?, ?, 'RESIDENT')
+                    INSERT INTO membership(user_id, house_id, role) VALUES (?, ?, ?)
                     ON CONFLICT (user_id, house_id) DO UPDATE
-                    SET role = CASE WHEN membership.revoked_at IS NULL THEN membership.role ELSE 'RESIDENT' END,
+                    SET role = CASE WHEN excluded.role = 'DISPATCHER' THEN 'DISPATCHER'
+                                    WHEN membership.revoked_at IS NULL THEN membership.role ELSE 'RESIDENT' END,
                         revoked_at = NULL
-                    """, userId, houseId);
-            return houseId;
+                    """, userId, grant.houseId(), grant.role());
+            return grant.houseId();
         });
         if (house == null) {
             // Counting the miss outside the failed transaction keeps the attempt recorded.

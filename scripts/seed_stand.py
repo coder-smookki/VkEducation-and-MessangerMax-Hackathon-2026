@@ -39,10 +39,12 @@ parser.add_argument("--db-name", default="koren")
 commands = parser.add_subparsers(dest="command", required=True)
 house_cmd = commands.add_parser("house", help="create a house and print its id")
 house_cmd.add_argument("address")
+house_cmd.add_argument("--review", action="store_true", help="mark a NEW house as an isolated reviewer house")
 invite_cmd = commands.add_parser("invite", help="issue one-time RESIDENT invitations for a house")
 invite_cmd.add_argument("house_id", type=uuid.UUID)
 invite_cmd.add_argument("--count", type=int, default=1)
 invite_cmd.add_argument("--days", type=int, default=7)
+invite_cmd.add_argument("--role", choices=["RESIDENT", "DISPATCHER"], default="RESIDENT")
 dispatcher_cmd = commands.add_parser("dispatcher", help="make a signed-in MAX user a dispatcher of a house")
 dispatcher_cmd.add_argument("house_id", type=uuid.UUID)
 dispatcher_cmd.add_argument("max_user_id", type=int)
@@ -88,7 +90,8 @@ def require_house(house_id):
 def house():
     house_id = uuid.uuid4()
     psql(
-        "INSERT INTO house(id, address) VALUES (:'house', :'address');", house=house_id, address=args.address
+        "INSERT INTO house(id, address, review_only) VALUES (:'house', :'address', :review);",
+        house=house_id, address=args.address, review=str(args.review).lower()
     )
     print(f"house {house_id}")
 
@@ -97,16 +100,21 @@ def invite():
     require_house(args.house_id)
     if not 1 <= args.count <= 50 or not 1 <= args.days <= 30:
         raise SystemExit("--count must be 1..50 and --days 1..30")
-    print(f"Invitations for house {args.house_id}, valid {args.days} days, one use each:")
+    if args.role == "DISPATCHER" and psql(
+        "SELECT review_only FROM house WHERE id = :'house';", house=args.house_id
+    ) != "t":
+        raise SystemExit("DISPATCHER invitations are permitted only in a separately created reviewer house")
+    print(f"{args.role} invitations for house {args.house_id}, valid {args.days} days, one use each:")
     for _ in range(args.count):
         code = secrets.token_urlsafe(18)
         psql(
-            "INSERT INTO house_invitation(id, house_id, code_hash, expires_at)"
-            " VALUES (:'id', :'house', :'hash', now() + make_interval(days => :days));",
+            "INSERT INTO house_invitation(id, house_id, code_hash, expires_at, granted_role)"
+            " VALUES (:'id', :'house', :'hash', now() + make_interval(days => :days), :'role');",
             id=uuid.uuid4(),
             house=args.house_id,
             hash=code_hash(code),
             days=args.days,
+            role=args.role,
         )
         print(f"  {code}")
     print("Codes are not stored anywhere; lost ones are simply issued again.")

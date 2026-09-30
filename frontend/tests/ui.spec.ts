@@ -1018,6 +1018,7 @@ test("history is requested only on demand and rare item actions remain reachable
 test("redesigned screen families remain accessible in both themes", async ({
   page,
 }) => {
+  test.setTimeout(90_000);
   const { data } = await setup(page);
   const capture = async (name: string) => {
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();

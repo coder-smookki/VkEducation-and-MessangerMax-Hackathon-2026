@@ -349,10 +349,22 @@ async function actor(
   expect(login.status()).toBe(200);
   const me = (await login.json()) as Me;
   expect(me.userId).toMatch(/^[0-9a-f-]{36}$/);
-  if (role)
+  if (role) {
+    if (role === "DISPATCHER")
+      sql(`UPDATE house SET review_only=true WHERE id='${house}';`);
+    const invitationCode = randomUUID();
+    const hash = createHash("sha256").update(invitationCode).digest("hex");
     sql(
-      `INSERT INTO membership(user_id,house_id,role) VALUES ('${me.userId}','${house}','${role}');`,
+      `INSERT INTO house_invitation(id,house_id,code_hash,expires_at,granted_role) VALUES ('${randomUUID()}','${house}','${hash}',now()+interval '1 hour','${role}');`,
     );
+    const claimed = await mutate(context.request, "/memberships/claim", {
+      invitationCode,
+    });
+    expect(claimed.status()).toBe(200);
+    expect((await claimed.json()).memberships).toContainEqual(
+      expect.objectContaining({ houseId: house, role }),
+    );
+  }
   await context.clearCookies();
   await context.addInitScript((raw) => {
     window.WebApp = { initData: raw };

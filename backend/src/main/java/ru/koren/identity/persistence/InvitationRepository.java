@@ -13,18 +13,22 @@ public final class InvitationRepository {
         this.jdbc = Objects.requireNonNull(jdbc, "jdbc");
     }
 
-    /** Returns the house of the invitation this user just consumed, or null when nothing was consumable. */
-    public UUID consume(String codeHash, UUID userId) {
+    public record Grant(UUID houseId, String role) {}
+
+    public Grant consume(String codeHash, UUID userId, boolean reviewInvitationsEnabled) {
         var houses = jdbc.query("""
-                UPDATE house_invitation
+                UPDATE house_invitation i
                 SET consumed_at = now(), consumed_by = ?
-                WHERE code_hash = ?
-                  AND consumed_at IS NULL
-                  AND expires_at > now()
-                  AND failed_attempts < max_attempts
-                RETURNING house_id
+                FROM house h
+                WHERE i.house_id = h.id AND i.code_hash = ?
+                  AND i.consumed_at IS NULL
+                  AND i.expires_at > now()
+                  AND i.failed_attempts < i.max_attempts
+                  AND (i.granted_role = 'RESIDENT' OR (? AND h.review_only))
+                RETURNING i.house_id, i.granted_role
                 """,
-            (rs, rowNum) -> rs.getObject("house_id", UUID.class), userId, codeHash);
+            (rs, rowNum) -> new Grant(rs.getObject("house_id", UUID.class), rs.getString("granted_role")),
+            userId, codeHash, reviewInvitationsEnabled);
         return houses.isEmpty() ? null : houses.getFirst();
     }
 

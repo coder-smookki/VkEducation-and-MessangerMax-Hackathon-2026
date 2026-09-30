@@ -182,7 +182,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** обменять одноразовый код приглашения на членство RESIDENT */
+        /**
+         * обменять одноразовый серверный код приглашения на членство
+         * @description Обычный код выдаёт RESIDENT. DISPATCHER возможен только по отдельному операторскому приглашению в доме review_only и при включённом REVIEW_INVITATIONS_ENABLED. Роль и дом клиента не дают полномочий. Код одноразовый; срок кода ограничивает его обмен, а не уже выданное членство.
+         */
         post: operations["claimMembership"];
         delete?: never;
         options?: never;

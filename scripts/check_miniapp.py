@@ -25,9 +25,20 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def source_snapshot():
     """Hash working-tree bytes, including dirty/untracked sources, without copying them."""
-    names = subprocess.check_output(
-        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"], cwd=ROOT,
-    ).decode().split("\0")
+    git_checkout = (ROOT / ".git").exists()
+    if git_checkout:
+        names = subprocess.check_output(
+            ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"], cwd=ROOT,
+        ).decode().split("\0")
+    else:
+        excluded = {"node_modules", ".venv", ".git", "target", "dist", "__pycache__",
+                    ".pytest_cache", ".ruff_cache", "test-results", "playwright-report", "output", "tmp"}
+        names = [
+            str(path.relative_to(ROOT)) for path in ROOT.rglob("*")
+            if path.is_file() and not excluded.intersection(path.relative_to(ROOT).parts)
+            and path.name != ".env" and ".private." not in path.name
+            and not path.name.endswith(".log") and path.name != ".DS_Store"
+        ]
     files = []
     for name in sorted(set(names) - {""}):
         path = ROOT / name
@@ -41,11 +52,13 @@ def source_snapshot():
             entry["missing"] = True
         files.append(entry)
     encoded = json.dumps(files, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    digest = hashlib.sha256(encoded).hexdigest()
     return {
-        "head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
-        "dirty": bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT)),
-        "sha256": hashlib.sha256(encoded).hexdigest(),
-        "scope": "git tracked and non-ignored untracked paths; working-tree bytes, executable bits and symlinks; ignored artifacts excluded",
+        "head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+                if git_checkout else "archive-" + digest[:16],
+        "dirty": bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT)) if git_checkout else False,
+        "sha256": digest,
+        "scope": "source files, executable bits and symlinks; build output and private environment excluded",
         "files": files,
     }
 
@@ -82,6 +95,7 @@ def main():
         "DB_PASSWORD", "MAX_BOT_TOKEN", "MAX_WEBHOOK_SECRET", "MAX_WORKERS_ENABLED",
         "RELEASE_SHA", "ANALYSIS_ENABLED", "TRAINING_MODE", "CASE_NUMBER_PREFIX",
         "SESSION_COOKIE_SECURE", "SESSION_COOKIE_SAMESITE", "WEB_PORT", "SITE_ADDRESS",
+        "REVIEW_INVITATIONS_ENABLED",
     }
     stand_env = {
         key: value for key, value in os.environ.items()
@@ -99,6 +113,7 @@ def main():
             + "\nMAX_WORKERS_ENABLED=false\nRELEASE_SHA=" + before["head"]
             + f"\nANALYSIS_ENABLED={str(args.analysis).lower()}"
             + "\nTRAINING_MODE=true\nCASE_NUMBER_PREFIX=ДЕМО-"
+            + "\nREVIEW_INVITATIONS_ENABLED=true"
             + f"\nSESSION_COOKIE_SECURE=false\nSESSION_COOKIE_SAMESITE=Lax\nWEB_PORT={port}\n",
             encoding="utf-8",
         )

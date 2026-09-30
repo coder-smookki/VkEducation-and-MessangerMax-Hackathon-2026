@@ -52,6 +52,7 @@ info:
     # Set at deploy: RELEASE_SHA=$(git rev-parse HEAD). A stand without it answers "unknown".
     sha: ${RELEASE_SHA:unknown}
 koren:
+  review-invitations-enabled: ${REVIEW_INVITATIONS_ENABLED:false}
   inference-url: ${INFERENCE_URL:http://127.0.0.1:8000}
   # Off by default: while it is off a saved report answers MANUAL_REQUIRED and queues nothing,
   # so nothing sits in QUEUED forever waiting for a worker that never starts.

@@ -240,10 +240,9 @@ class Stand:
         self.bot_token = secrets.token_urlsafe(32)
         db_password, webhook_secret = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
         self.sensitive = {self.bot_token, db_password, webhook_secret}
-        self.sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
-        self.dirty = bool(
-            subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True).strip()
-        )
+        snapshot = source_snapshot()
+        self.sha = snapshot["head"]
+        self.dirty = snapshot["dirty"]
         self.directory = tempfile.TemporaryDirectory(prefix=self.project)
         self.env = {
             key: value

@@ -59,7 +59,8 @@ public class IdentityConfig {
     @Bean
     @Profile("!no-db")
     InvitationService invitationService(InvitationRepository invitations, JdbcTemplate jdbc,
-                                        PlatformTransactionManager transactions) {
-        return new InvitationService(invitations, jdbc, transactions);
+                                        PlatformTransactionManager transactions,
+                                        @Value("${koren.review-invitations-enabled:false}") boolean reviewEnabled) {
+        return new InvitationService(invitations, jdbc, transactions, reviewEnabled);
     }
 }

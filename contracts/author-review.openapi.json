@@ -858,7 +858,8 @@
     "/api/v1/memberships/claim": {
       "post": {
         "operationId": "claimMembership",
-        "summary": "обменять одноразовый код приглашения на членство RESIDENT",
+        "summary": "обменять одноразовый серверный код приглашения на членство",
+        "description": "Обычный код выдаёт RESIDENT. DISPATCHER возможен только по отдельному операторскому приглашению в доме review_only и при включённом REVIEW_INVITATIONS_ENABLED. Роль и дом клиента не дают полномочий. Код одноразовый; срок кода ограничивает его обмен, а не уже выданное членство.",
         "x-implementation-status": "IMPLEMENTED",
         "x-task": "S-02",
         "security": [

@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: ${DB_USER:-koren}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?Copy .env.example to .env for local development}
       POSTGRES_DB: ${DB_NAME:-koren}
-    ports: ["127.0.0.1:5432:5432"]
+    ports: ["127.0.0.1:${DB_PORT:-5432}:5432"]
     volumes: ["postgres-data:/var/lib/postgresql/data"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
@@ -68,11 +68,12 @@ services:
       MAX_BOT_TOKEN: ${MAX_BOT_TOKEN:-}
       MAX_WEBHOOK_SECRET: ${MAX_WEBHOOK_SECRET:-}
       MAX_WORKERS_ENABLED: ${MAX_WORKERS_ENABLED:-false}
+      REVIEW_INVITATIONS_ENABLED: ${REVIEW_INVITATIONS_ENABLED:-false}
       MAX_BOT_NAME: ${MAX_BOT_NAME:-t109_hakaton_max_bot}
       CASE_NUMBER_PREFIX: ${CASE_NUMBER_PREFIX:-}
       ANALYSIS_ENABLED: ${ANALYSIS_ENABLED:-false}
       RELEASE_SHA: ${RELEASE_SHA:-unknown}
-    ports: ["127.0.0.1:8080:8080"]
+    ports: ["127.0.0.1:${API_PORT:-8080}:8080"]
     depends_on:
       db: {condition: service_healthy}
       kafka: {condition: service_healthy, required: false}
@@ -81,7 +82,8 @@ services:
     build: ./frontend
     environment:
       API_PROXY_TARGET: http://backend:8080
-    ports: ["127.0.0.1:5173:5173"]
+      VITE_TRAINING_MODE: ${TRAINING_MODE:-false}
+    ports: ["127.0.0.1:${APP_PORT:-5173}:5173"]
     depends_on:
       backend: {condition: service_started}
 volumes:

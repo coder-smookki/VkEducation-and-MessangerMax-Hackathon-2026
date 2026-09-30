@@ -25,6 +25,8 @@ import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.json.JsonMapper;
 import ru.koren.identity.application.InvitationService;
+import ru.koren.identity.persistence.InvitationRepository;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -35,7 +37,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties = {
     "spring.datasource.url=${DB_TEST_URL}", "spring.datasource.username=${DB_TEST_USER:koren}",
     "spring.datasource.password=${DB_TEST_PASSWORD:koren_local_only}",
-    "koren.max.bot-token=k1-test-bot-token:not-a-real-secret"
+    "koren.max.bot-token=k1-test-bot-token:not-a-real-secret",
+    "koren.review-invitations-enabled=true"
 })
 @AutoConfigureMockMvc
 @EnabledIfEnvironmentVariable(named = "DB_TEST_URL", matches = ".+")
@@ -62,6 +65,7 @@ class InvitationHttpTest {
 
     @Autowired MockMvc mvc;
     @Autowired JdbcTemplate jdbc;
+    @Autowired PlatformTransactionManager transactions;
 
     private final JsonMapper json = JsonMapper.builder().build();
 
@@ -121,6 +125,73 @@ class InvitationHttpTest {
             "SELECT role FROM membership WHERE house_id = ?", String.class, house));
         // The same code must not work again, not even for the same user.
         assertEquals(403, claim(session, code));
+    }
+
+    @Test
+    void dispatcherCodeGrantsOnlyItsReviewerHouseAndCannotBeReused() throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        UUID user = login(session, AUTHOR_INIT_DATA);
+        String code = uniqueCode("REVIEW-DISPATCHER");
+        UUID house = invitation(code, "30 days");
+        jdbc.update("UPDATE house SET review_only = true WHERE id = ?", house);
+        jdbc.update("UPDATE house_invitation SET granted_role = 'DISPATCHER' WHERE house_id = ?", house);
+        UUID ordinaryHouse = UUID.randomUUID();
+        jdbc.update("INSERT INTO house(id, address) VALUES (?, 'Обычный дом')", ordinaryHouse);
+        jdbc.update("INSERT INTO membership(user_id, house_id, role) VALUES (?, ?, 'RESIDENT')", user, ordinaryHouse);
+
+        assertEquals(200, claim(session, code));
+        assertEquals("DISPATCHER", jdbc.queryForObject(
+            "SELECT role FROM membership WHERE user_id = ? AND house_id = ?", String.class, user, house));
+        assertEquals("RESIDENT", jdbc.queryForObject(
+            "SELECT role FROM membership WHERE user_id = ? AND house_id = ?", String.class, user, ordinaryHouse));
+        assertEquals(403, claim(session, code));
+        MockHttpSession other = new MockHttpSession();
+        login(other, STRANGER_INIT_DATA);
+        assertEquals(403, claim(other, code));
+    }
+
+    @Test
+    void dispatcherCodeForOrdinaryHouseIsRejectedWithoutConsumption() throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        UUID user = login(session, AUTHOR_INIT_DATA);
+        String code = uniqueCode("ORDINARY-DISPATCHER");
+        UUID house = invitation(code, "30 days");
+        jdbc.update("UPDATE house_invitation SET granted_role = 'DISPATCHER' WHERE house_id = ?", house);
+        assertEquals(403, claim(session, code));
+        assertEquals(0, jdbc.queryForObject(
+            "SELECT count(*) FROM membership WHERE user_id = ? AND house_id = ?", Integer.class, user, house));
+        assertEquals(1, jdbc.queryForObject(
+            "SELECT count(*) FROM house_invitation WHERE house_id = ? AND consumed_at IS NULL", Integer.class, house));
+    }
+
+    @Test
+    void reviewerDispatcherGrantIsDisabledByDefault() throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        UUID user = login(session, AUTHOR_INIT_DATA);
+        String code = uniqueCode("DISABLED-DISPATCHER");
+        UUID house = invitation(code, "30 days");
+        jdbc.update("UPDATE house SET review_only = true WHERE id = ?", house);
+        jdbc.update("UPDATE house_invitation SET granted_role = 'DISPATCHER' WHERE house_id = ?", house);
+        InvitationService disabled = new InvitationService(new InvitationRepository(jdbc), jdbc, transactions, false);
+        org.junit.jupiter.api.Assertions.assertThrows(InvitationException.class, () -> disabled.claim(user, code));
+        assertEquals(0, jdbc.queryForObject(
+            "SELECT count(*) FROM membership WHERE user_id = ? AND house_id = ?", Integer.class, user, house));
+        assertEquals(1, jdbc.queryForObject(
+            "SELECT count(*) FROM house_invitation WHERE house_id = ? AND consumed_at IS NULL", Integer.class, house));
+    }
+
+    @Test
+    void requestedRoleCannotPromoteAnOrdinaryResidentInvitation() throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        UUID user = login(session, AUTHOR_INIT_DATA);
+        String code = uniqueCode("CLIENT-ROLE");
+        UUID house = invitation(code, "30 days");
+        mvc.perform(post("/api/v1/memberships/claim").session(session).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"invitationCode\":\"" + code + "\",\"role\":\"DISPATCHER\"}"))
+            .andExpect(status().isOk());
+        assertEquals("RESIDENT", jdbc.queryForObject(
+            "SELECT role FROM membership WHERE user_id = ? AND house_id = ?", String.class, user, house));
     }
 
     @Test
@@ -206,14 +277,19 @@ class InvitationHttpTest {
         assertEquals(200, claim(session, code), "a failed membership write must not spend the code");
     }
 
-    @Test
-    void twoUsersRacingForOneCodeProduceExactlyOneMembership() throws Exception {
+    @ParameterizedTest
+    @CsvSource({"RESIDENT", "DISPATCHER"})
+    void twoUsersRacingForOneCodeProduceExactlyOneMembership(String role) throws Exception {
         MockHttpSession first = new MockHttpSession();
         MockHttpSession second = new MockHttpSession();
         login(first, AUTHOR_INIT_DATA);
         login(second, STRANGER_INIT_DATA);
         String code = uniqueCode("KOREN-RACE");
         UUID house = invitation(code, "7 days");
+        if (role.equals("DISPATCHER")) {
+            jdbc.update("UPDATE house SET review_only = true WHERE id = ?", house);
+            jdbc.update("UPDATE house_invitation SET granted_role = 'DISPATCHER' WHERE house_id = ?", house);
+        }
         ExecutorService pool = Executors.newFixedThreadPool(2);
         List<Callable<Integer>> attempts = List.of(
             () -> claim(first, code), () -> claim(second, code));
