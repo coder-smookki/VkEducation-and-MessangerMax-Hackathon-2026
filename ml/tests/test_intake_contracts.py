@@ -7,8 +7,8 @@ from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator, FormatChecker
 from pydantic import ValidationError
 
+from app.features.intake.contracts import ConfirmedCaseContext, ExtractItemsResponse
 from app.http_errors import MAX_REQUEST_BYTES
-from app.intake_contracts import ConfirmedCaseContext, ExtractItemsResponse, SimilarCasesResponse
 from app.main import app
 
 ROOT = Path(__file__).resolve().parents[2] / "contracts"
@@ -25,14 +25,22 @@ def validate_schema(document, name, value):
     Draft202012Validator(schema, format_checker=FormatChecker()).validate(value)
 
 
-@pytest.mark.parametrize("route,name", [
-    ("extract-items", "extract"), ("clarify-items", "clarify"), ("similar-cases", "similar"), ("compare", "compare"),
-])
+@pytest.mark.parametrize(
+    "route,name",
+    [
+        ("extract-items", "extract"),
+        ("clarify-items", "clarify"),
+        ("similar-cases", "similar"),
+        ("compare", "compare"),
+    ],
+)
 def test_real_response_and_input_match_committed_contract(route, name):
     api = json.loads((ROOT / "inference.openapi.json").read_text())
     operation = api["paths"][f"/internal/v1/{route}"]["post"]
     request_name = operation["requestBody"]["content"]["application/json"]["schema"]["$ref"].split("/")[-1]
-    response_name = operation["responses"]["200"]["content"]["application/json"]["schema"]["$ref"].split("/")[-1]
+    response_name = operation["responses"]["200"]["content"]["application/json"]["schema"]["$ref"].split("/")[
+        -1
+    ]
     payload = fixture(f"{name}-request.json")
     validate_schema(api, request_name, payload)
     response = client.post(f"/internal/v1/{route}", json=payload)
@@ -47,7 +55,9 @@ def test_actual_422_matches_openapi_and_never_echoes_input(route):
     assert response.status_code == 422
     assert "Do not echo this" not in response.text
     api = app.openapi()
-    name = api["paths"][f"/internal/v1/{route}"]["post"]["responses"]["422"]["content"]["application/json"]["schema"]["$ref"].split("/")[-1]
+    name = api["paths"][f"/internal/v1/{route}"]["post"]["responses"]["422"]["content"]["application/json"][
+        "schema"
+    ]["$ref"].split("/")[-1]
     validate_schema(api, name, response.json())
 
 
@@ -69,38 +79,35 @@ def test_clarification_is_only_for_author_and_does_not_confirm_content():
     assert client.post("/internal/v1/clarify-items", json=payload).status_code == 422
 
 
-@pytest.mark.parametrize("change", ["draft", "foreign_house", "self", "duplicate", "shared_item", "missing_item", "bool_version"])
+@pytest.mark.parametrize(
+    "change", ["draft", "missing_item", "bool_limit", "self", "foreign_house", "shared_item", "duplicate"]
+)
 def test_similarity_rejects_unsafe_or_incomplete_context(change):
     payload = fixture("similar-request.json")
     if change == "draft":
         payload["query"]["submissionStatus"] = "DRAFT"
-    elif change == "foreign_house":
-        payload["candidates"][0]["houseId"] = "00000000-0000-0000-0000-000000000099"
-    elif change == "self":
-        payload["candidates"][0]["caseId"] = payload["query"]["caseId"]
-    elif change == "duplicate":
-        payload["candidates"].append(payload["candidates"][0])
-    elif change == "shared_item":
-        payload["candidates"][0]["items"][0]["itemId"] = payload["query"]["items"][0]["itemId"]
     elif change == "missing_item":
         payload["query"]["items"] = []
+    elif change == "self":
+        payload["candidates"] = [payload["query"]]
+    elif change == "foreign_house":
+        payload["candidates"][0]["houseId"] = "00000000-0000-0000-0000-000000000099"
+    elif change == "shared_item":
+        payload["candidates"][0]["items"][0]["itemId"] = payload["query"]["items"][0]["itemId"]
+    elif change == "duplicate":
+        payload["candidates"].append(payload["candidates"][0])
     else:
-        payload["query"]["caseVersion"] = True
+        payload["limit"] = True
     assert client.post("/internal/v1/similar-cases", json=payload).status_code == 422
 
 
-def test_stub_does_not_claim_that_no_duplicates_exist_even_with_no_candidates():
+def test_unindexed_candidates_return_an_explicit_analysis_failure():
     payload = fixture("similar-request.json")
     result = client.post("/internal/v1/similar-cases", json=payload).json()
     assert result["status"] == "NOT_ANALYZED"
-    assert result["results"][0]["relation"] == "NOT_EVALUATED"
-    assert result["results"][0]["score"] is None
-    result["results"][0]["score"] = 0
-    with pytest.raises(ValidationError):
-        SimilarCasesResponse.model_validate(result)
-    payload["candidates"] = []
-    empty = client.post("/internal/v1/similar-cases", json=payload).json()
-    assert empty["results"] == [] and empty["status"] == "NOT_ANALYZED"
+    assert result["reason"] == "ANALYSIS_UNAVAILABLE"
+    assert result["scope"] == "CHROMA"
+    assert result["results"] == []
 
 
 def test_synthetic_extraction_is_a_valid_fixture_but_not_the_stub_output():
@@ -111,7 +118,7 @@ def test_synthetic_extraction_is_a_valid_fixture_but_not_the_stub_output():
     source = fixture("extract-request.json")["sourceText"]
     for item in proposal["proposals"]:
         evidence = item["evidence"]
-        assert source[evidence["start"]:evidence["end"]] == evidence["quote"]
+        assert source[evidence["start"] : evidence["end"]] == evidence["quote"]
     proposal["mode"] = "STUB"
     with pytest.raises(ValidationError):
         ExtractItemsResponse.model_validate(proposal)
@@ -119,22 +126,89 @@ def test_synthetic_extraction_is_a_valid_fixture_but_not_the_stub_output():
 
 def test_confirmed_context_schema_is_current():
     schema = json.loads((ROOT / "confirmed-context.schema.json").read_text())
-    expected = {"$schema": "https://json-schema.org/draft/2020-12/schema", **ConfirmedCaseContext.model_json_schema()}
+    expected = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        **ConfirmedCaseContext.model_json_schema(),
+    }
     assert schema == expected
     Draft202012Validator.check_schema(schema)
     Draft202012Validator(schema, format_checker=FormatChecker()).validate(fixture("confirmed-context.json"))
 
 
-@pytest.mark.parametrize("name,example", [
-    ("UpdateDraftItems", "review-items-request.json"), ("ConfirmItems", "confirm-items-request.json"),
-    ("AuthorCaseView", "review-items-response.json"), ("AuthorCaseView", "confirm-items-response.json"),
-    ("Problem", "review-version-conflict.json"),
-])
+@pytest.mark.parametrize(
+    "name,example",
+    [
+        ("UpdateDraftItems", "review-items-request.json"),
+        ("ConfirmItems", "confirm-items-request.json"),
+        ("AuthorCaseView", "review-items-response.json"),
+        ("AuthorCaseView", "confirm-items-response.json"),
+        ("Problem", "review-version-conflict.json"),
+        ("MeView", "me-response.json"),
+        ("MeView", "me-no-access.json"),
+        ("CasePage", "case-list-response.json"),
+        ("CasePage", "case-list-empty.json"),
+        ("Problem", "unauthorized-401.json"),
+        ("Problem", "forbidden-403.json"),
+        ("Problem", "not-found-404.json"),
+        ("Problem", "invalid-fields-422.json"),
+        ("TargetCaseView", "case-view-target.json"),
+        ("SaveReport", "report-create-request.json"),
+        ("ConfirmReportLinks", "report-links-request.json"),
+        ("CreateReportResponse", "report-create-response.json"),
+        ("WorkReportView", "report-view.json"),
+        ("ReportSuggestions", "report-suggestions-ready.json"),
+        ("ReportSuggestions", "report-suggestions-stale.json"),
+        ("RecordObservation", "observation-request.json"),
+        ("DecideItem", "decision-withdraw-request.json"),
+        ("DecideItem", "decision-archive-request.json"),
+        ("HistoryPage", "history-page.json"),
+    ],
+)
 def test_planned_java_review_examples_match_schema(name, example):
     api = json.loads((ROOT / "author-review.openapi.json").read_text())
     for schema in api["components"]["schemas"].values():
         Draft202012Validator.check_schema(schema)
     validate_schema(api, name, fixture(example))
+
+
+def test_implemented_operations_never_answer_with_a_target_schema():
+    """The S-04 review found an IMPLEMENTED route answering with a schema Java does not return."""
+    api = json.loads((ROOT / "author-review.openapi.json").read_text())
+    schemas = api["components"]["schemas"]
+    target_only = {
+        name for name, schema in schemas.items() if str(schema.get("description", "")).startswith("TARGET")
+    }
+    assert target_only, "no schema is marked TARGET any more, so this test guards nothing"
+
+    def direct_refs(node):
+        if isinstance(node, dict):
+            if "$ref" in node:
+                yield node["$ref"].rsplit("/", 1)[-1]
+            for value in node.values():
+                yield from direct_refs(value)
+        elif isinstance(node, list):
+            for value in node:
+                yield from direct_refs(value)
+
+    def reachable(node):
+        """A TARGET schema nested inside a returned one is just as wrong as a direct answer."""
+        found, queue = set(), list(direct_refs(node))
+        while queue:
+            name = queue.pop()
+            if name in found or name not in schemas:
+                continue
+            found.add(name)
+            queue.extend(direct_refs(schemas[name]))
+        return found
+
+    for path, methods in api["paths"].items():
+        for method, operation in methods.items():
+            status = operation["x-implementation-status"]
+            assert status in {"IMPLEMENTED", "TARGET", "SCHEMA_ONLY"}, (path, method, status)
+            if status != "IMPLEMENTED":
+                continue
+            leaked = reachable(operation["responses"]) & target_only
+            assert not leaked, f"{method.upper()} {path} answers with {sorted(leaked)}"
 
 
 def test_author_review_does_not_confuse_confirmed_content_with_completed_work():
@@ -147,12 +221,25 @@ def test_author_review_does_not_confuse_confirmed_content_with_completed_work():
     assert all(item["workRound"] == 0 and item["observation"] == "NOT_RECEIVED" for item in after["items"])
 
 
+def test_history_details_never_carry_free_text():
+    page = fixture("history-page.json")
+    times = [event["createdAt"] for event in page["items"]]
+    assert times == sorted(times), "history reads forward in time"
+    forbidden = {"caseId", "reason", "sourceText", "reportText", "symptom", "location", "text"}
+    for event in page["items"]:
+        leaked = forbidden & event["details"].keys()
+        assert not leaked, f"{event['eventType']} would leak {sorted(leaked)}"
+
+
 def test_chunked_oversized_body_is_rejected_before_json_parsing():
     def chunks():
         yield b'{"privateText":"'
         yield b"x" * MAX_REQUEST_BYTES
         yield b'"}'
-    response = client.post("/internal/v1/similar-cases", content=chunks(), headers={"Content-Type": "application/json"})
+
+    response = client.post(
+        "/internal/v1/similar-cases", content=chunks(), headers={"Content-Type": "application/json"}
+    )
     assert response.status_code == 413
     assert response.json() == {"detail": "REQUEST_TOO_LARGE"}
     validate_schema(app.openapi(), "BodySizeError", response.json())

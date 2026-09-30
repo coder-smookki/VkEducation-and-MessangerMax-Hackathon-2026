@@ -1,7 +1,7 @@
 package ru.koren.inference;
 
-import java.util.HashMap;
 import java.util.HashSet;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -69,8 +69,8 @@ public final class IntakeValidator {
         sameReference(request.query().caseId(), request.query().caseVersion(), request.query().sourceRevision(),
                 response.caseId(), response.caseVersion(), response.sourceRevision());
         outcome(response.modelVersion(), response.mode(), response.status(), response.reason());
-        require("PROVIDED_CANDIDATES".equals(response.scope()), "Search scope changed");
-        require(response.results() != null && response.results().size() == request.candidates().size(), "Missing candidate");
+        require("CHROMA".equals(response.scope()), "Search scope changed");
+        require(response.results() != null && response.results().size() <= request.limit(), "Too many results");
         Map<UUID, ConfirmedCaseContext> candidates = new HashMap<>();
         request.candidates().forEach(candidate -> candidates.put(candidate.caseId(), candidate));
         var queryItems = new HashSet<UUID>();
@@ -78,6 +78,7 @@ public final class IntakeValidator {
         var seen = new HashSet<UUID>();
         for (var result : response.results()) {
             require(result != null && seen.add(result.caseId()), "Duplicate or null candidate");
+            reference(result.caseId(), result.caseVersion(), result.sourceRevision());
             var candidate = candidates.get(result.caseId());
             require(candidate != null, "Foreign candidate");
             sameReference(candidate.caseId(), candidate.caseVersion(), candidate.sourceRevision(),
@@ -94,13 +95,18 @@ public final class IntakeValidator {
                 boolean related = result.relation() != SimilarityRelation.DIFFERENT;
                 require(related == !result.matchedItems().isEmpty(), "Missing or contradictory item matches");
             }
+            var matchedQuery = new HashSet<UUID>();
+            var matchedCandidate = new HashSet<UUID>();
             var candidateItems = new HashSet<UUID>();
             candidate.items().forEach(item -> candidateItems.add(item.itemId()));
-            var pairs = new HashSet<ItemMatch>();
             for (var pair : result.matchedItems()) {
                 require(pair != null && queryItems.contains(pair.queryItemId())
-                        && candidateItems.contains(pair.candidateItemId()) && pairs.add(pair), "Foreign or duplicate match");
+                        && candidateItems.contains(pair.candidateItemId()) && matchedQuery.add(pair.queryItemId())
+                        && matchedCandidate.add(pair.candidateItemId()), "Foreign or reused item match");
             }
+            if (result.relation() == SimilarityRelation.POSSIBLE_DUPLICATE)
+                require(matchedQuery.equals(queryItems) && matchedCandidate.equals(candidateItems),
+                        "A partial item match is not a duplicate case");
         }
         return response;
     }

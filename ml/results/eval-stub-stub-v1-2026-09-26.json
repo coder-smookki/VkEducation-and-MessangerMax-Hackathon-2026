@@ -1,0 +1,393 @@
+{
+  "analyzer": "stub",
+  "modes": [
+    "STUB"
+  ],
+  "modelVersion": [
+    "stub-v1"
+  ],
+  "metrics": {
+    "items": 29,
+    "substantive": 0,
+    "coverage": 0.0,
+    "labelPrecision": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": null
+    },
+    "actionablePrecision": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": null
+    },
+    "evidenceValidity": {
+      "numerator": 0,
+      "denominator": 0,
+      "value": null
+    }
+  },
+  "records": [
+    {
+      "dialogId": "completed-light",
+      "templateGroup": "completed-light",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000004",
+      "gold": "REPORTED_DONE",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "completed-light",
+      "templateGroup": "completed-light",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000005",
+      "gold": "INSUFFICIENT_INFORMATION",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "future-light",
+      "templateGroup": "future-light",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000004",
+      "gold": "PLANNED",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "future-light",
+      "templateGroup": "future-light",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000005",
+      "gold": "INSUFFICIENT_INFORMATION",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "different-floor",
+      "templateGroup": "different-floor",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000004",
+      "gold": "UNRELATED",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "different-floor",
+      "templateGroup": "different-floor",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000005",
+      "gold": "INSUFFICIENT_INFORMATION",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "symptom-persists",
+      "templateGroup": "symptom-persists",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000004",
+      "gold": "SYMPTOM_PERSISTS",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "symptom-persists",
+      "templateGroup": "symptom-persists",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000005",
+      "gold": "INSUFFICIENT_INFORMATION",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "vague",
+      "templateGroup": "vague",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000004",
+      "gold": "INSUFFICIENT_INFORMATION",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "vague",
+      "templateGroup": "vague",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000005",
+      "gold": "INSUFFICIENT_INFORMATION",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "partial-door",
+      "templateGroup": "partial-door",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000004",
+      "gold": "PLANNED",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "partial-door",
+      "templateGroup": "partial-door",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000005",
+      "gold": "REPORTED_DONE",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "injection",
+      "templateGroup": "injection",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000004",
+      "gold": "INSUFFICIENT_INFORMATION",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "injection",
+      "templateGroup": "injection",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000005",
+      "gold": "INSUFFICIENT_INFORMATION",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "planned-cleaning",
+      "templateGroup": "planned-cleaning",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000110",
+      "gold": "PLANNED",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "planned-cleaning",
+      "templateGroup": "planned-cleaning",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000111",
+      "gold": "INSUFFICIENT_INFORMATION",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "unrelated-entrance",
+      "templateGroup": "unrelated-entrance",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000120",
+      "gold": "UNRELATED",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "unrelated-entrance",
+      "templateGroup": "unrelated-entrance",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000121",
+      "gold": "INSUFFICIENT_INFORMATION",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "persists-door",
+      "templateGroup": "persists-door",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000130",
+      "gold": "SYMPTOM_PERSISTS",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "conflict-light",
+      "templateGroup": "conflict-light",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000140",
+      "gold": "CONFLICT",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "insufficient-cleaning",
+      "templateGroup": "insufficient-cleaning",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000150",
+      "gold": "INSUFFICIENT_INFORMATION",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "insufficient-cleaning",
+      "templateGroup": "insufficient-cleaning",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000151",
+      "gold": "REPORTED_DONE",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "emoji-typo",
+      "templateGroup": "emoji-typo",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000160",
+      "gold": "REPORTED_DONE",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "emoji-typo",
+      "templateGroup": "emoji-typo",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000161",
+      "gold": "INSUFFICIENT_INFORMATION",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "long-cleaning",
+      "templateGroup": "long-cleaning",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000170",
+      "gold": "REPORTED_DONE",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "long-cleaning",
+      "templateGroup": "long-cleaning",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000171",
+      "gold": "INSUFFICIENT_INFORMATION",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "other-planned",
+      "templateGroup": "other-planned",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000180",
+      "gold": "PLANNED",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "floor-guard",
+      "templateGroup": "floor-guard",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000190",
+      "gold": "UNRELATED",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    },
+    {
+      "dialogId": "floor-guard",
+      "templateGroup": "floor-guard",
+      "split": "development",
+      "itemId": "00000000-0000-0000-0000-000000000191",
+      "gold": "REPORTED_DONE",
+      "prediction": "INSUFFICIENT_INFORMATION",
+      "correct": null,
+      "evidence": null,
+      "evidenceValid": null
+    }
+  ],
+  "splits": {
+    "development": {
+      "items": 29,
+      "substantive": 0,
+      "coverage": 0.0,
+      "labelPrecision": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "actionablePrecision": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "evidenceValidity": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      }
+    },
+    "regression": {
+      "items": 12,
+      "substantive": 0,
+      "coverage": 0.0,
+      "labelPrecision": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "actionablePrecision": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "evidenceValidity": {
+        "numerator": 0,
+        "denominator": 0,
+        "value": null
+      }
+    },
+    "holdout": null
+  }
+}

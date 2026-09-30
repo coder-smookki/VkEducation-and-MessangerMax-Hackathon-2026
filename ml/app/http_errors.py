@@ -5,7 +5,7 @@ from typing import Literal
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from app.contracts import Contract
+from app.shared.schemas import Contract
 
 MAX_REQUEST_BYTES = 512 * 1024
 

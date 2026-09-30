@@ -1,0 +1,33 @@
+package ru.koren.identity.persistence;
+
+import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
+import org.springframework.jdbc.core.JdbcTemplate;
+import ru.koren.identity.MeView;
+import ru.koren.identity.MaxProfile;
+import ru.koren.identity.MembershipView;
+
+/** Reads the current memberships of one user. Roles never come from the client. */
+public final class MembershipRepository {
+
+    private final JdbcTemplate jdbc;
+
+    public MembershipRepository(JdbcTemplate jdbc) {
+        this.jdbc = Objects.requireNonNull(jdbc, "jdbc");
+    }
+
+    public MeView loadMe(UUID userId, MaxProfile profile) {
+        List<MembershipView> memberships = jdbc.query("""
+            SELECT m.house_id, h.address, m.role
+            FROM membership m
+            JOIN house h ON h.id = m.house_id
+            WHERE m.user_id = ? AND m.revoked_at IS NULL
+            ORDER BY h.address, m.house_id
+            """,
+            (rs, rowNum) -> new MembershipView(
+                rs.getObject("house_id", UUID.class), rs.getString("address"),
+                rs.getString("role")), userId);
+        return new MeView(userId, profile.displayName(), profile.username(), profile.avatarUrl(), memberships);
+    }
+}

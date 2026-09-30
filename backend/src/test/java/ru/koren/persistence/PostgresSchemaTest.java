@@ -35,7 +35,7 @@ class PostgresSchemaTest {
         jdbc.update("INSERT INTO service_case(id, house_id, author_id) VALUES (?, ?, ?), (?, ?, ?)",
                 caseId, house, author, otherCase, house, other);
         jdbc.update("INSERT INTO case_revision(case_id, revision, source_text) VALUES (?, 1, 'Lamp'), (?, 1, 'Door')", caseId, otherCase);
-        jdbc.update("INSERT INTO case_item(id, case_id) VALUES (?, ?)", item, caseId);
+        jdbc.update("INSERT INTO case_item(id, case_id, position) VALUES (?, ?, 1)", item, caseId);
         jdbc.update("INSERT INTO item_revision(item_id, content_version, category, location, symptom) VALUES (?, 1, 'LIGHTING', 'Floor 3', 'Dark')", item);
         jdbc.execute("SET CONSTRAINTS ALL IMMEDIATE");
     }

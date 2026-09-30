@@ -1,10 +1,10 @@
 # Development container. A public deployment must serve dist/ behind the same HTTPS origin as Java.
 FROM node:24-alpine
 WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci
-COPY . .
-RUN chown -R node:node /app
+RUN chown node:node /app
 USER node
+COPY --chown=node:node package.json package-lock.json ./
+RUN npm ci
+COPY --chown=node:node . .
 EXPOSE 5173
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

@@ -17,5 +17,18 @@ tmp/
 .tools/
 .artifacts/
 ml/models/
+ml/data/*.sqlite3
+ml/data/chroma/
 ml/data/private/
 !ml/data/private/.gitkeep
+
+# Local research PDFs and private working deliverables
+output/
+backups/
+
+frontend/test-results/
+frontend/playwright-report/
+
+# Real MAX ids of test accounts for scripts/seed_stand.py apply
+**/accounts.private.json
+scripts/seed/*.private.json

@@ -1,0 +1,86 @@
+[
+  {
+    "file": "overview/01_anchors_light.png",
+    "title": "КОРЕНЬ / Опорные экраны · Светлая",
+    "width": 1768,
+    "height": 1163,
+    "count": 5
+  },
+  {
+    "file": "overview/01_anchors_dark.png",
+    "title": "КОРЕНЬ / Опорные экраны · Тёмная",
+    "width": 1768,
+    "height": 1163,
+    "count": 5
+  },
+  {
+    "file": "overview/02_partial-result_pair.png",
+    "title": "КОРЕНЬ / Свет проверен. Дверь остаётся.",
+    "width": 876,
+    "height": 1271,
+    "count": 2
+  },
+  {
+    "file": "overview/03_common.png",
+    "title": "КОРЕНЬ / Общие экраны",
+    "width": 1224,
+    "height": 1856,
+    "count": 8
+  },
+  {
+    "file": "overview/04_author_create.png",
+    "title": "КОРЕНЬ / Автор / Создание и приём",
+    "width": 960,
+    "height": 2630,
+    "count": 9
+  },
+  {
+    "file": "overview/05_author_result.png",
+    "title": "КОРЕНЬ / Автор / Наблюдения и результат",
+    "width": 960,
+    "height": 2876,
+    "count": 9
+  },
+  {
+    "file": "overview/06_dispatcher.png",
+    "title": "КОРЕНЬ / Диспетчер / Работа с обращением",
+    "width": 1518,
+    "height": 1949,
+    "count": 10
+  },
+  {
+    "file": "overview/07_states.png",
+    "title": "КОРЕНЬ / Ошибки и особые состояния",
+    "width": 1290,
+    "height": 3638,
+    "count": 10
+  },
+  {
+    "file": "overview/08_responsive.png",
+    "title": "КОРЕНЬ / Адаптивные варианты",
+    "width": 1376,
+    "height": 2166,
+    "count": 4
+  },
+  {
+    "file": "overview/09_bot.png",
+    "title": "КОРЕНЬ / Текстовый бот / Диалоговые последовательности",
+    "width": 1396,
+    "height": 2273,
+    "count": 4
+  },
+  {
+    "file": "overview/10_components.png",
+    "title": "КОРЕНЬ / Библиотека / Обе темы на каждом листе",
+    "width": 1380,
+    "height": 1855,
+    "count": 6
+  },
+  {
+    "file": "overview/11_extension.png",
+    "title": "КОРЕНЬ / Возможное расширение / Не часть обязательного релиза",
+    "width": 1296,
+    "height": 1594,
+    "count": 2
+  }
+]

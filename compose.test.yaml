@@ -1,0 +1,4 @@
+# Explicit local/CI override; normal Compose keeps the ML port internal.
+services:
+  ml:
+    ports: ["127.0.0.1:18081:8000"]

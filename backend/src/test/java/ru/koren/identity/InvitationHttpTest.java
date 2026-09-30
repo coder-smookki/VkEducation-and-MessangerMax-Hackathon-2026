@@ -1,0 +1,306 @@
+package ru.koren.identity;
+
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
+import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockHttpSession;
+import org.springframework.test.web.servlet.MockMvc;
+import tools.jackson.databind.json.JsonMapper;
+import ru.koren.identity.application.InvitationService;
+import ru.koren.identity.persistence.InvitationRepository;
+import org.springframework.transaction.PlatformTransactionManager;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+/** One-time invitation codes over HTTP, including two users racing for the same code. */
+@SpringBootTest(properties = {
+    "spring.datasource.url=${DB_TEST_URL}", "spring.datasource.username=${DB_TEST_USER:koren}",
+    "spring.datasource.password=${DB_TEST_PASSWORD:koren_local_only}",
+    "koren.max.bot-token=k1-test-bot-token:not-a-real-secret",
+    "koren.review-invitations-enabled=true"
+})
+@AutoConfigureMockMvc
+@EnabledIfEnvironmentVariable(named = "DB_TEST_URL", matches = ".+")
+class InvitationHttpTest {
+
+    private static final String AUTHOR_INIT_DATA =
+        "user=%7B%22id%22%3A424242%2C%22first_name%22%3A%22Max%22%2C%22last_name%22%3A%22User%22"
+            + "%2C%22username%22%3Anull%2C%22language_code%22%3A%22ru%22%7D&ip=192.168.0.1"
+            + "&auth_date=1800000000&query_id=AAE1YmYAAAAANTmv4t3W0h01"
+            + "&hash=fa2ff9a4255c0e16b0e5be5a4bc6bded45aadad37b589cebb251fc95d7080ad4";
+    private static final String STRANGER_INIT_DATA =
+        "start_param=ref%3Da%3Db&auth_date=1800000000"
+            + "&user=%7B%22id%22%3A31337%2C%22first_name%22%3A%22Eq%22%2C%22last_name%22%3Anull%7D"
+            + "&hash=b27c3f005d80d8ccfcca2d27e0dc2d5c33f0be1ee3526adf0945cc854d11cc98";
+
+    @TestConfiguration
+    static class FixedClockConfig {
+        @Bean
+        @Primary
+        Clock testClock() {
+            return Clock.fixed(Instant.ofEpochSecond(1_800_000_000L), ZoneOffset.UTC);
+        }
+    }
+
+    @Autowired MockMvc mvc;
+    @Autowired JdbcTemplate jdbc;
+    @Autowired PlatformTransactionManager transactions;
+
+    private final JsonMapper json = JsonMapper.builder().build();
+
+    /** Fixed codes would collide with rows left by an earlier run: the hash is unique in the table. */
+    private String uniqueCode(String prefix) {
+        return prefix + "-" + UUID.randomUUID();
+    }
+
+    private UUID login(MockHttpSession session, String initData) throws Exception {
+        String body = mvc.perform(post("/api/v1/auth/max").session(session).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"initData\":\"" + initData + "\"}"))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        return UUID.fromString(json.readTree(body).get("userId").asString());
+    }
+
+    private UUID invitation(String code, String interval) {
+        UUID house = UUID.randomUUID();
+        jdbc.update("INSERT INTO house(id, address) VALUES (?, 'Дом приглашения')", house);
+        jdbc.update("""
+                INSERT INTO house_invitation(id, house_id, code_hash, expires_at)
+                VALUES (gen_random_uuid(), ?, ?, now() + CAST(? AS interval))
+                """, house, InvitationService.hash(code), interval);
+        return house;
+    }
+
+    private int claim(MockHttpSession session, String code) throws Exception {
+        return mvc.perform(post("/api/v1/memberships/claim").session(session).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"invitationCode\":\"" + code + "\"}"))
+            .andReturn().getResponse().getStatus();
+    }
+
+    private String refusalCode(MockHttpSession session, String code) throws Exception {
+        String body = mvc.perform(post("/api/v1/memberships/claim").session(session).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"invitationCode\":\"" + code + "\"}"))
+            .andExpect(status().isForbidden())
+            .andReturn().getResponse().getContentAsString();
+        return json.readTree(body).get("code").asString();
+    }
+
+    @Test
+    void validCodeGrantsResidentAndCannotBeUsedTwice() throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        login(session, SignedProfileFixtures.initData("profile"));
+        String code = uniqueCode("KOREN-ONE-SHOT");
+        UUID house = invitation(code, "7 days");
+        var result = mvc.perform(post("/api/v1/memberships/claim").session(session).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content("{\"invitationCode\":\"" + code + "\"}"))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        var profile = json.readTree(result);
+        assertEquals("Анна Иванова", profile.get("displayName").asString());
+        assertEquals("anna_max", profile.get("username").asString());
+        assertEquals("https://images.example.org/max/avatar.png", profile.get("avatarUrl").asString());
+        assertEquals("RESIDENT", jdbc.queryForObject(
+            "SELECT role FROM membership WHERE house_id = ?", String.class, house));
+        // The same code must not work again, not even for the same user.
+        assertEquals(403, claim(session, code));
+    }
+
+    @Test
+    void dispatcherCodeGrantsOnlyItsReviewerHouseAndCannotBeReused() throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        UUID user = login(session, AUTHOR_INIT_DATA);
+        String code = uniqueCode("REVIEW-DISPATCHER");
+        UUID house = invitation(code, "30 days");
+        jdbc.update("UPDATE house SET review_only = true WHERE id = ?", house);
+        jdbc.update("UPDATE house_invitation SET granted_role = 'DISPATCHER' WHERE house_id = ?", house);
+        UUID ordinaryHouse = UUID.randomUUID();
+        jdbc.update("INSERT INTO house(id, address) VALUES (?, 'Обычный дом')", ordinaryHouse);
+        jdbc.update("INSERT INTO membership(user_id, house_id, role) VALUES (?, ?, 'RESIDENT')", user, ordinaryHouse);
+
+        assertEquals(200, claim(session, code));
+        assertEquals("DISPATCHER", jdbc.queryForObject(
+            "SELECT role FROM membership WHERE user_id = ? AND house_id = ?", String.class, user, house));
+        assertEquals("RESIDENT", jdbc.queryForObject(
+            "SELECT role FROM membership WHERE user_id = ? AND house_id = ?", String.class, user, ordinaryHouse));
+        assertEquals(403, claim(session, code));
+        MockHttpSession other = new MockHttpSession();
+        login(other, STRANGER_INIT_DATA);
+        assertEquals(403, claim(other, code));
+    }
+
+    @Test
+    void dispatcherCodeForOrdinaryHouseIsRejectedWithoutConsumption() throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        UUID user = login(session, AUTHOR_INIT_DATA);
+        String code = uniqueCode("ORDINARY-DISPATCHER");
+        UUID house = invitation(code, "30 days");
+        jdbc.update("UPDATE house_invitation SET granted_role = 'DISPATCHER' WHERE house_id = ?", house);
+        assertEquals(403, claim(session, code));
+        assertEquals(0, jdbc.queryForObject(
+            "SELECT count(*) FROM membership WHERE user_id = ? AND house_id = ?", Integer.class, user, house));
+        assertEquals(1, jdbc.queryForObject(
+            "SELECT count(*) FROM house_invitation WHERE house_id = ? AND consumed_at IS NULL", Integer.class, house));
+    }
+
+    @Test
+    void reviewerDispatcherGrantIsDisabledByDefault() throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        UUID user = login(session, AUTHOR_INIT_DATA);
+        String code = uniqueCode("DISABLED-DISPATCHER");
+        UUID house = invitation(code, "30 days");
+        jdbc.update("UPDATE house SET review_only = true WHERE id = ?", house);
+        jdbc.update("UPDATE house_invitation SET granted_role = 'DISPATCHER' WHERE house_id = ?", house);
+        InvitationService disabled = new InvitationService(new InvitationRepository(jdbc), jdbc, transactions, false);
+        org.junit.jupiter.api.Assertions.assertThrows(InvitationException.class, () -> disabled.claim(user, code));
+        assertEquals(0, jdbc.queryForObject(
+            "SELECT count(*) FROM membership WHERE user_id = ? AND house_id = ?", Integer.class, user, house));
+        assertEquals(1, jdbc.queryForObject(
+            "SELECT count(*) FROM house_invitation WHERE house_id = ? AND consumed_at IS NULL", Integer.class, house));
+    }
+
+    @Test
+    void requestedRoleCannotPromoteAnOrdinaryResidentInvitation() throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        UUID user = login(session, AUTHOR_INIT_DATA);
+        String code = uniqueCode("CLIENT-ROLE");
+        UUID house = invitation(code, "30 days");
+        mvc.perform(post("/api/v1/memberships/claim").session(session).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"invitationCode\":\"" + code + "\",\"role\":\"DISPATCHER\"}"))
+            .andExpect(status().isOk());
+        assertEquals("RESIDENT", jdbc.queryForObject(
+            "SELECT role FROM membership WHERE user_id = ? AND house_id = ?", String.class, user, house));
+    }
+
+    @Test
+    void expiredCodeIsRejectedAndReasonIsNotDisclosed() throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        login(session, AUTHOR_INIT_DATA);
+        String code = uniqueCode("KOREN-EXPIRED");
+        invitation(code, "-1 hour");
+        assertEquals(403, claim(session, code));
+        // An unknown code answers exactly like an expired one: guessing gets no hint.
+        assertEquals(403, claim(session, uniqueCode("KOREN-NEVER-EXISTED")));
+        // The Mini App shows its own text for this code, not a generic "access denied".
+        assertEquals("INVITATION_REJECTED", refusalCode(session, uniqueCode("KOREN-NEVER-EXISTED")));
+        assertEquals("INVITATION_REJECTED", refusalCode(session, code));
+    }
+
+    @ParameterizedTest(name = "existing {0}, revoked={1} joins as {2}")
+    @CsvSource({"RESIDENT,false,RESIDENT", "RESIDENT,true,RESIDENT",
+        "DISPATCHER,false,DISPATCHER", "DISPATCHER,true,RESIDENT"})
+    void newInvitationHandlesExistingMembershipWithoutRestoringRevokedPrivileges(
+        String role, boolean revoked, String expectedRole) throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        UUID user = login(session, AUTHOR_INIT_DATA);
+        String code = uniqueCode("KOREN-EXISTING");
+        UUID house = invitation(code, "7 days");
+        jdbc.update("""
+                INSERT INTO membership(user_id, house_id, role, revoked_at)
+                VALUES (?, ?, ?, CASE WHEN ? THEN now() ELSE NULL END)
+                """, user, house, role, revoked);
+
+        assertEquals(200, claim(session, code));
+        assertEquals(expectedRole, jdbc.queryForObject(
+            "SELECT role FROM membership WHERE user_id = ? AND house_id = ?", String.class, user, house));
+        assertEquals(1, jdbc.queryForObject("""
+                SELECT count(*) FROM membership WHERE user_id = ? AND house_id = ? AND revoked_at IS NULL
+                """, Integer.class, user, house));
+        assertEquals(user, jdbc.queryForObject(
+            "SELECT consumed_by FROM house_invitation WHERE code_hash = ?", UUID.class, InvitationService.hash(code)));
+        assertEquals(403, claim(session, code), "even an existing member cannot reuse a consumed code");
+    }
+
+    @Test
+    void expiredInvitationCannotReactivateRevokedDispatcher() throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        UUID user = login(session, AUTHOR_INIT_DATA);
+        String code = uniqueCode("KOREN-REVOKED-EXPIRED");
+        UUID house = invitation(code, "-1 hour");
+        jdbc.update("""
+                INSERT INTO membership(user_id, house_id, role, revoked_at)
+                VALUES (?, ?, 'DISPATCHER', now())
+                """, user, house);
+
+        assertEquals(403, claim(session, code));
+        assertEquals(1, jdbc.queryForObject("""
+                SELECT count(*) FROM membership
+                WHERE user_id = ? AND house_id = ? AND role = 'DISPATCHER' AND revoked_at IS NOT NULL
+                """, Integer.class, user, house));
+        assertEquals(1, jdbc.queryForObject("""
+                SELECT count(*) FROM house_invitation WHERE code_hash = ? AND consumed_at IS NULL
+                """, Integer.class, InvitationService.hash(code)));
+    }
+
+    @Test
+    void membershipFailureRollsBackInvitationConsumption() throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        UUID user = login(session, AUTHOR_INIT_DATA);
+        String code = uniqueCode("KOREN-ROLLBACK");
+        UUID house = invitation(code, "7 days");
+        String constraint = "qa_invitation_" + house.toString().replace("-", "");
+        // Reject only this test's house; other concurrent test fixtures remain unaffected.
+        jdbc.execute("ALTER TABLE membership ADD CONSTRAINT " + constraint
+            + " CHECK (house_id <> '" + house + "'::uuid)");
+        try {
+            assertEquals(500, claim(session, code));
+            assertEquals(1, jdbc.queryForObject("""
+                    SELECT count(*) FROM house_invitation WHERE code_hash = ? AND consumed_at IS NULL
+                    """, Integer.class, InvitationService.hash(code)));
+            assertEquals(0, jdbc.queryForObject(
+                "SELECT count(*) FROM membership WHERE user_id = ? AND house_id = ?", Integer.class, user, house));
+        } finally {
+            jdbc.execute("ALTER TABLE membership DROP CONSTRAINT " + constraint);
+        }
+        assertEquals(200, claim(session, code), "a failed membership write must not spend the code");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"RESIDENT", "DISPATCHER"})
+    void twoUsersRacingForOneCodeProduceExactlyOneMembership(String role) throws Exception {
+        MockHttpSession first = new MockHttpSession();
+        MockHttpSession second = new MockHttpSession();
+        login(first, AUTHOR_INIT_DATA);
+        login(second, STRANGER_INIT_DATA);
+        String code = uniqueCode("KOREN-RACE");
+        UUID house = invitation(code, "7 days");
+        if (role.equals("DISPATCHER")) {
+            jdbc.update("UPDATE house SET review_only = true WHERE id = ?", house);
+            jdbc.update("UPDATE house_invitation SET granted_role = 'DISPATCHER' WHERE house_id = ?", house);
+        }
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        List<Callable<Integer>> attempts = List.of(
+            () -> claim(first, code), () -> claim(second, code));
+        List<Future<Integer>> results = pool.invokeAll(attempts);
+        pool.shutdown();
+        int granted = 0;
+        for (Future<Integer> result : results) {
+            if (result.get() == 200) granted++;
+        }
+        assertEquals(1, granted, "a one-time code must be consumed by exactly one request");
+        assertEquals(1, (int) jdbc.queryForObject(
+            "SELECT count(*) FROM membership WHERE house_id = ?", Integer.class, house));
+    }
+}

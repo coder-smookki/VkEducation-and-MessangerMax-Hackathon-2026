@@ -1,53 +1,61 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app.analyzer import compare
-from app.contracts import CompareRequest, CompareResponse
-from app.http_errors import BodySizeError, CompareInputError, IntakeInputError, RequestSizeLimit
-from app.intake import clarify_items, extract_items, similar_cases
-from app.intake_contracts import (
-    ClarifyItemsRequest,
-    ClarifyItemsResponse,
-    ExtractItemsRequest,
-    ExtractItemsResponse,
-    SimilarCasesRequest,
-    SimilarCasesResponse,
-)
+from app.core.config import Settings, get_settings
+from app.di import create_container, setup_container
+from app.features.indexing.consumer import CaseEventsConsumer
+from app.features.inference.api import router as inference_router
+from app.features.inference.service import active_mode
+from app.features.intake.api import router as intake_router
+from app.http_errors import RequestSizeLimit
+from app.shared.vector_store import ChromaVectorStore
 
-app = FastAPI(title="KOREN inference", version="0.2.0")
+container = create_container()
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    vector_store = await container.get(ChromaVectorStore)
+    consumer = CaseEventsConsumer(vector_store, settings)
+    await consumer.start()
+    try:
+        yield
+    finally:
+        await consumer.stop()
+        await container.close()
+
+
+settings = get_settings()
+app = FastAPI(title=settings.app_name, version=settings.app_version, lifespan=lifespan)
+setup_container(app, container)
+app.include_router(inference_router)
+app.include_router(intake_router)
 app.add_middleware(RequestSizeLimit)
-INTAKE_ERRORS = {422: {"model": IntakeInputError}, 413: {"model": BodySizeError}}
 
 
 @app.exception_handler(RequestValidationError)
 async def invalid_request(request: Request, _exception: RequestValidationError):
     # FastAPI's default detail contains input values. Do not echo residents' texts or secret-like input.
-    detail = "INVALID_COMPARE_REQUEST" if request.url.path == "/internal/v1/compare" else "INVALID_INTAKE_REQUEST"
+    detail = (
+        "INVALID_COMPARE_REQUEST" if request.url.path == "/internal/v1/compare" else "INVALID_INTAKE_REQUEST"
+    )
     return JSONResponse(status_code=422, content={"detail": detail})
+
+
+def health_payload(current: Settings) -> dict[str, str]:
+    """What compare actually does right now; never a constant that outlives a configuration change."""
+    mode, model_version = active_mode(current)
+    return {
+        "status": "ok",
+        "mode": mode.value,
+        "modelVersion": model_version,
+        "vectorStore": "chroma" if current.chroma_enabled else "disabled",
+    }
 
 
 @app.get("/healthz")
 def health() -> dict[str, str]:
-    return {"status": "ok", "mode": "STUB"}
-
-
-@app.post("/internal/v1/compare", response_model=CompareResponse,
-          responses={422: {"model": CompareInputError}, 413: {"model": BodySizeError}})
-def compare_report(request: CompareRequest) -> CompareResponse:
-    return compare(request)
-
-
-@app.post("/internal/v1/extract-items", response_model=ExtractItemsResponse, responses=INTAKE_ERRORS)
-def extract(request: ExtractItemsRequest) -> ExtractItemsResponse:
-    return extract_items(request)
-
-
-@app.post("/internal/v1/clarify-items", response_model=ClarifyItemsResponse, responses=INTAKE_ERRORS)
-def clarify(request: ClarifyItemsRequest) -> ClarifyItemsResponse:
-    return clarify_items(request)
-
-
-@app.post("/internal/v1/similar-cases", response_model=SimilarCasesResponse, responses=INTAKE_ERRORS)
-def similar(request: SimilarCasesRequest) -> SimilarCasesResponse:
-    return similar_cases(request)
+    return health_payload(settings)

@@ -11,9 +11,28 @@ spring:
   flyway:
     clean-disabled: true
     validate-migration-naming: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    admin:
+      modify-topic-configs: true
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JacksonJsonSerializer
+      properties:
+        spring.json.add.type.headers: false
 server:
   address: ${SERVER_ADDRESS:127.0.0.1}
   port: ${SERVER_PORT:8080}
+  servlet:
+    session:
+      timeout: 30m
+      cookie:
+        http-only: true
+        secure: ${SESSION_COOKIE_SECURE:false}
+        same-site: ${SESSION_COOKIE_SAMESITE:Lax}
+        # HTTPS MAX Web runs cross-site, where ordinary third-party cookies may be blocked.
+        # Partition the session by its embedding site; the CSRF cookie follows the same policy.
+        partitioned: ${server.servlet.session.cookie.secure}
   error:
     include-message: never
     include-stacktrace: never
@@ -21,9 +40,39 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,info
   endpoint:
     health:
       show-details: never
+  info:
+    env:
+      enabled: true
+info:
+  app:
+    # Set at deploy: RELEASE_SHA=$(git rev-parse HEAD). A stand without it answers "unknown".
+    sha: ${RELEASE_SHA:unknown}
 koren:
+  review-invitations-enabled: ${REVIEW_INVITATIONS_ENABLED:false}
   inference-url: ${INFERENCE_URL:http://127.0.0.1:8000}
+  # Off by default: while it is off a saved report answers MANUAL_REQUIRED and queues nothing,
+  # so nothing sits in QUEUED forever waiting for a worker that never starts.
+  analysis:
+    enabled: ${ANALYSIS_ENABLED:false}
+  kafka:
+    enabled: ${KAFKA_ENABLED:false}
+    case-updates-topic: ${KAFKA_CASE_UPDATES_TOPIC:koren.case-updates}
+  max:
+    bot-token: ${MAX_BOT_TOKEN:}
+    # Empty means the webhook route does not exist at all.
+    webhook-secret: ${MAX_WEBHOOK_SECRET:}
+    workers-enabled: ${MAX_WORKERS_ENABLED:false}
+    # platform-api2 is the current host; MAX retires platform-api.
+    api-url: ${MAX_API_URL:https://platform-api2.max.ru}
+    # Public bot name for the «Открыть обращение» button; empty sends news without it.
+    bot-name: ${MAX_BOT_NAME:t109_hakaton_max_bot}
+  # Empty: case numbers are plain ("124"). A synthetic stand may label them: CASE_NUMBER_PREFIX=ДЕМО-
+  case-number-prefix: ${CASE_NUMBER_PREFIX:}
+logging:
+  pattern:
+    # Every line written while serving a request carries its id; worker lines have none.
+    correlation: "[%X{requestId:-}] "
