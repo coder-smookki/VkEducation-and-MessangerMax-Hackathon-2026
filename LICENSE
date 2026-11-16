@@ -1,15 +1,15 @@
 ЛИЦЕНЗИЯ «ВСЕ ПРАВА ЗАЩИЩЕНЫ» (проприетарная)
 
-Copyright © 2026 Ильин Кирилл Русланович. Все права защищены.
+Copyright © 2026 Ильин Кирилл Русланович, Осипов Семён. Все права защищены.
 
-1. Правообладатель
+1. Правообладатели
 Исключительное право на программу «ДомПульс (ядро КОРЕНЬ)» и все материалы этого репозитория (исходный код, приложения и их
-сборки, обученные веса моделей, документация, изображения, видео, презентации) принадлежит Ильину Кириллу
-Руслановичу (далее - Правообладатель). Исключение - сторонние компоненты из раздела 5.
+сборки, обученные веса моделей, документация, изображения, видео, презентации) принадлежит совместно Ильину
+Кириллу Руслановичу и Осипову Семёну (далее - Правообладатели). Исключение - сторонние компоненты из раздела 5.
 
 2. Права не предоставляются
 Публикация репозитория в открытом доступе не является предоставлением лицензии. Без предварительного письменного
-разрешения Правообладателя запрещено любое использование программы и материалов, в том числе:
+разрешения Правообладателей запрещено любое использование программы и материалов, в том числе:
   а) коммерческое использование в любой форме: продажа, внедрение у заказчика, оказание услуг с помощью
      программы, включение в платные продукты, участие в закупках и тендерах;
   б) использование в собственных целях, включая личные, учебные, исследовательские, конкурсные (хакатоны,
@@ -32,9 +32,10 @@ Copyright © 2026 Ильин Кирилл Русланович. Все прав�
      программы в каких-либо целях.
 
 4. Срок действия
-Условия действуют бессрочно - в течение всего срока действия исключительного права. По статье 1281 ГК РФ это вся
-жизнь автора и 70 лет, считая с 1 января года, следующего за годом его смерти. Исключительное право переходит по
-наследству. Отсутствие претензий со стороны Правообладателя не означает разрешения.
+Условия действуют бессрочно - в течение всего срока действия исключительного права. По статье 1281 ГК РФ для
+произведения, созданного в соавторстве, это вся жизнь автора, пережившего других соавторов, и 70 лет, считая
+с 1 января года, следующего за годом его смерти. Исключительное право переходит по
+наследству. Правообладатели распоряжаются им совместно (статья 1229 ГК РФ). Отсутствие претензий со стороны Правообладателей не означает разрешения.
 
 5. Сторонние компоненты
 Библиотеки, исходные веса моделей, шрифты и другие сторонние компоненты, использованные в программе, остаются под
@@ -43,16 +44,16 @@ Copyright © 2026 Ильин Кирилл Русланович. Все прав�
 Для этого проекта это библиотеки Java, JavaScript и Python (Spring Boot, Flyway, драйвер PostgreSQL, React, TanStack Query, Vite, FastAPI, Pydantic, ChromaDB, aiokafka и другие), версии которых закреплены в backend/pom.xml, frontend/package-lock.json и ml/uv.lock, модель all-MiniLM-L6-v2, которую ChromaDB загружает по умолчанию для индекса похожих обращений, Docker-образы из compose.yaml и compose.release.yaml, а также корневой сертификат Russian Trusted Root CA в backend/src/main/resources/certs/, принадлежащий его издателю.
 
 6. Получение разрешения
-Любое использование сверх раздела 3 возможно только по письменному договору с Правообладателем (статья 1235 ГК РФ).
-Связь: GitHub @coder-smookki (https://github.com/coder-smookki).
+Любое использование сверх раздела 3 возможно только по письменному договору с Правообладателями (статья 1235 ГК РФ).
+Связь: GitHub @coder-smookki (https://github.com/coder-smookki), @S1notik (https://github.com/S1notik).
 
 7. Ответственность
-Использование без разрешения нарушает исключительное право Правообладателя (статьи 1229 и 1270 ГК РФ).
-Правообладатель вправе требовать прекращения нарушения, удаления копий, возмещения убытков или выплаты компенсации
+Использование без разрешения нарушает исключительное право Правообладателей (статьи 1229 и 1270 ГК РФ).
+Правообладатели вправе требовать прекращения нарушения, удаления копий, возмещения убытков или выплаты компенсации
 (статьи 1252 и 1301 ГК РФ).
 
 8. Отсутствие гарантий
-Программа и материалы предоставляются для ознакомления «как есть», без каких-либо гарантий. Правообладатель не
+Программа и материалы предоставляются для ознакомления «как есть», без каких-либо гарантий. Правообладатели не
 отвечает за последствия их запуска.
 
 9. Применимое право
@@ -65,14 +66,14 @@ ENGLISH TRANSLATION
 
 PROPRIETARY LICENSE - ALL RIGHTS RESERVED
 
-Copyright © 2026 Ilin Kirill Ruslanovich (Ильин Кирилл Русланович). All rights reserved.
+Copyright © 2026 Ilin Kirill Ruslanovich (Ильин Кирилл Русланович), Osipov Semyon. All rights reserved.
 
 1. Rights holder. The exclusive right to the program "ДомПульс (ядро КОРЕНЬ)" and to all materials in this repository (source code,
-applications and their builds, trained model weights, documentation, images, videos, presentations) belongs to
-Ilin Kirill Ruslanovich (the "Rights Holder"), except for the third-party components listed in section 5.
+applications and their builds, trained model weights, documentation, images, videos, presentations) belongs jointly to
+Ilin Kirill Ruslanovich and Osipov Semyon (the "Rights Holders"), except for the third-party components listed in section 5.
 
 2. No rights are granted. Publishing this repository publicly is not a grant of a license. Without the prior written
-permission of the Rights Holder, any use of the program and materials is prohibited, including: (a) commercial use
+permission of the Rights Holders, any use of the program and materials is prohibited, including: (a) commercial use
 in any form; (b) use for one's own purposes, including personal, educational, research, competition and internal
 organisational purposes; (c) copying or reproduction in whole or in part, except as allowed in section 3;
 (d) modification, adaptation, translation, creating derivative works, or moving the code or parts of it into other
@@ -87,23 +88,23 @@ program can do, without gaining any benefit, without modifying or distributing i
 any purpose.
 
 4. Term. These terms apply without time limit - for the whole term of the exclusive right, which under Article 1281
-of the Civil Code of the Russian Federation is the author's lifetime plus 70 years counted from 1 January of the year
-following the author's death. The exclusive right passes to the author's heirs. The absence of claims by the Rights
-Holder is not permission.
+of the Civil Code of the Russian Federation, for a work of joint authorship, is the lifetime of the last surviving
+co-author plus 70 years counted from 1 January of the year following that co-author's death. The exclusive right passes to the author's heirs. The absence of claims by the Rights
+Holders is not permission.
 
 5. Third-party components (libraries, original model weights, fonts and other third-party works) remain under their
 own licenses (MIT, Apache-2.0, OFL and others) named in the README and in the components' own files. This license does
 not apply to them and does not restrict the rights their own licenses grant for those components themselves.
 
-6. Permission for any use beyond section 3 requires a written agreement with the Rights Holder (Article 1235 of the
-Civil Code of the Russian Federation). Contact: GitHub @coder-smookki (https://github.com/coder-smookki).
+6. Permission for any use beyond section 3 requires a written agreement with the Rights Holders (Article 1235 of the
+Civil Code of the Russian Federation). Contact: GitHub @coder-smookki (https://github.com/coder-smookki), @S1notik (https://github.com/S1notik).
 
-7. Liability. Use without permission infringes the Rights Holder's exclusive right (Articles 1229 and 1270 of the
-Civil Code of the Russian Federation). The Rights Holder may demand that the infringement stop, that copies be
+7. Liability. Use without permission infringes the Rights Holders' exclusive right (Articles 1229 and 1270 of the
+Civil Code of the Russian Federation). The Rights Holders may demand that the infringement stop, that copies be
 removed, and damages or statutory compensation (Articles 1252 and 1301).
 
-8. No warranty. The program and materials are provided for review "as is", without any warranty. The Rights Holder
-is not liable for any consequences of running them.
+8. No warranty. The program and materials are provided for review "as is", without any warranty. The Rights Holders
+are not liable for any consequences of running them.
 
 9. Governing law. These terms are governed by the laws of the Russian Federation. If the Russian text and this
 translation differ, the Russian text prevails.
